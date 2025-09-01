@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { MessageThread, User } from '../types';
 
 const mockOnlineUsers: User[] = [
@@ -10,7 +11,7 @@ const mockOnlineUsers: User[] = [
 ];
 
 const mockThreads: MessageThread[] = [
-  { id: 1, user: mockOnlineUsers[0], lastMessage: 'Super! Vi ses i bio i morgen 😊', timestamp: '18:43', unreadCount: 3 },
+  { id: 1, user: mockOnlineUsers[0], lastMessage: 'Super! Vi ses i bio i morgen 😊', timestamp: '18:43', unreadCount: 3, matchTimestamp: Date.now() - (1 * 24 * 60 * 60 * 1000 + 10 * 60 * 60 * 1000) },
   { id: 2, user: { id: 4, name: 'Victoria', age: 25, avatarUrl: 'https://picsum.photos/id/1013/100/100', online: false }, lastMessage: 'Omg! Vildt samme her!', timestamp: '16:43', unreadCount: 0 },
   { id: 3, user: mockOnlineUsers[1], lastMessage: 'Super fedt, har det på samme måde', timestamp: '14:43', unreadCount: 0 },
   { id: 4, user: mockOnlineUsers[2], lastMessage: 'Yeeeeeeah 👍', timestamp: '10:43', unreadCount: 0 },
@@ -45,23 +46,23 @@ const ChatListPage: React.FC = () => {
       
       <div className="mt-6 flex-1">
         <h2 className="text-lg font-semibold text-text-primary mb-3">Alle beskeder</h2>
-        <div className="space-y-4">
+        <div className="space-y-2">
           {mockThreads.map(thread => (
-            <div key={thread.id} className="flex items-center">
+            <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
               <img src={thread.user.avatarUrl} alt={thread.user.name} className="w-14 h-14 rounded-full mr-4"/>
-              <div className="flex-1">
+              <div className="flex-1 overflow-hidden">
                 <p className="font-bold text-text-primary">{thread.user.name}</p>
                 <p className="text-sm text-text-secondary truncate">{thread.lastMessage}</p>
               </div>
-              <div className="text-right">
+              <div className="text-right ml-2 flex-shrink-0">
                 <p className="text-xs text-gray-400 mb-1">{thread.timestamp}</p>
                 {thread.unreadCount > 0 && (
-                  <span className="bg-primary text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center">
+                  <span className="bg-primary text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center ml-auto">
                     {thread.unreadCount}
                   </span>
                 )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

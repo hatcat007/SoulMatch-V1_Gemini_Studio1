@@ -1,4 +1,3 @@
-
 export interface User {
   id: number;
   name: string;
@@ -16,6 +15,8 @@ export interface Event {
   hostAvatarUrl: string;
   icon: string;
   color: string;
+  description?: string;
+  participants?: User[];
 }
 
 export interface Place {
@@ -34,4 +35,13 @@ export interface MessageThread {
   lastMessage: string;
   timestamp: string;
   unreadCount: number;
+  matchTimestamp?: number;
+}
+
+export interface Message {
+  id: number;
+  text: string;
+  timestamp: string;
+  senderId: number;
+  imageUrl?: string;
 }
