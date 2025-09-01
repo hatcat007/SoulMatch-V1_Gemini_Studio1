@@ -2,7 +2,7 @@ export interface User {
   id: number;
   name: string;
   age: number;
-  avatarUrl: string;
+  avatarUrl?: string;
   online: boolean;
 }
 
@@ -15,6 +15,7 @@ export interface Event {
   hostAvatarUrl: string;
   icon: string;
   color: string;
+  category: string;
   description?: string;
   participants?: User[];
 }
@@ -27,6 +28,11 @@ export interface Place {
   userCount: number;
   userImages: string[];
   icon: string;
+  category: string;
+  description: string;
+  isSponsored: boolean;
+  phone: string;
+  openingHours: string;
 }
 
 export interface MessageThread {

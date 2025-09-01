@@ -12,6 +12,9 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ChatPage from './pages/ChatPage';
 import EventDetailPage from './pages/EventDetailPage';
+import EventFilterPage from './pages/EventFilterPage';
+import PlacesFilterPage from './pages/PlacesFilterPage';
+import CheckinPage from './pages/CheckinPage';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -35,11 +38,14 @@ const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<Navigate to="/home" />} />
                 <Route path="/home" element={<HomePage />} />
+                <Route path="/home/filter" element={<EventFilterPage />} />
                 <Route path="/places" element={<PlacesPage />} />
+                <Route path="/places/filter" element={<PlacesFilterPage />} />
                 <Route path="/create" element={<CreateEventPage />} />
                 <Route path="/chat" element={<ChatListPage />} />
                 <Route path="/chat/:chatId" element={<ChatPage />} />
                 <Route path="/event/:eventId" element={<EventDetailPage />} />
+                <Route path="/checkin" element={<CheckinPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="*" element={<Navigate to="/home" />} />
               </Routes>

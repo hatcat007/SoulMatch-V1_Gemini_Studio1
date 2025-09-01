@@ -1,8 +1,15 @@
 
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import type { Event, User } from '../types';
+
+const mockOnlineNowUsers: User[] = [
+  { id: 101, name: 'Chris', age: 20, avatarUrl: 'https://i.pravatar.cc/80?u=101', online: true },
+  { id: 103, name: 'Jens', age: 20, avatarUrl: 'https://i.pravatar.cc/80?u=103', online: true },
+  { id: 105, name: 'Ib', age: 20, avatarUrl: 'https://i.pravatar.cc/80?u=105', online: true },
+  { id: 113, name: 'Anna', age: 20, avatarUrl: 'https://i.pravatar.cc/80?u=113', online: true },
+];
 
 const mockParticipants: User[] = [
   { id: 101, name: 'Chris', age: 20, avatarUrl: 'https://i.pravatar.cc/80?u=101', online: true },
@@ -23,10 +30,25 @@ const mockParticipants: User[] = [
   ...Array.from({ length: 20 }, (_, i) => ({ id: 200 + i, name: `User ${i}`, age: 21, avatarUrl: `https://i.pravatar.cc/80?u=${200 + i}`, online: false })),
 ];
 
+const mockParticipants2: User[] = [
+  { id: 301, name: 'Mette', age: 24, avatarUrl: 'https://i.pravatar.cc/80?u=301', online: true },
+  { id: 302, name: 'Lars', age: 28, avatarUrl: 'https://i.pravatar.cc/80?u=302', online: false },
+  { id: 303, name: 'Freja', age: 21, avatarUrl: 'https://i.pravatar.cc/80?u=303', online: true },
+  { id: 304, name: 'Emil', age: 23, avatarUrl: 'https://i.pravatar.cc/80?u=304', online: false },
+];
+
+const mockParticipants3: User[] = [
+  { id: 401, name: 'Peter', age: 30, avatarUrl: 'https://i.pravatar.cc/80?u=401', online: true },
+  { id: 402, name: 'Signe', age: 26, avatarUrl: 'https://i.pravatar.cc/80?u=402', online: true },
+  { id: 403, name: 'Martin', age: 29, avatarUrl: 'https://i.pravatar.cc/80?u=403', online: false },
+  ...Array.from({ length: 15 }, (_, i) => ({ id: 500 + i, name: `Player ${i}`, age: 25, avatarUrl: `https://i.pravatar.cc/80?u=${500 + i}`, online: false })),
+];
+
+
 const mockEvents: Event[] = [
-  { id: 1, title: 'Musik koncert sammen', time: 'Lige nu', participantCount: 35, host: 'Jesper fra Studenterhuset Aalborg', hostAvatarUrl: 'https://picsum.photos/id/237/40/40', icon: '🎸', color: 'bg-yellow-100', description: 'Kom og hør Andreas Odbjerg.\nVi gir den første øl 🍺 #stopensomhed', participants: mockParticipants },
-  { id: 2, title: 'Fælles spisning', time: 'Om 31 min', participantCount: 4, host: 'SIND Ungdom Aalborg', hostAvatarUrl: 'https://picsum.photos/id/238/40/40', icon: '🍽️', color: 'bg-teal-100' },
-  { id: 3, title: 'Fælles brætspil', time: 'I dag klokken 18:00', participantCount: 18, host: 'Ventilen Aalborg', hostAvatarUrl: 'https://picsum.photos/id/239/40/40', icon: '🎲', color: 'bg-green-100' },
+  { id: 1, title: 'Musik koncert sammen', time: 'Lige nu', participantCount: 35, host: 'Jesper fra Studenterhuset Aalborg', hostAvatarUrl: 'https://picsum.photos/id/237/40/40', icon: '🎸', color: 'bg-yellow-100', category: 'Musik', description: 'Kom og hør Andreas Odbjerg.\nVi gir den første øl 🍺 #stopensomhed', participants: mockParticipants },
+  { id: 2, title: 'Fælles spisning', time: 'Om 31 min', participantCount: 4, host: 'SIND Ungdom Aalborg', hostAvatarUrl: 'https://picsum.photos/id/238/40/40', icon: '🍽️', color: 'bg-teal-100', category: 'Mad', description: 'Vi mødes til en hyggelig aften med god mad og snak. Alle er velkomne, og vi laver maden sammen. Medbring godt humør!', participants: mockParticipants2 },
+  { id: 3, title: 'Fælles brætspil', time: 'I dag klokken 18:00', participantCount: 18, host: 'Ventilen Aalborg', hostAvatarUrl: 'https://picsum.photos/id/239/40/40', icon: '🎲', color: 'bg-green-100', category: 'Brætspil', description: 'Er du til Settlers, Bezzerwizzer eller noget helt tredje? Kom og vær med til en aften i brætspillets tegn. Vi har masser af spil, men tag også gerne dit eget yndlingsspil med.', participants: mockParticipants3 },
 ];
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => (
@@ -48,7 +70,42 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => (
   </div>
 );
 
+const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
+  <div className="bg-primary-light p-4 rounded-2xl mb-6">
+    <h2 className="text-xl font-bold text-text-primary mb-4">Online nu</h2>
+    <div className="flex justify-around">
+      {users.map(user => (
+        <div key={user.id} className="flex flex-col items-center text-center w-16">
+          <div className="relative">
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
+            ) : (
+              <div 
+                className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold"
+              >
+                {user.name.charAt(0)}
+              </div>
+            )}
+            <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-primary-light"></span>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-text-secondary truncate w-full">{user.name}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const HomePage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedCategory = searchParams.get('category');
+
+  const filteredEvents = useMemo(() => {
+    if (!selectedCategory) {
+      return mockEvents;
+    }
+    return mockEvents.filter(event => event.category === selectedCategory);
+  }, [selectedCategory]);
+
   return (
     <div className="p-4">
       <div className="relative mb-6">
@@ -60,23 +117,51 @@ const HomePage: React.FC = () => {
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
       </div>
 
-      <h2 className="text-2xl font-bold text-text-primary mb-2">Undersøg nye muligheder</h2>
-      <p className="text-text-secondary mb-6">Valgt baseret på dine interesser</p>
-      
-      <div>
-        <Link to={`/event/${mockEvents[0].id}`} className="block">
-          <EventCard event={mockEvents[0]} />
+      <OnlineNowSection users={mockOnlineNowUsers.slice(0, 4)} />
+
+      <div className="flex justify-between items-center mb-4">
+        <div>
+            <h2 className="text-2xl font-bold text-text-primary">Undersøg nye muligheder</h2>
+            <p className="text-text-secondary text-sm">Valgt baseret på dine interesser</p>
+        </div>
+        <Link to="/home/filter" className="p-2 bg-gray-100 rounded-md">
+            <SlidersHorizontal className="text-gray-600" />
         </Link>
       </div>
+      
+      {selectedCategory && (
+        <div className="flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
+          <span>Filter: {selectedCategory}</span>
+          <button onClick={() => setSearchParams({})} className="ml-auto p-1 -mr-1 hover:bg-primary/20 rounded-full">
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
-      <h2 className="text-xl font-bold text-text-primary my-4">Sker senere i dag</h2>
-      <div>
-        {mockEvents.slice(1).map(event => (
-          <Link to={`/event/${event.id}`} key={event.id} className="block">
-            <EventCard event={event} />
-          </Link>
-        ))}
-      </div>
+      {filteredEvents.length > 0 ? (
+        <>
+          <div>
+            <Link to={`/event/${filteredEvents[0].id}`} className="block">
+              <EventCard event={filteredEvents[0]} />
+            </Link>
+          </div>
+
+          {filteredEvents.length > 1 && (
+            <>
+              <h2 className="text-xl font-bold text-text-primary my-4">Andre events</h2>
+              <div>
+                {filteredEvents.slice(1).map(event => (
+                  <Link to={`/event/${event.id}`} key={event.id} className="block">
+                    <EventCard event={event} />
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <p className="text-center text-text-secondary mt-8">Ingen events fundet for den valgte kategori.</p>
+      )}
     </div>
   );
 };
