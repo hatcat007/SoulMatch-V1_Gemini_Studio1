@@ -1,7 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Settings, MessageCircle } from 'lucide-react';
-import { supabase } from '../services/supabase';
 
 interface Trait {
   label: string;
@@ -10,16 +9,12 @@ interface Trait {
   value: number; // 0 to 100
 }
 
-interface Profile {
-    id: number;
-    name: string;
-    location: string;
-    bio: string;
-    avatarUrl: string;
-    emojis: string[];
-    images: string[];
-    personalityType: string;
-}
+const mockTraits: Trait[] = [
+  { label: 'Abstrakt opfattelse', left: '', right: '', value: 70 },
+  { label: 'Emotionel tænkning', left: '', right: '', value: 80 },
+  { label: 'Rationel tænkning', left: '', right: '', value: 40 },
+  { label: 'Konkret opfattelse', left: '', right: '', value: 60 },
+];
 
 const TraitSlider: React.FC<{ trait: Trait }> = ({ trait }) => {
   const isBalanced = trait.value > 40 && trait.value < 60;
@@ -44,71 +39,6 @@ const TraitSlider: React.FC<{ trait: Trait }> = ({ trait }) => {
 };
 
 const ProfilePage: React.FC = () => {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [traits, setTraits] = useState<Trait[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // For demonstration, we'll fetch a specific user's profile (ID 1)
-  const USER_ID = 1;
-
-  useEffect(() => {
-    const fetchProfileData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', USER_ID)
-          .single();
-
-        if (profileError) throw profileError;
-
-        setProfile({
-            id: profileData.id,
-            name: profileData.name,
-            location: profileData.location,
-            bio: profileData.bio,
-            avatarUrl: profileData.avatar_url,
-            emojis: profileData.emojis,
-            images: profileData.images,
-            personalityType: profileData.personality_type
-        });
-
-        const { data: traitsData, error: traitsError } = await supabase
-          .from('personality_traits')
-          .select('*')
-          .eq('user_id', USER_ID);
-
-        if (traitsError) throw traitsError;
-        
-        const formattedTraits: Trait[] = traitsData.map(trait => ({
-            label: trait.label,
-            value: trait.value,
-            left: trait.left_label,
-            right: trait.right_label,
-        }));
-        setTraits(formattedTraits);
-
-      } catch (err: any) {
-        setError("Kunne ikke hente profil. Prøv igen senere.");
-        console.error("Error fetching profile:", err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProfileData();
-  }, []);
-
-  if (loading) {
-    return <div className="p-4 text-center">Henter profil...</div>;
-  }
-
-  if (error || !profile) {
-    return <div className="p-4 text-center text-red-500">{error}</div>;
-  }
-
   return (
     <div className="bg-gray-50 min-h-full">
       <div className="p-4">
@@ -123,38 +53,36 @@ const ProfilePage: React.FC = () => {
 
         <div className="flex flex-col items-center text-center">
             <img 
-                src={profile.avatarUrl}
-                alt={profile.name}
+                src="https://picsum.photos/id/1011/120/120" 
+                alt="Anne Jensen" 
                 className="w-28 h-28 rounded-full border-4 border-white shadow-lg mb-3"
             />
-            <h1 className="text-2xl font-bold text-text-primary">{profile.name} 🛡️</h1>
-            <p className="text-text-secondary">{profile.location}</p>
+            <h1 className="text-2xl font-bold text-text-primary">Anne Jensen 🛡️</h1>
+            <p className="text-text-secondary">Aalborg, Denmark</p>
             <p className="mt-2 max-w-xs">
-                {profile.bio}
+                Kreativt menneske som elsker film, gaming, katte og gåture. Lad os mødes til en god kaffe 😊
             </p>
         </div>
 
         <div className="flex justify-center space-x-4 my-6">
-            {profile.emojis.map((emoji, index) => (
-                 <div key={index} className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl ${['bg-yellow-200', 'bg-red-200', 'bg-blue-200'][index % 3]}`}>
-                    {emoji}
-                 </div>
-            ))}
+            <div className="w-16 h-16 rounded-full bg-yellow-200 flex items-center justify-center text-3xl">😉</div>
+            <div className="w-16 h-16 rounded-full bg-red-200 flex items-center justify-center text-3xl">🎮</div>
+            <div className="w-16 h-16 rounded-full bg-blue-200 flex items-center justify-center text-3xl">☕</div>
         </div>
 
         <div className="mb-6">
             <h2 className="text-lg font-semibold text-text-primary mb-3">Billeder som beskriver mig</h2>
             <div className="grid grid-cols-3 gap-2">
-                {profile.images.map((imgSrc, index) => (
-                    <img key={index} src={imgSrc} alt="User image" className="rounded-lg aspect-square object-cover"/>
-                ))}
+                <img src="https://picsum.photos/seed/cat/200/200" alt="cat" className="rounded-lg aspect-square object-cover"/>
+                <img src="https://picsum.photos/seed/gaming/200/200" alt="gaming" className="rounded-lg aspect-square object-cover"/>
+                <img src="https://picsum.photos/seed/coffee/200/200" alt="coffee" className="rounded-lg aspect-square object-cover"/>
             </div>
         </div>
 
         <div>
             <h2 className="text-lg font-semibold text-text-primary mb-3">Personlighed</h2>
-            <p className="text-xl font-bold text-text-primary mb-4">{profile.personalityType}</p>
-            {traits.map(trait => <TraitSlider key={trait.label} trait={trait} />)}
+            <p className="text-xl font-bold text-text-primary mb-4">INFJ</p>
+            {mockTraits.map(trait => <TraitSlider key={trait.label} trait={trait} />)}
         </div>
       </div>
     </div>

@@ -1,79 +1,22 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Search } from 'lucide-react';
 import type { MessageThread, User } from '../types';
-import { supabase } from '../services/supabase';
+
+const mockOnlineUsers: User[] = [
+  { id: 1, name: 'Anne', age: 24, avatarUrl: 'https://picsum.photos/id/1011/100/100', online: true },
+  { id: 2, name: 'Jens', age: 26, avatarUrl: 'https://picsum.photos/id/1025/100/100', online: true },
+  { id: 3, name: 'Sofie', age: 22, avatarUrl: 'https://picsum.photos/id/1012/100/100', online: true },
+];
+
+const mockThreads: MessageThread[] = [
+  { id: 1, user: mockOnlineUsers[0], lastMessage: 'Super! Vi ses i bio i morgen 😊', timestamp: '18:43', unreadCount: 3 },
+  { id: 2, user: { id: 4, name: 'Victoria', age: 25, avatarUrl: 'https://picsum.photos/id/1013/100/100', online: false }, lastMessage: 'Omg! Vildt samme her!', timestamp: '16:43', unreadCount: 0 },
+  { id: 3, user: mockOnlineUsers[1], lastMessage: 'Super fedt, har det på samme måde', timestamp: '14:43', unreadCount: 0 },
+  { id: 4, user: mockOnlineUsers[2], lastMessage: 'Yeeeeeeah 👍', timestamp: '10:43', unreadCount: 0 },
+];
 
 const ChatListPage: React.FC = () => {
-  const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
-  const [threads, setThreads] = useState<MessageThread[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        // Fetch online users
-        const { data: usersData, error: usersError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('online_status', true);
-
-        if (usersError) throw usersError;
-        
-        const formattedUsers: User[] = usersData.map(user => ({
-          id: user.id,
-          name: user.name,
-          age: user.age,
-          avatarUrl: user.avatar_url,
-          online: user.online_status,
-        }));
-        setOnlineUsers(formattedUsers);
-
-        // Fetch message threads with user data
-        const { data: threadsData, error: threadsError } = await supabase
-          .from('message_threads')
-          .select('*, user:profiles(*)');
-
-        if (threadsError) throw threadsError;
-        
-        const formattedThreads: MessageThread[] = threadsData.map(thread => ({
-          id: thread.id,
-          lastMessage: thread.last_message,
-          timestamp: thread.timestamp,
-          unreadCount: thread.unread_count,
-          user: {
-            id: thread.user.id,
-            name: thread.user.name,
-            age: thread.user.age,
-            avatarUrl: thread.user.avatar_url,
-            online: thread.user.online_status,
-          },
-        }));
-        setThreads(formattedThreads);
-
-      } catch (err: any) {
-        setError('Kunne ikke hente beskeder. Prøv igen senere.');
-        console.error('Error fetching chat data:', err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return <div className="p-4 text-center">Henter chats...</div>;
-  }
-
-  if (error) {
-    return <div className="p-4 text-center text-red-500">{error}</div>;
-  }
-
   return (
     <div className="p-4 flex flex-col h-full">
       <h1 className="text-3xl font-bold text-text-primary mb-4">Soul mates 💫</h1>
@@ -89,7 +32,7 @@ const ChatListPage: React.FC = () => {
       <div>
         <h2 className="text-lg font-semibold text-text-primary mb-3">Online nu</h2>
         <div className="flex space-x-4">
-          {onlineUsers.map(user => (
+          {mockOnlineUsers.map(user => (
             <div key={user.id} className="flex flex-col items-center">
               <div className="relative">
                 <img src={user.avatarUrl} alt={user.name} className="w-16 h-16 rounded-full" />
@@ -103,7 +46,7 @@ const ChatListPage: React.FC = () => {
       <div className="mt-6 flex-1">
         <h2 className="text-lg font-semibold text-text-primary mb-3">Alle beskeder</h2>
         <div className="space-y-4">
-          {threads.map(thread => (
+          {mockThreads.map(thread => (
             <div key={thread.id} className="flex items-center">
               <img src={thread.user.avatarUrl} alt={thread.user.name} className="w-14 h-14 rounded-full mr-4"/>
               <div className="flex-1">

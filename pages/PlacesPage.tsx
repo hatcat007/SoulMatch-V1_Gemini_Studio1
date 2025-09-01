@@ -1,8 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import type { Place } from '../types';
-import { supabase } from '../services/supabase';
+
+const mockPlaces: Place[] = [
+  { id: 1, name: 'Espresso House', offer: '2 x gratis kaffe', address: 'Bispensgade 16, 9000 Aalborg', userCount: 209, userImages: ['https://picsum.photos/id/10/30/30', 'https://picsum.photos/id/20/30/30'], icon: '☕' },
+  { id: 2, name: 'Heidis bier bar', offer: '25% rabat', address: 'Jomfru Anes Gård 5, 9000 Aalborg', userCount: 151, userImages: ['https://picsum.photos/id/30/30/30', 'https://picsum.photos/id/40/30/30'], icon: '🍻' },
+  { id: 3, name: 'McDonalds', offer: '2 x cola + cheeseburger', address: 'Jomfru Anes Gård 5, 9000 Aalborg', userCount: 97, userImages: ['https://picsum.photos/id/50/30/30', 'https://picsum.photos/id/60/30/30'], icon: '🍔' },
+];
 
 const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
   <div className="bg-teal-100 p-4 rounded-2xl shadow-sm mb-4">
@@ -27,48 +32,8 @@ const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
   </div>
 );
 
+
 const PlacesPage: React.FC = () => {
-  const [places, setPlaces] = useState<Place[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchPlaces = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('places')
-        .select('*')
-        .order('id', { ascending: true });
-
-      if (error) {
-        setError('Kunne ikke hente steder. Prøv igen senere.');
-        console.error('Error fetching places:', error);
-      } else if (data) {
-        const formattedData: Place[] = data.map(place => ({
-          id: place.id,
-          name: place.name,
-          offer: place.offer,
-          address: place.address,
-          userCount: place.user_count,
-          userImages: place.user_images,
-          icon: place.icon,
-        }));
-        setPlaces(formattedData);
-      }
-      setLoading(false);
-    };
-
-    fetchPlaces();
-  }, []);
-  
-  if (loading) {
-    return <div className="p-4 text-center">Henter steder...</div>;
-  }
-
-  if (error) {
-    return <div className="p-4 text-center text-red-500">{error}</div>;
-  }
-
   return (
     <div className="p-4">
       <div className="relative mb-4">
@@ -90,7 +55,7 @@ const PlacesPage: React.FC = () => {
       </div>
 
       <div>
-        {places.map(place => (
+        {mockPlaces.map(place => (
           <PlaceCard key={place.id} place={place} />
         ))}
       </div>

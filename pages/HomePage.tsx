@@ -1,8 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Search } from 'lucide-react';
 import type { Event } from '../types';
-import { supabase } from '../services/supabase';
+
+const mockEvents: Event[] = [
+  { id: 1, title: 'Musik koncert sammen', time: 'Lige nu', participantCount: 9, host: 'Jesper fra Studenterhuset Aalborg', hostAvatarUrl: 'https://picsum.photos/id/237/40/40', icon: '🎸', color: 'bg-yellow-100' },
+  { id: 2, title: 'Fælles spisning', time: 'Om 31 min', participantCount: 4, host: 'SIND Ungdom Aalborg', hostAvatarUrl: 'https://picsum.photos/id/238/40/40', icon: '🍽️', color: 'bg-teal-100' },
+  { id: 3, title: 'Fælles brætspil', time: 'I dag klokken 18:00', participantCount: 18, host: 'Ventilen Aalborg', hostAvatarUrl: 'https://picsum.photos/id/239/40/40', icon: '🎲', color: 'bg-green-100' },
+];
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => (
   <div className={`p-4 rounded-2xl ${event.color} shadow-sm mb-4`}>
@@ -24,48 +29,6 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => (
 );
 
 const HomePage: React.FC = () => {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchEvents = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('id', { ascending: true });
-
-      if (error) {
-        setError('Kunne ikke hente events. Prøv igen senere.');
-        console.error('Error fetching events:', error);
-      } else if (data) {
-        const formattedData: Event[] = data.map(event => ({
-          id: event.id,
-          title: event.title,
-          time: event.time,
-          participantCount: event.participant_count,
-          host: event.host,
-          hostAvatarUrl: event.host_avatar_url,
-          icon: event.icon,
-          color: event.color,
-        }));
-        setEvents(formattedData);
-      }
-      setLoading(false);
-    };
-
-    fetchEvents();
-  }, []);
-
-  if (loading) {
-    return <div className="p-4 text-center">Henter events...</div>;
-  }
-
-  if (error) {
-    return <div className="p-4 text-center text-red-500">{error}</div>;
-  }
-
   return (
     <div className="p-4">
       <div className="relative mb-6">
@@ -80,15 +43,13 @@ const HomePage: React.FC = () => {
       <h2 className="text-2xl font-bold text-text-primary mb-2">Undersøg nye muligheder</h2>
       <p className="text-text-secondary mb-6">Valgt baseret på dine interesser</p>
       
-      {events.length > 0 && (
-        <div>
-          <EventCard event={events[0]} />
-        </div>
-      )}
+      <div>
+        <EventCard event={mockEvents[0]} />
+      </div>
 
       <h2 className="text-xl font-bold text-text-primary my-4">Sker senere i dag</h2>
       <div>
-        {events.slice(1).map(event => (
+        {mockEvents.slice(1).map(event => (
           <EventCard key={event.id} event={event} />
         ))}
       </div>
