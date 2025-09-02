@@ -95,6 +95,8 @@ const ChatListPage: React.FC = () => {
                         const otherUser = getOtherParticipant(thread);
                         if (!otherUser) return null;
 
+                        const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
+
                         return (
                             <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
                                 <img src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4" />
@@ -103,7 +105,7 @@ const ChatListPage: React.FC = () => {
                                     <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>
                                 </div>
                                 <div className="text-right ml-2 flex-shrink-0">
-                                    <p className="text-xs text-gray-400 mb-1">{thread.timestamp}</p>
+                                    <p className="text-xs text-gray-400 mb-1">{formattedTimestamp}</p>
                                     {thread.unread_count > 0 && (
                                         <span className="bg-primary text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center ml-auto">
                                             {thread.unread_count}

@@ -5,24 +5,32 @@ import type { Event, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 
-const EventCard: React.FC<{ event: Event }> = ({ event }) => (
-    <div className={`p-4 rounded-2xl ${event.color} dark:bg-dark-surface shadow-sm h-full flex flex-col`}>
-        <div className="flex justify-between items-start">
-            <div>
-                <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{event.time}</p>
-                <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1">{event.title}</h3>
+const EventCard: React.FC<{ event: Event }> = ({ event }) => {
+    const formattedTime = event.time ? new Date(event.time).toLocaleString('da-DK', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    }) : 'Tidspunkt ukendt';
+
+    return (
+        <div className={`p-4 rounded-2xl ${event.color} dark:bg-dark-surface shadow-sm h-full flex flex-col`}>
+            <div className="flex justify-between items-start">
+                <div>
+                    <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{formattedTime}</p>
+                    <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1">{event.title}</h3>
+                </div>
+                <div className="text-4xl">{event.icon}</div>
             </div>
-            <div className="text-4xl">{event.icon}</div>
-        </div>
-        <div className="mt-auto pt-4 flex items-center">
-            <img src={event.host_avatar_url} alt={event.host_name} className="w-8 h-8 rounded-full mr-2 object-contain" />
-            <div>
-                <p className="text-sm text-gray-700 dark:text-dark-text-secondary">{event.participantCount} deltagere</p>
-                <p className="text-xs text-gray-500 dark:text-dark-text-secondary/70">Host: {event.host_name}</p>
+            <div className="mt-auto pt-4 flex items-center">
+                <img src={event.host_avatar_url} alt={event.host_name} className="w-8 h-8 rounded-full mr-2 object-contain" />
+                <div>
+                    <p className="text-sm text-gray-700 dark:text-dark-text-secondary">{event.participantCount} deltagere</p>
+                    <p className="text-xs text-gray-500 dark:text-dark-text-secondary/70">Host: {event.host_name}</p>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
   <div className="bg-primary-light dark:bg-primary/20 p-4 rounded-2xl mb-6">
