@@ -1,5 +1,6 @@
 import React, { useState, useRef, ChangeEvent } from 'react';
 import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon } from 'lucide-react';
+import { uploadFile } from '../services/s3Service';
 
 // Mock data for user's interests
 const userInterests = ['Gaming', 'Film', 'Kaffe', 'Brætspil', 'Musik', 'Gåtur'];
@@ -15,6 +16,7 @@ const CreateEventPage: React.FC = () => {
     const [location, setLocation] = useState('');
     const [isDiagnosisFriendly, setIsDiagnosisFriendly] = useState(false);
     const [images, setImages] = useState<string[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
 
     const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,22 +40,30 @@ const CreateEventPage: React.FC = () => {
         setTags(tags.filter(tag => tag !== tagToRemove));
     };
 
-    const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            const files = Array.from(e.target.files);
-            const newImageUrls = files.map(file => URL.createObjectURL(file));
-            
-            const availableSlots = 3 - images.length;
-            if (newImageUrls.length > availableSlots) {
-                alert(`Du kan kun tilføje ${availableSlots} billede(r) mere.`);
+    const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const filesToUpload = Array.from(e.target.files).slice(0, 3 - images.length);
+            if (filesToUpload.length === 0) return;
+
+            setIsUploading(true);
+            try {
+                const uploadPromises = filesToUpload.map(file => uploadFile(file));
+                const uploadedUrls = await Promise.all(uploadPromises);
+                setImages(prev => [...prev, ...uploadedUrls]);
+            } catch (error) {
+                console.error("Error uploading files:", error);
+                alert("Der skete en fejl under upload.");
+            } finally {
+                setIsUploading(false);
             }
-            setImages(prev => [...prev, ...newImageUrls.slice(0, availableSlots)]);
         }
     };
     
     const removeImage = (imageToRemove: string) => {
         setImages(images.filter(img => img !== imageToRemove));
-        URL.revokeObjectURL(imageToRemove); // Clean up memory
+        if (imageToRemove.startsWith('blob:')) {
+            URL.revokeObjectURL(imageToRemove); // Clean up memory for blob URLs
+        }
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -197,15 +207,21 @@ const CreateEventPage: React.FC = () => {
                             </div>
                         ))}
                         {images.length < 3 && (
-                            <div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                                <UploadCloud size={32} className="text-gray-400 mb-2"/>
-                                <p className="text-sm text-gray-500 text-center">Upload billede</p>
+                            <div onClick={() => !isUploading && imageInputRef.current?.click()} className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg transition-colors ${isUploading ? 'cursor-wait bg-gray-100' : 'cursor-pointer hover:bg-gray-100'}`}>
+                                {isUploading ? (
+                                    <p className="text-sm text-gray-500">Uploader...</p>
+                                ) : (
+                                    <>
+                                        <UploadCloud size={32} className="text-gray-400 mb-2"/>
+                                        <p className="text-sm text-gray-500 text-center">Upload billede</p>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
                     <input
                         type="file" ref={imageInputRef} onChange={handleImageUpload}
-                        multiple accept="image/*" className="hidden"
+                        multiple accept="image/*" className="hidden" disabled={isUploading}
                     />
                 </div>
                 

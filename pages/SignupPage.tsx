@@ -1,18 +1,47 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { supabase } from '../services/supabase';
 
-interface SignupPageProps {
-  onSignup: () => void;
-}
-
-const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
+const SignupPage: React.FC = () => {
   const navigate = useNavigate();
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you'd perform validation and API calls here
-    onSignup();
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
+
+    if (signUpError) {
+      setError(signUpError.message);
+      setLoading(false);
+      return;
+    }
+    
+    if (data.user && data.user.identities?.length === 0) {
+        setMessage('User already exists. Please log in.');
+        setLoading(false);
+        return;
+    }
+    
+    setMessage('Tjek din email for at bekræfte din konto.');
+    setLoading(false);
   };
 
   return (
@@ -30,6 +59,8 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
           Bliv en del af fællesskabet og bekæmp ensomhed.
         </p>
         <form className="space-y-6" onSubmit={handleSignup}>
+          {error && <p className="text-red-500 text-center">{error}</p>}
+          {message && <p className="text-green-500 text-center">{message}</p>}
           <div>
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
               Fulde navn
@@ -37,9 +68,12 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
             <input
               type="text"
               id="fullName"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
               className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Dit fulde navn"
               required
+              autoComplete="name"
             />
           </div>
           <div>
@@ -49,9 +83,12 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
             <input
               type="email"
               id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="din@email.com"
               required
+              autoComplete="email"
             />
           </div>
           <div>
@@ -61,17 +98,21 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
             <input
               type="password"
               id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Vælg en sikker adgangskode"
               required
+              autoComplete="new-password"
             />
           </div>
           <div>
             <button
               type="submit"
-              className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+              disabled={loading}
+              className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
             >
-              Opret bruger
+              {loading ? 'Opretter...' : 'Opret bruger'}
             </button>
           </div>
         </form>

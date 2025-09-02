@@ -98,32 +98,42 @@ const PlacesPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchPlaces = async () => {
+        const fetchInitialData = async () => {
             setLoading(true);
-            const { data, error } = await supabase.from('places').select('*');
-            if (error) console.error('Error fetching places:', error);
-            else setPlaces(data || []);
+            const { data: placesData, error: placesError } = await supabase.from('places').select('*');
+            if (placesError) console.error('Error fetching places:', placesError);
+            else setPlaces(placesData || []);
+
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser) {
+                const { data: userProfile } = await supabase.from('users').select('id').eq('auth_id', authUser.id).single();
+                if (userProfile) {
+                    const { data: threadParticipants } = await supabase.from('message_thread_participants').select('thread_id').eq('user_id', userProfile.id);
+                    if (threadParticipants && threadParticipants.length > 0) {
+                        const threadIds = threadParticipants.map(tp => tp.thread_id);
+                        const { data: soulmateParticipants } = await supabase.from('message_thread_participants').select('user:users(*)').in('thread_id', threadIds).neq('user_id', userProfile.id);
+                        
+                        if (soulmateParticipants) {
+                            const uniqueSoulmates = new Map<number, User>();
+                            // FIX: Supabase may return an array for a relationship. We take the first user if it's an array.
+                            soulmateParticipants.forEach(p => {
+                                const userObject = Array.isArray(p.user) ? p.user[0] : p.user;
+                                if (userObject) {
+                                    uniqueSoulmates.set(userObject.id, userObject);
+                                }
+                            });
+                            
+                            const threads: MessageThread[] = Array.from(uniqueSoulmates.values()).map((u: User) => ({
+                                id: u.id, participants: [{ user: u }], last_message: '', timestamp: '', unread_count: 0
+                            }));
+                            setSoulmates(threads);
+                        }
+                    }
+                }
+            }
             setLoading(false);
         };
-
-        const fetchSoulmates = async () => {
-            // This is a placeholder for fetching actual soulmates/chats
-            const { data, error } = await supabase.from('users').select('*').limit(3);
-            if (error) console.error('Error fetching soulmates:', error);
-            else {
-                const threads: any[] = (data || []).map(u => ({
-                    id: u.id,
-                    user: u,
-                    lastMessage: '',
-                    timestamp: '',
-                    unreadCount: 0
-                }));
-                setSoulmates(threads);
-            }
-        };
-
-        fetchPlaces();
-        fetchSoulmates();
+        fetchInitialData();
     }, []);
 
     const filteredPlaces = useMemo(() => {
@@ -148,9 +158,9 @@ const PlacesPage: React.FC = () => {
                 <NotificationIcon />
             </div>
             <div className="relative mb-4">
-                <input
-                    type="text"
-                    placeholder="Søg på dine ønsker. Fx Kaffe eller Øl"
+                <input 
+                    type="text" 
+                    placeholder="Søg på dine ønsker. Fx Kaffe eller Øl" 
                     className="w-full bg-gray-100 border border-gray-200 rounded-full py-3 pl-10 pr-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary"
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -191,14 +201,14 @@ const PlacesPage: React.FC = () => {
             </div>
 
             {selectedPlace && (
-                <PlaceDetailModal
-                    place={selectedPlace}
+                <PlaceDetailModal 
+                    place={selectedPlace} 
                     onClose={() => setSelectedPlace(null)}
                     onShare={() => setShowShareModal(true)}
                 />
             )}
             {showShareModal && (
-                <ShareModal
+                <ShareModal 
                     title="Del sted med en Soulmate"
                     soulmates={soulmates}
                     onShare={handleShare}

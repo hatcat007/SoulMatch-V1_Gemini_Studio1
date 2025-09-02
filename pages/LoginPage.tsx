@@ -1,18 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { supabase } from '../services/supabase';
 
-interface LoginPageProps {
-  onLogin: () => void;
-}
-
-const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you'd perform validation and API calls here
-    onLogin();
+    setLoading(true);
+    setError(null);
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    }
+    // On success, the onAuthStateChange listener in App.tsx will handle navigation.
   };
 
   return (
@@ -28,6 +40,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <h1 className="text-4xl font-bold text-text-primary mb-8">Velkommen tilbage</h1>
 
         <form className="space-y-6" onSubmit={handleLogin}>
+          {error && <p className="text-red-500 text-center">{error}</p>}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               Email
@@ -35,9 +48,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <input
               type="email"
               id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="din@email.com"
               required
+              autoComplete="email"
             />
           </div>
           <div>
@@ -47,17 +63,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <input
               type="password"
               id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="********"
               required
+              autoComplete="current-password"
             />
           </div>
           <div>
             <button
               type="submit"
-              className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+              disabled={loading}
+              className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
             >
-              Log ind
+              {loading ? 'Logger ind...' : 'Log ind'}
             </button>
           </div>
         </form>

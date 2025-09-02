@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints } from 'lucide-react';
+import { supabase } from '../services/supabase';
+import { uploadFile } from '../services/s3Service';
 
 interface ConfirmOrganizationPageProps {
-  onConfirm: () => void;
+  // No longer needs onConfirm
 }
 
 const initialData = {
@@ -25,31 +27,89 @@ const emojiChoices = [
 ];
 
 
-const ConfirmOrganizationPage: React.FC<ConfirmOrganizationPageProps> = ({ onConfirm }) => {
+const ConfirmOrganizationPage: React.FC<ConfirmOrganizationPageProps> = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState(initialData);
   const [selectedEmojis] = useState<string[]>(['Fællesspisning', 'Brætspil', 'Fælles snak']);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            setFormData(prev => ({...prev, logo: event.target?.result as string }));
-        };
-        reader.readAsDataURL(e.target.files[0]);
+        const file = e.target.files[0];
+        setLoading(true);
+        try {
+            const imageUrl = await uploadFile(file);
+            setFormData(prev => ({ ...prev, logo: imageUrl }));
+        } catch (err) {
+            setError('Logo upload failed. Please try again.');
+        } finally {
+            setLoading(false);
+        }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Final data:', { ...formData, emojis: selectedEmojis });
-    onConfirm();
+     if (!email || !password) {
+        setError("Email and password are required to create an account.");
+        return;
+    }
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: {
+                full_name: formData.name,
+                is_organization: true,
+            }
+        }
+    });
+
+    if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+    }
+
+    if (data.user && data.user.identities?.length === 0) {
+        setMessage('User with this email already exists. Please log in.');
+        setLoading(false);
+        return;
+    }
+
+    if (data.user) {
+        const { error: orgInsertError } = await supabase
+          .from('organizations')
+          .insert({
+            name: formData.name,
+            phone: formData.phone,
+            description: formData.description,
+            logo_url: formData.logo,
+          });
+
+        if (orgInsertError) {
+            setError(`Account created, but failed to save organization profile: ${orgInsertError.message}`);
+            setLoading(false);
+            return;
+        }
+    }
+    
+    setMessage('Tjek din email for at bekræfte din organisations konto.');
+    setLoading(false);
   };
   
   const displayedEmojis = emojiChoices.filter(emoji => selectedEmojis.includes(emoji.name));
@@ -70,6 +130,9 @@ const ConfirmOrganizationPage: React.FC<ConfirmOrganizationPageProps> = ({ onCon
             </p>
             
             <form onSubmit={handleSubmit} className="space-y-4">
+                {error && <p className="text-red-500 text-center text-sm mb-4">{error}</p>}
+                {message && <p className="text-green-500 text-center text-sm mb-4">{message}</p>}
+                
                 <div className="flex items-center space-x-4">
                     <div className="relative flex-shrink-0">
                         <img src={formData.logo} alt="Organization logo" className="w-20 h-20 object-contain p-1 border rounded-md bg-white" />
@@ -83,7 +146,7 @@ const ConfirmOrganizationPage: React.FC<ConfirmOrganizationPageProps> = ({ onCon
                         <input type="file" ref={fileInputRef} onChange={handleLogoChange} accept="image/*" className="hidden" />
                     </div>
                     <div className="flex-1">
-                        <label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Navn</label>
+                        <label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Navn på organisation</label>
                         <input
                             type="text" id="name" name="name"
                             value={formData.name} onChange={handleInputChange}
@@ -129,6 +192,27 @@ const ConfirmOrganizationPage: React.FC<ConfirmOrganizationPageProps> = ({ onCon
                     />
                 </div>
                 
+                <hr className="my-6 border-gray-200 dark:border-dark-border"/>
+
+                <div>
+                    <label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Konto Email</label>
+                    <input
+                        type="email" id="email" name="email"
+                        value={email} onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-2 mt-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="organisation@email.com" required
+                    />
+                </div>
+                <div>
+                    <label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Konto Adgangskode</label>
+                    <input
+                        type="password" id="password" name="password"
+                        value={password} onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-4 py-2 mt-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Vælg en sikker adgangskode" required
+                    />
+                </div>
+                
                 <div>
                     <h3 className="text-center font-semibold text-text-primary dark:text-dark-text-primary mt-6 mb-4">Vælg 3 emojis som beskriver jer</h3>
                      <div className="grid grid-cols-3 gap-4">
@@ -153,12 +237,12 @@ const ConfirmOrganizationPage: React.FC<ConfirmOrganizationPageProps> = ({ onCon
                 </div>
 
                 <div className="sticky bottom-0 bg-gray-50 dark:bg-dark-background pt-4">
-                    <p className="text-center text-sm text-text-secondary dark:text-dark-text-secondary mb-2">Er dette korrekt?</p>
                     <button
                       type="submit"
-                      className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+                      disabled={loading}
+                      className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
                     >
-                      Godkend
+                      {loading ? 'Godkender...' : 'Godkend og opret konto'}
                     </button>
                 </div>
             </form>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
@@ -39,8 +40,8 @@ const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
       {users.map(user => (
         <div key={user.id} className="flex flex-col items-center text-center w-16">
           <div className="relative">
-            {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
+            {user.avatar_url ? (
+              <img src={user.avatar_url} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
             ) : (
               <div 
                 className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold"
@@ -79,7 +80,7 @@ const HomePage: React.FC = () => {
             } else {
                 const eventsWithParticipantCount = eventsData.map(e => ({
                     ...e,
-                    participantCount: e.event_participants[0]?.count || 0
+                    participantCount: e.event_participants?.[0]?.count || 0
                 }));
                 setEvents(eventsWithParticipantCount);
             }

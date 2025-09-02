@@ -51,9 +51,10 @@ export interface MessageThread {
 export interface Message {
   id: number;
   text: string;
-  timestamp: string;
-  senderId: number;
-  imageUrl?: string;
+  created_at: string;
+  sender_id: number;
+  image_url?: string;
+  thread_id: number;
 }
 
 export interface OrganizationOpportunity {

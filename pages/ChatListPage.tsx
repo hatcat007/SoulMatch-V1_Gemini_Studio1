@@ -5,43 +5,70 @@ import type { MessageThread, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 
-// Assuming the current user's ID is 999 for fetching threads
-const CURRENT_USER_ID = 999;
-
 const ChatListPage: React.FC = () => {
     const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
     const [threads, setThreads] = useState<MessageThread[]>([]);
     const [loading, setLoading] = useState(true);
+    const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
 
-            // Fetch online users
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (!authUser) { setLoading(false); return; }
+
+            const { data: userProfile, error: profileError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('auth_id', authUser.id)
+                .single();
+
+            if (profileError || !userProfile) {
+                console.error('Error fetching user profile:', profileError);
+                setLoading(false);
+                return;
+            }
+            const userId = userProfile.id;
+            setCurrentUserId(userId);
+
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
                 .select('*')
-                .eq('online', true);
+                .eq('online', true)
+                .neq('id', userId); // Exclude current user
             if (usersError) console.error('Error fetching online users:', usersError);
             else setOnlineUsers(usersData || []);
 
-            // Fetch message threads for the current user
-            const { data: threadsData, error: threadsError } = await supabase
-                .from('message_threads')
-                .select(`
-                    *,
-                    participants:message_thread_participants (
-                        user:users (*)
-                    )
-                `)
-                .in('id', (await supabase.from('message_thread_participants').select('thread_id').eq('user_id', CURRENT_USER_ID)).data?.map(p => p.thread_id) || []);
+            const { data: threadParticipants, error: tpError } = await supabase
+                .from('message_thread_participants')
+                .select('thread_id')
+                .eq('user_id', userId);
 
-            if (threadsError) {
-                console.error('Error fetching message threads:', threadsError);
-            } else {
-                setThreads(threadsData || []);
+            if (tpError) {
+                console.error('Error fetching thread participants:', tpError);
+                setLoading(false);
+                return;
             }
 
+            const threadIds = threadParticipants.map(p => p.thread_id);
+            if (threadIds.length > 0) {
+                const { data: threadsData, error: threadsError } = await supabase
+                    .from('message_threads')
+                    .select(`
+                        *,
+                        participants:message_thread_participants (
+                            user:users (*)
+                        )
+                    `)
+                    .in('id', threadIds);
+                
+                if (threadsError) {
+                    console.error('Error fetching message threads:', threadsError);
+                } else {
+                    setThreads(threadsData as any || []);
+                }
+            }
             setLoading(false);
         };
 
@@ -51,10 +78,9 @@ const ChatListPage: React.FC = () => {
     if (loading) {
         return <div className="p-4 text-center">Loading chats...</div>;
     }
-
-    // Function to get the other participant in a thread
+    
     const getOtherParticipant = (thread: MessageThread): User | null => {
-        const participant = thread.participants.find(p => p.user.id !== CURRENT_USER_ID);
+        const participant = thread.participants.find(p => p.user.id !== currentUserId);
         return participant ? participant.user : null;
     }
 
@@ -76,13 +102,14 @@ const ChatListPage: React.FC = () => {
 
             <div>
                 <h2 className="text-lg font-semibold text-text-primary mb-3">Online nu</h2>
-                <div className="flex space-x-4">
+                <div className="flex space-x-4 overflow-x-auto pb-2">
                     {onlineUsers.map(user => (
-                        <div key={user.id} className="flex flex-col items-center">
+                        <div key={user.id} className="flex flex-col items-center flex-shrink-0 w-20">
                             <div className="relative">
-                                <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full" />
+                                <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover" />
                                 <span className="absolute bottom-0 right-0 block h-4 w-4 rounded-full bg-green-500 border-2 border-white"></span>
                             </div>
+                            <p className="text-sm mt-1 truncate w-full text-center">{user.name}</p>
                         </div>
                     ))}
                 </div>
@@ -99,7 +126,7 @@ const ChatListPage: React.FC = () => {
 
                         return (
                             <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
-                                <img src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4" />
+                                <img src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4 object-cover" />
                                 <div className="flex-1 overflow-hidden">
                                     <p className="font-bold text-text-primary">{otherUser.name}</p>
                                     <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>

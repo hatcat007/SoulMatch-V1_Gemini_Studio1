@@ -40,7 +40,7 @@ const OrganizationProfilePage: React.FC = () => {
                 .from('organization_opportunities')
                 .select('name, icon')
                 .eq('organization_id', organizationId);
-
+            
             if (oppError) console.error('Error fetching opportunities:', oppError);
             else setOpportunities(oppData || []);
 
@@ -78,7 +78,7 @@ const OrganizationProfilePage: React.FC = () => {
         setShareConfirmation(`Profil delt med ${user.name}!`);
         setTimeout(() => setShareConfirmation(''), 3000);
     };
-
+    
     if (loading) {
         return <div className="p-4 text-center">Loading organization...</div>;
     }
@@ -124,7 +124,7 @@ const OrganizationProfilePage: React.FC = () => {
             {/* Main Content */}
             <main className="flex-1 overflow-y-auto pb-24">
                 <div className="max-w-5xl mx-auto p-4 md:p-6">
-
+                    
                     {/* Organization Info */}
                     <section className="mb-8 md:flex md:items-start md:space-x-6">
                         <div className="flex-shrink-0 flex justify-center mb-4 md:mb-0">

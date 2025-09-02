@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2 } from 'lucide-react';
@@ -49,7 +50,7 @@ const NotificationItem: React.FC<{ notification: Notification }> = ({ notificati
     <div className="flex items-start space-x-4 py-3">
       <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center">
         {notification.actor ? (
-          <img src={notification.actor.avatarUrl} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200" />
+          <img src={notification.actor.avatar_url} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200" />
         ) : (
           <div className="w-12 h-12 bg-primary-light rounded-full flex items-center justify-center text-2xl">
             {notification.icon}

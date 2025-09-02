@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Info } from 'lucide-react';
@@ -6,12 +5,46 @@ import type { Event, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import { supabase } from '../services/supabase';
 
-const currentUser: User = { id: 999, name: 'Mig', age: 25, avatar_url: 'https://i.pravatar.cc/80?u=999', online: true };
+const fetchSoulmates = async (currentUserId: number): Promise<MessageThread[]> => {
+    const { data: threadParticipants, error: tpError } = await supabase
+        .from('message_thread_participants')
+        .select('thread_id')
+        .eq('user_id', currentUserId);
+
+    if (tpError || !threadParticipants) return [];
+    const threadIds = threadParticipants.map(tp => tp.thread_id);
+    if (threadIds.length === 0) return [];
+
+    const { data: soulmateParticipants, error: spError } = await supabase
+        .from('message_thread_participants')
+        .select('user:users(*)')
+        .in('thread_id', threadIds)
+        .neq('user_id', currentUserId);
+
+    if (spError || !soulmateParticipants) return [];
+
+    const uniqueSoulmates = new Map<number, User>();
+    // FIX: The Supabase query for a relationship (user:users(*)) can return an array even for a to-one relation.
+    // We handle this by checking if p.user is an array and taking the first element.
+    soulmateParticipants.forEach(p => {
+        const user = Array.isArray(p.user) ? p.user[0] : p.user;
+        if (user) {
+            uniqueSoulmates.set(user.id, user);
+        }
+    });
+
+    return Array.from(uniqueSoulmates.values()).map((user: User) => ({
+        id: user.id,
+        participants: [{ user }],
+        last_message: '', timestamp: '', unread_count: 0
+    }));
+};
 
 const EventDetailPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const [event, setEvent] = useState<Event | null>(null);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [soulmates, setSoulmates] = useState<MessageThread[]>([]);
     const [isJoined, setIsJoined] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
@@ -29,78 +62,61 @@ const EventDetailPage: React.FC = () => {
     }, [event]);
 
     useEffect(() => {
-        const fetchEventDetails = async () => {
+        const fetchInitialData = async () => {
             if (!eventId) return;
             setLoading(true);
 
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (!authUser) { setLoading(false); navigate('/login'); return; }
+
+            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
+            if (!userProfile) { setLoading(false); return; }
+            setCurrentUser(userProfile);
+
             const { data, error } = await supabase
                 .from('events')
-                .select(`
-                    *,
-                    participants:event_participants ( user:users (*) )
-                `)
+                .select('*, participants:event_participants(user:users(*))')
                 .eq('id', eventId)
                 .single();
-
+            
             if (error) {
                 console.error('Error fetching event details:', error);
                 setEvent(null);
             } else {
-                const transformedEvent = {
-                    ...data,
-                    participants: data.participants.map((p: any) => p.user),
-                };
-                setEvent(transformedEvent);
-                const userIsParticipant = transformedEvent.participants.some((p: User) => p.id === currentUser.id);
-                setIsJoined(userIsParticipant);
+                const transformedEvent = { ...data, participants: data.participants.map((p: any) => p.user) };
+                setEvent(transformedEvent as Event);
+                setIsJoined(transformedEvent.participants.some((p: User) => p.id === userProfile.id));
             }
+            
+            const soulmatesData = await fetchSoulmates(userProfile.id);
+            setSoulmates(soulmatesData);
+
             setLoading(false);
         };
-
-        const fetchSoulmates = async () => {
-            const { data, error } = await supabase.from('users').select('*').limit(3);
-            if (error) console.error('Error fetching soulmates:', error);
-            else {
-                 const threads: any[] = (data || []).map(u => ({
-                    id: u.id,
-                    user: u,
-                    lastMessage: '',
-                    timestamp: '',
-                    unreadCount: 0
-                }));
-                setSoulmates(threads);
-            }
-        };
-
-        fetchEventDetails();
-        fetchSoulmates();
-    }, [eventId]);
-
+        fetchInitialData();
+    }, [eventId, navigate]);
+    
     const handleToggleJoin = async () => {
         if (!event || !currentUser) return;
+        const optimisticParticipants = event.participants || [];
 
         if (isJoined) {
-            const { error } = await supabase
-                .from('event_participants')
-                .delete()
-                .match({ event_id: event.id, user_id: currentUser.id });
-
-            if (error) {
+            setEvent({ ...event, participants: optimisticParticipants.filter(p => p.id !== currentUser.id) });
+            setIsJoined(false);
+            const { error } = await supabase.from('event_participants').delete().match({ event_id: event.id, user_id: currentUser.id });
+            if (error) { // Revert on error
                 console.error("Error leaving event:", error);
-            } else {
-                setEvent(prev => prev ? ({ ...prev, participants: prev.participants?.filter(p => p.id !== currentUser.id) }) : null);
-                setIsJoined(false);
+                setEvent({ ...event, participants: optimisticParticipants });
+                setIsJoined(true);
             }
         } else {
-            const { error } = await supabase
-                .from('event_participants')
-                .insert({ event_id: event.id, user_id: currentUser.id });
-
-            if (error) {
+            setEvent({ ...event, participants: [...optimisticParticipants, currentUser] });
+            setIsJoined(true);
+            const { error } = await supabase.from('event_participants').insert({ event_id: event.id, user_id: currentUser.id });
+            if (error) { // Revert on error
                 console.error("Error joining event:", error);
-            } else {
-                setEvent(prev => prev ? ({ ...prev, participants: [...(prev.participants || []), currentUser] }) : null);
-                setIsJoined(true);
+                setEvent({ ...event, participants: optimisticParticipants });
+                setIsJoined(false);
             }
         }
     };
@@ -180,7 +196,7 @@ const EventDetailPage: React.FC = () => {
                     </section>
                 </div>
             </main>
-
+            
             <footer className="sticky bottom-0 bg-white border-t border-gray-200 p-4 z-10">
                 <div className="max-w-4xl mx-auto md:flex md:space-x-4 space-y-3 md:space-y-0">
                     <button
@@ -197,9 +213,9 @@ const EventDetailPage: React.FC = () => {
                     </button>
                 </div>
             </footer>
-
+             
             {showShareModal && (
-                <ShareModal
+                <ShareModal 
                     title="Del event med en Soulmate"
                     soulmates={soulmates}
                     onShare={handleShare}

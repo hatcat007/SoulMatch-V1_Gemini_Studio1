@@ -22,20 +22,23 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import CreateOrganizationPage from './pages/CreateOrganizationPage';
 import ConfirmOrganizationPage from './pages/ConfirmOrganizationPage';
+import CreateProfilePage from './pages/CreateProfilePage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { useNotifications } from './hooks/useNotifications';
 import type { NotificationType, User } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { supabase } from './services/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 const MockNotificationGenerator: React.FC = () => {
   const { addNotification } = useNotifications();
 
   React.useEffect(() => {
     const mockUsers: User[] = [
-        { id: 101, name: 'Patrick', age: 28, avatarUrl: 'https://i.pravatar.cc/80?u=101', online: true },
-        { id: 102, name: 'Johanne', age: 25, avatarUrl: 'https://i.pravatar.cc/80?u=102', online: false },
-        { id: 103, name: 'Anne', age: 24, avatarUrl: 'https://i.pravatar.cc/80?u=103', online: true },
-        { id: 104, name: 'Chris', age: 30, avatarUrl: 'https://i.pravatar.cc/80?u=104', online: false },
+        { id: 101, name: 'Patrick', age: 28, avatar_url: 'https://i.pravatar.cc/80?u=101', online: true },
+        { id: 102, name: 'Johanne', age: 25, avatar_url: 'https://i.pravatar.cc/80?u=102', online: false },
+        { id: 103, name: 'Anne', age: 24, avatar_url: 'https://i.pravatar.cc/80?u=103', online: true },
+        { id: 104, name: 'Chris', age: 30, avatar_url: 'https://i.pravatar.cc/80?u=104', online: false },
     ];
 
     const mockNotifs: { message: string; type: NotificationType; actor?: User; icon?: string; timestamp?: number }[] = [
@@ -44,7 +47,7 @@ const MockNotificationGenerator: React.FC = () => {
       { message: '👀 på din profil', type: 'profile_view', actor: mockUsers[1], timestamp: Date.now() - (2 * 60 * 1000) },
       { message: 'sendte dig en besked', type: 'message', actor: mockUsers[2], timestamp: Date.now() - (15 * 60 * 1000) },
       { message: 'sendte en venneanmodning', type: 'friend_request', actor: mockUsers[3], timestamp: Date.now() - (1 * 60 * 60 * 1000) },
-      { message: 'sendte en venneanmodning', type: 'friend_request', actor: { id: 105, name: 'Maria', age: 27, avatarUrl: 'https://i.pravatar.cc/80?u=105', online: true }, timestamp: new Date('2023-01-12T10:30:00').getTime() },
+      { message: 'sendte en venneanmodning', type: 'friend_request', actor: { id: 105, name: 'Maria', age: 27, avatar_url: 'https://i.pravatar.cc/80?u=105', online: true }, timestamp: new Date('2023-01-12T10:30:00').getTime() },
     ];
     
     // Add initial notifications in reverse chronological order
@@ -52,7 +55,7 @@ const MockNotificationGenerator: React.FC = () => {
 
     const newNotifTemplates = [
         { message: 'Nyt event: "Brætspil aften"!', type: 'event' as const, icon: '🎲' },
-        { message: 'vil gerne være din ven.', type: 'friend_request' as const, actor: { id: 110, name: 'Alex', age: 29, avatarUrl: 'https://i.pravatar.cc/80?u=110', online: true }},
+        { message: 'vil gerne være din ven.', type: 'friend_request' as const, actor: { id: 110, name: 'Alex', age: 29, avatar_url: 'https://i.pravatar.cc/80?u=110', online: true }},
     ];
 
     let i = 0;
@@ -70,60 +73,113 @@ const MockNotificationGenerator: React.FC = () => {
 
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [session, setSession] = React.useState<Session | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [profile, setProfile] = React.useState<any | null>(null);
+  const [checkingProfile, setCheckingProfile] = React.useState(true);
 
-  const handleLogin = () => {
-    setIsAuthenticated(true);
-  };
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
 
-  const handleSignup = () => {
-    setIsAuthenticated(true);
-  };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  React.useEffect(() => {
+    if (loading) return; // Wait for session load
+
+    if (session) {
+      setCheckingProfile(true);
+      supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', session.user.id)
+        .single()
+        .then(({ data, error }) => {
+          if (data && !error) {
+            setProfile(data);
+          } else {
+            setProfile(null);
+          }
+          setCheckingProfile(false);
+        });
+    } else {
+      setProfile(null);
+      setCheckingProfile(false);
+    }
+  }, [session, loading]);
+
+  if (loading || (session && checkingProfile)) {
+    return (
+      <div className="w-full h-screen flex items-center justify-center bg-background dark:bg-dark-background">
+        <div className="text-primary font-bold text-xl">SoulMatch</div>
+      </div>
+    );
+  }
 
   return (
     <ThemeProvider>
       <div className="w-full font-sans bg-background dark:bg-dark-background">
         <HashRouter>
-          {isAuthenticated ? (
-            <NotificationProvider>
-              <div className="relative md:flex max-w-7xl mx-auto">
-                <BottomNav />
-                <main className="flex-1 min-w-0">
-                  <div className="h-screen overflow-y-auto bg-white dark:bg-dark-surface md:shadow-lg pb-16 md:pb-0">
-                      <Routes>
-                        <Route path="/" element={<Navigate to="/home" />} />
-                        <Route path="/home" element={<HomePage />} />
-                        <Route path="/home/filter" element={<EventFilterPage />} />
-                        <Route path="/places" element={<PlacesPage />} />
-                        <Route path="/places/filter" element={<PlacesFilterPage />} />
-                        <Route path="/create" element={<CreateEventPage />} />
-                        <Route path="/chat" element={<ChatListPage />} />
-                        <Route path="/chat/:chatId" element={<ChatPage />} />
-                        <Route path="/notifications" element={<NotificationsPage />} />
-                        <Route path="/event/:eventId" element={<EventDetailPage />} />
-                        <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
-                        <Route path="/checkin" element={<CheckinPage />} />
-                        <Route path="/profile" element={<ProfilePage />} />
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route path="/faq" element={<FAQPage />} />
-                        <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                        <Route path="/terms" element={<TermsOfServicePage />} />
-                        <Route path="*" element={<Navigate to="/home" />} />
-                      </Routes>
+          {session ? (
+            profile ? (
+                <NotificationProvider>
+                  <div className="relative md:flex max-w-7xl mx-auto">
+                    <BottomNav />
+                    <main className="flex-1 min-w-0">
+                      <div className="h-screen overflow-y-auto bg-white dark:bg-dark-surface md:shadow-lg pb-16 md:pb-0">
+                          <Routes>
+                            <Route path="/" element={<Navigate to="/home" />} />
+                            <Route path="/home" element={<HomePage />} />
+                            <Route path="/home/filter" element={<EventFilterPage />} />
+                            <Route path="/places" element={<PlacesPage />} />
+                            <Route path="/places/filter" element={<PlacesFilterPage />} />
+                            <Route path="/create" element={<CreateEventPage />} />
+                            <Route path="/chat" element={<ChatListPage />} />
+                            <Route path="/chat/:chatId" element={<ChatPage />} />
+                            <Route path="/notifications" element={<NotificationsPage />} />
+                            <Route path="/event/:eventId" element={<EventDetailPage />} />
+                            <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
+                            <Route path="/checkin" element={<CheckinPage />} />
+                            <Route path="/profile" element={<ProfilePage />} />
+                            <Route path="/settings" element={<SettingsPage />} />
+                            <Route path="/faq" element={<FAQPage />} />
+                            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                            <Route path="/terms" element={<TermsOfServicePage />} />
+                            <Route path="*" element={<Navigate to="/home" />} />
+                          </Routes>
+                      </div>
+                    </main>
                   </div>
+                  <MockNotificationGenerator />
+                </NotificationProvider>
+            ) : (
+                 <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
+                    <div className="flex-1 overflow-y-auto">
+                        <Routes>
+                            <Route path="/create-profile" element={<CreateProfilePage />} />
+                            <Route path="*" element={<Navigate to="/create-profile" />} />
+                        </Routes>
+                    </div>
                 </main>
-              </div>
-              <MockNotificationGenerator />
-            </NotificationProvider>
+            )
           ) : (
             <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto">
                 <Routes>
                   <Route path="/" element={<OnboardingPage />} />
-                  <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
-                  <Route path="/signup" element={<SignupPage onSignup={handleSignup} />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/signup" element={<SignupPage />} />
                   <Route path="/create-organization" element={<CreateOrganizationPage />} />
-                  <Route path="/confirm-organization" element={<ConfirmOrganizationPage onConfirm={handleSignup} />} />
+                  <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
                   <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
               </div>
