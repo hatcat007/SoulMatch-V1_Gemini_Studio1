@@ -11,6 +11,20 @@ const ChatListPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
+    const aiMentorThread: MessageThread = {
+      id: 'ai-mentor',
+      last_message: 'Din personlige AI mentor til samtaler.',
+      timestamp: new Date().toISOString(),
+      unread_count: 0,
+      participants: [{ user: {
+        id: -1,
+        name: 'SoulMatch AI mentor',
+        age: 0,
+        avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png', // New bot icon
+        online: true,
+      }}]
+    };
+
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
@@ -80,9 +94,12 @@ const ChatListPage: React.FC = () => {
     }
     
     const getOtherParticipant = (thread: MessageThread): User | null => {
+        if (thread.id === 'ai-mentor') return thread.participants[0].user;
         const participant = thread.participants.find(p => p.user.id !== currentUserId);
         return participant ? participant.user : null;
     }
+
+    const allThreads = [aiMentorThread, ...threads];
 
     return (
         <div className="p-4 flex flex-col h-full">
@@ -118,7 +135,7 @@ const ChatListPage: React.FC = () => {
             <div className="mt-6 flex-1">
                 <h2 className="text-lg font-semibold text-text-primary mb-3">Alle beskeder</h2>
                 <div className="space-y-2">
-                    {threads.map(thread => {
+                    {allThreads.map(thread => {
                         const otherUser = getOtherParticipant(thread);
                         if (!otherUser) return null;
 

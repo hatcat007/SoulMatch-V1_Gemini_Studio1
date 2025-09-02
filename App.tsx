@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import PlacesPage from './pages/PlacesPage';
 import ChatListPage from './pages/ChatListPage';
@@ -23,6 +24,8 @@ import TermsOfServicePage from './pages/TermsOfServicePage';
 import CreateOrganizationPage from './pages/CreateOrganizationPage';
 import ConfirmOrganizationPage from './pages/ConfirmOrganizationPage';
 import CreateProfilePage from './pages/CreateProfilePage';
+import PersonalityTestPage from './pages/PersonalityTestPage';
+import FriendsPage from './pages/FriendsPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { useNotifications } from './hooks/useNotifications';
 import type { NotificationType, User } from './types';
@@ -50,7 +53,6 @@ const MockNotificationGenerator: React.FC = () => {
       { message: 'sendte en venneanmodning', type: 'friend_request', actor: { id: 105, name: 'Maria', age: 27, avatar_url: 'https://i.pravatar.cc/80?u=105', online: true }, timestamp: new Date('2023-01-12T10:30:00').getTime() },
     ];
     
-    // Add initial notifications in reverse chronological order
     mockNotifs.forEach(notif => addNotification(notif));
 
     const newNotifTemplates = [
@@ -63,20 +65,66 @@ const MockNotificationGenerator: React.FC = () => {
         const notif = newNotifTemplates[i % newNotifTemplates.length];
         addNotification(notif);
         i++;
-    }, 25000); // every 25 seconds
+    }, 25000);
 
     return () => clearInterval(interval);
   }, []); // Eslint-disable-line react-hooks/exhaustive-deps - only run once on mount
 
-  return null; // This component does not render anything
+  return null;
 };
 
+const MainAppRoutes: React.FC = () => (
+    <NotificationProvider>
+      <div className="relative md:flex max-w-7xl mx-auto">
+        <BottomNav />
+        <main className="flex-1 min-w-0">
+          <div className="h-screen overflow-y-auto bg-white dark:bg-dark-surface md:shadow-lg pb-16 md:pb-0">
+              <Routes>
+                <Route path="/" element={<Navigate to="/home" />} />
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/home/filter" element={<EventFilterPage />} />
+                <Route path="/places" element={<PlacesPage />} />
+                <Route path="/places/filter" element={<PlacesFilterPage />} />
+                <Route path="/create" element={<CreateEventPage />} />
+                <Route path="/chat" element={<ChatListPage />} />
+                <Route path="/chat/:chatId" element={<ChatPage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/event/:eventId" element={<EventDetailPage />} />
+                <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
+                <Route path="/checkin" element={<CheckinPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/friends" element={<FriendsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/faq" element={<FAQPage />} />
+                <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                <Route path="/terms" element={<TermsOfServicePage />} />
+                <Route path="*" element={<Navigate to="/home" />} />
+              </Routes>
+          </div>
+        </main>
+      </div>
+      <MockNotificationGenerator />
+    </NotificationProvider>
+);
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [session, setSession] = React.useState<Session | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [profile, setProfile] = React.useState<any | null>(null);
+  const [profile, setProfile] = React.useState<User | null>(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
+  const [refreshProfileToggle, setRefreshProfileToggle] = React.useState(false);
+  const [testJustCompleted, setTestJustCompleted] = React.useState(false);
+  const navigate = useNavigate();
+
+  const handleStateRefresh = () => {
+    setCheckingProfile(true);
+    setRefreshProfileToggle(prev => !prev);
+  };
+
+  const handleTestComplete = () => {
+    setTestJustCompleted(true);
+    handleStateRefresh();
+  };
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -84,9 +132,7 @@ const App: React.FC = () => {
       setLoading(false);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
@@ -94,28 +140,33 @@ const App: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (loading) return; // Wait for session load
+    if (loading) return;
 
     if (session) {
       setCheckingProfile(true);
       supabase
         .from('users')
-        .select('id')
+        .select('*')
         .eq('auth_id', session.user.id)
         .single()
         .then(({ data, error }) => {
-          if (data && !error) {
-            setProfile(data);
-          } else {
-            setProfile(null);
-          }
+          setProfile(data ? (data as User) : null);
           setCheckingProfile(false);
         });
     } else {
       setProfile(null);
       setCheckingProfile(false);
     }
-  }, [session, loading]);
+  }, [session, loading, refreshProfileToggle]);
+
+  React.useEffect(() => {
+    // This effect runs when the profile data changes.
+    // If the test was just completed and the profile now reflects that, navigate.
+    if (testJustCompleted && profile?.personality_test_completed) {
+      navigate('/profile');
+      setTestJustCompleted(false); // Reset flag after navigation to prevent loops
+    }
+  }, [testJustCompleted, profile, navigate]);
 
   if (loading || (session && checkingProfile)) {
     return (
@@ -125,66 +176,51 @@ const App: React.FC = () => {
     );
   }
 
+  if (!session) {
+    return (
+      <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+          <Routes>
+            <Route path="/" element={<OnboardingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/create-organization" element={<CreateOrganizationPage />} />
+            <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </div>
+      </main>
+    );
+  }
+
+  // User is logged in, determine which part of the app to show.
+  if (profile && profile.personality_test_completed) {
+    return <MainAppRoutes />;
+  }
+
+  // Onboarding Flow for logged-in users
+  return (
+    <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
+        <Routes>
+          {!profile && (
+            <Route path="*" element={<CreateProfilePage onProfileCreated={handleStateRefresh} />} />
+          )}
+          {profile && !profile.personality_test_completed && (
+            <Route path="*" element={<PersonalityTestPage onTestComplete={handleTestComplete} />} />
+          )}
+        </Routes>
+      </div>
+    </main>
+  );
+};
+
+const App: React.FC = () => {
   return (
     <ThemeProvider>
       <div className="w-full font-sans bg-background dark:bg-dark-background">
         <HashRouter>
-          {session ? (
-            profile ? (
-                <NotificationProvider>
-                  <div className="relative md:flex max-w-7xl mx-auto">
-                    <BottomNav />
-                    <main className="flex-1 min-w-0">
-                      <div className="h-screen overflow-y-auto bg-white dark:bg-dark-surface md:shadow-lg pb-16 md:pb-0">
-                          <Routes>
-                            <Route path="/" element={<Navigate to="/home" />} />
-                            <Route path="/home" element={<HomePage />} />
-                            <Route path="/home/filter" element={<EventFilterPage />} />
-                            <Route path="/places" element={<PlacesPage />} />
-                            <Route path="/places/filter" element={<PlacesFilterPage />} />
-                            <Route path="/create" element={<CreateEventPage />} />
-                            <Route path="/chat" element={<ChatListPage />} />
-                            <Route path="/chat/:chatId" element={<ChatPage />} />
-                            <Route path="/notifications" element={<NotificationsPage />} />
-                            <Route path="/event/:eventId" element={<EventDetailPage />} />
-                            <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
-                            <Route path="/checkin" element={<CheckinPage />} />
-                            <Route path="/profile" element={<ProfilePage />} />
-                            <Route path="/settings" element={<SettingsPage />} />
-                            <Route path="/faq" element={<FAQPage />} />
-                            <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                            <Route path="/terms" element={<TermsOfServicePage />} />
-                            <Route path="*" element={<Navigate to="/home" />} />
-                          </Routes>
-                      </div>
-                    </main>
-                  </div>
-                  <MockNotificationGenerator />
-                </NotificationProvider>
-            ) : (
-                 <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-y-auto">
-                        <Routes>
-                            <Route path="/create-profile" element={<CreateProfilePage />} />
-                            <Route path="*" element={<Navigate to="/create-profile" />} />
-                        </Routes>
-                    </div>
-                </main>
-            )
-          ) : (
-            <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto">
-                <Routes>
-                  <Route path="/" element={<OnboardingPage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/signup" element={<SignupPage />} />
-                  <Route path="/create-organization" element={<CreateOrganizationPage />} />
-                  <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
-                  <Route path="*" element={<Navigate to="/" />} />
-                </Routes>
-              </div>
-            </main>
-          )}
+          <AppContent />
         </HashRouter>
       </div>
     </ThemeProvider>

@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Shield, Plus, Ticket } from 'lucide-react';
-import type { Message, MessageThread, User } from '../types';
+import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit } from 'lucide-react';
+import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
+import { GoogleGenAI } from "@google/genai";
+import type { Chat } from "@google/genai";
+
 
 const formatMeetingTime = (matchTimestamp?: string): string | null => {
     if (!matchTimestamp) return null;
@@ -22,6 +25,8 @@ const formatMeetingTime = (matchTimestamp?: string): string | null => {
     return `Møde om et øjeblik`;
 };
 
+type FriendshipStatus = 'not_friends' | 'pending_them' | 'pending_me' | 'friends' | 'loading';
+
 const ChatPage: React.FC = () => {
     const { chatId } = useParams<{ chatId: string }>();
     const navigate = useNavigate();
@@ -33,10 +38,48 @@ const ChatPage: React.FC = () => {
     const [otherUser, setOtherUser] = useState<User | null>(null);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>('loading');
+    const [aiChat, setAiChat] = useState<Chat | null>(null);
+    const [isAiReplying, setIsAiReplying] = useState(false);
 
+    const isAiMentorChat = chatId === 'ai-mentor';
     const meetingTimeText = useMemo(() => formatMeetingTime(thread?.match_timestamp), [thread]);
     
     useEffect(() => {
+        const setupAiChat = async () => {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (!authUser) { navigate('/login'); return; }
+            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
+            setCurrentUser(userProfile);
+            
+            const aiUser: User = {
+                id: -1,
+                name: 'SoulMatch AI mentor',
+                age: 0,
+                avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png',
+                online: true,
+            };
+            setOtherUser(aiUser);
+            
+            setMessages([{
+                id: 'welcome-1',
+                text: 'Hej! Jeg er din personlige AI mentor. Hvordan kan jeg hjælpe dig i dag? Du kan spørge mig om alt fra samtaleemner til råd, hvis en samtale er gået i stå.',
+                created_at: new Date().toISOString(),
+                sender_id: -1,
+                thread_id: 'ai-mentor'
+            }]);
+            
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const chat = ai.chats.create({
+              model: 'gemini-2.5-flash',
+              config: {
+                systemInstruction: 'You are "SoulMatch AI mentor", a friendly and supportive assistant for the SoulMatch app. Your goal is to help users combat loneliness by improving their social interactions. You can offer conversation starters, give advice when a conversation stalls, suggest appropriate replies, and provide support as the 3-day meeting deadline approaches. Provide helpful, kind, and actionable advice. Keep responses concise and easy to read on a mobile device. Always respond in Danish.',
+              },
+            });
+            setAiChat(chat);
+            setLoading(false);
+        };
+        
         const fetchChatData = async () => {
             if (!chatId) return;
             setLoading(true);
@@ -59,6 +102,20 @@ const ChatPage: React.FC = () => {
                 const other = threadData.participants.find(p => p.user.id !== userProfile.id)?.user;
                 setOtherUser(other || null);
 
+                if (other) {
+                    const u1 = Math.min(userProfile.id, other.id);
+                    const u2 = Math.max(userProfile.id, other.id);
+                    const { data: friendshipData } = await supabase.from('friends').select('*').eq('user_id_1', u1).eq('user_id_2', u2).single();
+                    if (friendshipData) {
+                        if (friendshipData.status === 'accepted') setFriendshipStatus('friends');
+                        else if (friendshipData.status === 'pending') {
+                            setFriendshipStatus(friendshipData.action_user_id === userProfile.id ? 'pending_me' : 'pending_them');
+                        }
+                    } else {
+                        setFriendshipStatus('not_friends');
+                    }
+                }
+
                 const { data: messagesData } = await supabase
                     .from('messages')
                     .select('*')
@@ -69,11 +126,16 @@ const ChatPage: React.FC = () => {
             }
             setLoading(false);
         };
-        fetchChatData();
-    }, [chatId, navigate]);
+        
+        if (isAiMentorChat) {
+            setupAiChat();
+        } else {
+            fetchChatData();
+        }
+    }, [chatId, navigate, isAiMentorChat]);
 
     useEffect(() => {
-        if (!chatId) return;
+        if (isAiMentorChat || !chatId) return;
         const channel = supabase.channel(`chat:${chatId}`)
             .on('postgres_changes', { 
                 event: 'INSERT', 
@@ -86,7 +148,7 @@ const ChatPage: React.FC = () => {
             }
         ).subscribe();
         return () => { supabase.removeChannel(channel); };
-    }, [chatId]);
+    }, [chatId, isAiMentorChat]);
 
 
     const scrollToBottom = () => {
@@ -95,13 +157,108 @@ const ChatPage: React.FC = () => {
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages.length]);
+    }, [messages.length, isAiReplying]);
+    
+    const handleSendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newMessage.trim() === '' || !currentUser) return;
+        
+        if (isAiMentorChat) {
+             if (!aiChat) return;
+            const userMessage: Message = {
+                id: Date.now(),
+                text: newMessage,
+                created_at: new Date().toISOString(),
+                sender_id: currentUser.id,
+                thread_id: 'ai-mentor'
+            };
+            setMessages(prev => [...prev, userMessage]);
+            setNewMessage('');
+            setIsAiReplying(true);
+
+            try {
+                const response = await aiChat.sendMessage({ message: newMessage });
+                const aiResponse: Message = {
+                    id: Date.now() + 1,
+                    text: response.text,
+                    created_at: new Date().toISOString(),
+                    sender_id: -1, // AI Sender ID
+                    thread_id: 'ai-mentor'
+                };
+                setMessages(prev => [...prev, aiResponse]);
+            } catch (error) {
+                 console.error("Error getting AI response:", error);
+                 const errorResponse: Message = {
+                    id: Date.now() + 1,
+                    text: "Beklager, der opstod en fejl. Prøv venligst igen.",
+                    created_at: new Date().toISOString(),
+                    sender_id: -1,
+                    thread_id: 'ai-mentor'
+                };
+                setMessages(prev => [...prev, errorResponse]);
+            } finally {
+                setIsAiReplying(false);
+            }
+        } else {
+            const { error } = await supabase.from('messages').insert({
+                thread_id: Number(chatId),
+                sender_id: currentUser.id,
+                text: newMessage,
+            });
+
+            if (error) {
+                console.error('Error sending message:', error);
+            } else {
+                setNewMessage('');
+            }
+        }
+    };
+    
+    const handleSendFriendRequest = async () => {
+        if (!currentUser || !otherUser || friendshipStatus !== 'not_friends') return;
+        setFriendshipStatus('loading');
+        
+        const u1 = Math.min(currentUser.id, otherUser.id);
+        const u2 = Math.max(currentUser.id, otherUser.id);
+        
+        const { error } = await supabase.from('friends').insert({
+            user_id_1: u1,
+            user_id_2: u2,
+            action_user_id: currentUser.id,
+            status: 'pending'
+        });
+        
+        if (error) {
+            console.error("Error sending friend request:", error);
+            setFriendshipStatus('not_friends');
+        } else {
+            setFriendshipStatus('pending_me');
+        }
+    };
+
+    const renderFriendButton = () => {
+        const baseClasses = "font-bold py-2 px-4 rounded-full text-sm transition-colors";
+        switch(friendshipStatus) {
+            case 'not_friends':
+                return <button onClick={handleSendFriendRequest} className={`bg-primary text-white ${baseClasses} hover:bg-primary-dark`}>Tilføj ven</button>;
+            case 'pending_me':
+                return <button disabled className={`bg-gray-200 text-gray-500 ${baseClasses} cursor-not-allowed`}>Anmodning sendt</button>;
+            case 'pending_them':
+                return <button disabled className={`bg-gray-200 text-gray-500 ${baseClasses} cursor-not-allowed`}>Anmodning modtaget</button>;
+            case 'friends':
+                return <button disabled className={`bg-green-100 text-green-700 ${baseClasses} cursor-not-allowed`}>Venner</button>;
+            case 'loading':
+                 return <button disabled className={`bg-gray-200 text-gray-500 ${baseClasses} cursor-wait`}>...</button>;
+            default:
+                return <div className="w-24 h-8" />;
+        }
+    };
 
     if (loading) {
         return <div className="p-4 text-center">Loading chat...</div>;
     }
     
-    if (!thread || !currentUser || !otherUser) {
+    if (!currentUser || !otherUser) {
         return (
             <div className="p-4 text-center">
                 <p>Chat not found.</p>
@@ -109,23 +266,6 @@ const ChatPage: React.FC = () => {
             </div>
         );
     }
-    
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (newMessage.trim() === '') return;
-
-        const { error } = await supabase.from('messages').insert({
-            thread_id: Number(chatId),
-            sender_id: currentUser.id,
-            text: newMessage,
-        });
-
-        if (error) {
-            console.error('Error sending message:', error);
-        } else {
-            setNewMessage('');
-        }
-    };
     
     const getMessageTimestamp = (msg: Message) => new Date(msg.created_at).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
 
@@ -138,16 +278,14 @@ const ChatPage: React.FC = () => {
                 <div className="flex-1 text-center">
                     <h2 className="font-bold text-lg text-text-primary dark:text-dark-text-primary flex items-center justify-center">
                         {otherUser.name}
-                        <Shield className="w-5 h-5 ml-1 text-blue-500" strokeWidth={2.5} />
+                        {isAiMentorChat ? <BrainCircuit className="w-5 h-5 ml-1 text-accent" strokeWidth={2.5}/> : <Shield className="w-5 h-5 ml-1 text-blue-500" strokeWidth={2.5} />}
                     </h2>
                     <p className="text-xs text-text-secondary dark:text-dark-text-secondary">{otherUser.online ? 'Online' : 'Offline'}</p>
-                    {meetingTimeText && (
+                    {!isAiMentorChat && meetingTimeText && (
                         <p className="text-xs text-text-secondary dark:text-dark-text-secondary font-semibold mt-1">{meetingTimeText}</p>
                     )}
                 </div>
-                <button className="bg-primary text-white font-bold py-2 px-4 rounded-full text-sm hover:bg-primary-dark transition-colors">
-                    Tilføj ven
-                </button>
+                {isAiMentorChat ? <div className="w-24 h-8" /> : renderFriendButton()}
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
@@ -169,13 +307,22 @@ const ChatPage: React.FC = () => {
                                     <img src={msg.image_url} alt="Chat content" className="rounded-xl m-1" />
                                 )}
                                 <div className="flex items-end space-x-2 px-3 py-2">
-                                    {msg.text && <p className="break-words">{msg.text}</p>}
+                                    {msg.text && <p className="break-words whitespace-pre-wrap">{msg.text}</p>}
                                     <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{getMessageTimestamp(msg)}</p>
                                 </div>
                             </div>
                         </div>
                     );
                 })}
+                {isAiReplying && (
+                    <div className="flex justify-start">
+                        <div className="flex items-center space-x-2 bg-gray-100 dark:bg-dark-surface-light text-gray-800 dark:text-dark-text-primary rounded-t-2xl rounded-br-2xl px-3 py-2">
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0"></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150"></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300"></div>
+                        </div>
+                    </div>
+                )}
                  <div ref={messagesEndRef} />
             </main>
 
@@ -199,7 +346,7 @@ const ChatPage: React.FC = () => {
                          <button
                             type="submit"
                             className="text-primary rounded-full p-2 flex-shrink-0 hover:bg-primary-light dark:hover:bg-primary/20 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={!newMessage.trim()}
+                            disabled={!newMessage.trim() || isAiReplying}
                             aria-label="Send message"
                         >
                             <Send size={24} />

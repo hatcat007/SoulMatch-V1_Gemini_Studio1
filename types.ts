@@ -7,6 +7,8 @@ export interface User {
   bio?: string;
   location?: string;
   personality_type?: string;
+  emojis?: string[] | null;
+  personality_test_completed?: boolean;
 }
 
 export interface Event {
@@ -40,7 +42,7 @@ export interface Place {
 }
 
 export interface MessageThread {
-  id: number;
+  id: number | string;
   last_message: string;
   timestamp: string;
   unread_count: number;
@@ -49,12 +51,12 @@ export interface MessageThread {
 }
 
 export interface Message {
-  id: number;
+  id: number | string;
   text: string;
   created_at: string;
   sender_id: number;
   image_url?: string;
-  thread_id: number;
+  thread_id: number | string;
 }
 
 export interface OrganizationOpportunity {
@@ -90,4 +92,22 @@ export interface Notification {
   read: boolean;
   actor?: User;
   icon?: string;
+}
+
+export interface Interest {
+    id: number;
+    name: string;
+}
+
+export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';
+
+export interface Friendship {
+  id: number;
+  user_id_1: number;
+  user_id_2: number;
+  status: FriendshipStatus;
+  action_user_id: number;
+  // Eager-loaded user profiles for easier display
+  user1?: User;
+  user2?: User;
 }

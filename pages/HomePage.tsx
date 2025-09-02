@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
@@ -34,27 +35,31 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
 };
 
 const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
-  <div className="bg-primary-light dark:bg-primary/20 p-4 rounded-2xl mb-6">
-    <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Online nu</h2>
-    <div className="flex justify-around">
-      {users.map(user => (
-        <div key={user.id} className="flex flex-col items-center text-center w-16">
-          <div className="relative">
-            {user.avatar_url ? (
-              <img src={user.avatar_url} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
-            ) : (
-              <div 
-                className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold"
-              >
-                {user.name.charAt(0)}
-              </div>
-            )}
-            <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-primary-light dark:border-primary/20"></span>
+  <div className="mb-6">
+    <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-3">Online nu</h2>
+    {users.length > 0 ? (
+      <div className="flex space-x-4 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-hide">
+        {users.map(user => (
+          <div key={user.id} className="flex flex-col items-center text-center w-20 flex-shrink-0">
+            <div className="relative">
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold shadow-md">
+                  {user.name.charAt(0)}
+                </div>
+              )}
+              <span className="absolute bottom-0.5 right-0.5 block h-4 w-4 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface animate-pulse-slow"></span>
+            </div>
+            <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
           </div>
-          <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    ) : (
+      <div className="text-sm text-text-secondary dark:text-dark-text-secondary bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+        Ingen er online lige nu. Tjek tilbage senere!
+      </div>
+    )}
   </div>
 );
 
@@ -129,6 +134,14 @@ const HomePage: React.FC = () => {
             </div>
 
             <OnlineNowSection users={onlineUsers} />
+
+            <div className="my-6">
+                <img 
+                    src="https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/soulmatch1.png" 
+                    alt="SoulMatch promotional banner" 
+                    className="w-full rounded-2xl shadow-sm object-cover"
+                />
+            </div>
 
       <div className="flex justify-between items-center mb-4">
         <div>

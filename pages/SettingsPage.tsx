@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -5,6 +6,7 @@ import {
   LogOut, Palette, ChevronRight, Lock
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { supabase } from '../services/supabase';
 
 const ToggleSwitch: React.FC<{ checked: boolean; onChange: (checked: boolean) => void; id: string }> = ({ checked, onChange, id }) => (
     <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
@@ -43,6 +45,16 @@ const SettingsPage: React.FC = () => {
 
     const handlePrivacyChange = (key: keyof typeof privacy, value: boolean) => {
         setPrivacy(prev => ({ ...prev, [key]: value }));
+    };
+
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error('Error logging out:', error.message);
+        }
+        // The onAuthStateChange listener in App.tsx will handle the redirect,
+        // but this ensures a more immediate change.
+        navigate('/');
     };
 
     return (
@@ -149,7 +161,10 @@ const SettingsPage: React.FC = () => {
                     </section>
 
                     {/* Logout Button */}
-                    <button className="w-full flex items-center justify-center bg-white dark:bg-dark-surface text-red-500 font-bold py-3 px-4 rounded-lg text-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition duration-300 shadow-sm border border-gray-200 dark:border-dark-border">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center bg-white dark:bg-dark-surface text-red-500 font-bold py-3 px-4 rounded-lg text-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition duration-300 shadow-sm border border-gray-200 dark:border-dark-border"
+                    >
                         <LogOut className="w-5 h-5 mr-3"/>
                         Log ud
                     </button>
