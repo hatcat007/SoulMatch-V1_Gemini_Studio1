@@ -2,8 +2,11 @@ export interface User {
   id: number;
   name: string;
   age: number;
-  avatarUrl?: string;
+  avatar_url?: string;
   online: boolean;
+  bio?: string;
+  location?: string;
+  personality_type?: string;
 }
 
 export interface Event {
@@ -11,14 +14,14 @@ export interface Event {
   title: string;
   time: string;
   participantCount: number;
-  host: string;
-  hostAvatarUrl: string;
+  host_name: string;
+  host_avatar_url: string;
   icon: string;
   color: string;
   category: string;
   description?: string;
   participants?: User[];
-  organizationId: number;
+  organization_id: number;
 }
 
 export interface Place {
@@ -26,19 +29,18 @@ export interface Place {
   name: string;
   offer: string;
   address: string;
-  userCount: number;
-  userImages: string[];
   icon: string;
   category: string;
   description: string;
-  isSponsored: boolean;
+  is_sponsored: boolean;
   phone: string;
-  openingHours: string;
+  opening_hours: string;
 }
 
 export interface MessageThread {
   id: number;
   user: User;
+  userId: number;
   lastMessage: string;
   timestamp: string;
   unreadCount: number;
@@ -56,7 +58,7 @@ export interface Message {
 export interface Organization {
   id: number;
   name: string;
-  logoUrl: string;
+  logo_url: string;
   address: string;
   description: string;
   opportunities: {
