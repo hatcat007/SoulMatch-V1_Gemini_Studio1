@@ -48,11 +48,32 @@ const mockMessages: { [key: number]: ChatItem[] } = {
   4: [{ id: 10, text: 'Yeeeeeeah 👍', timestamp: '10:43', senderId: 3 }],
 };
 
-interface TimeLeftInfo {
-    text: string;
-    percentage: number;
-    difference: number;
-}
+const formatMeetingTime = (matchTimestamp?: number): string | null => {
+    if (!matchTimestamp) return null;
+
+    const totalDuration = 3 * 24 * 60 * 60 * 1000; // 3 days in ms
+    const deadline = matchTimestamp + totalDuration;
+    const difference = deadline - Date.now();
+
+    if (difference <= 0) {
+        return "Tiden for møde er udløbet";
+    }
+
+    const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) {
+        return `Møde om ${days} ${days === 1 ? 'dag' : 'dage'}`;
+    }
+    if (hours > 0) {
+        return `Møde om ${hours} ${hours === 1 ? 'time' : 'timer'}`;
+    }
+    if (minutes > 0) {
+        return `Møde om ${minutes} ${minutes === 1 ? 'minut' : 'minutter'}`;
+    }
+    return `Møde om et øjeblik`;
+};
 
 
 const ChatPage: React.FC = () => {
@@ -63,51 +84,16 @@ const ChatPage: React.FC = () => {
     const thread = mockThreads.find(t => t.id.toString() === chatId);
     const [messages, setMessages] = useState<ChatItem[]>(mockMessages[Number(chatId)] || []);
     const [newMessage, setNewMessage] = useState('');
-
-    const calculateTimeLeft = (): TimeLeftInfo | null => {
-        if (!thread?.matchTimestamp) return null;
     
-        const totalDuration = 3 * 24 * 60 * 60 * 1000; // 3 days in ms
-        const deadline = thread.matchTimestamp + totalDuration;
-        const difference = deadline - Date.now();
-    
-        if (difference <= 0) {
-            return { text: "Tiden er udløbet!", percentage: 0, difference: 0 };
-        }
-    
-        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((difference % (1000 * 60)) / 1000);
-    
-        let timerString = '';
-        if (days > 0) {
-            timerString = `${days} ${days === 1 ? 'dag' : 'dage'}, ${hours} ${hours === 1 ? 'time' : 'timer'}`;
-        } else if (hours > 0) {
-            timerString = `${hours} ${hours === 1 ? 'time' : 'timer'}, ${minutes} min`;
-        } else if (minutes > 0) {
-            timerString = `${minutes} min, ${seconds} sek`;
-        } else {
-            timerString = `${seconds} sek`;
-        }
-    
-        const percentage = (difference / totalDuration) * 100;
-    
-        return {
-            text: `Skal mødes inden: ${timerString}`,
-            percentage: Math.max(0, percentage),
-            difference,
-        };
-    };
-
-    const [timeLeftInfo, setTimeLeftInfo] = useState<TimeLeftInfo | null>(calculateTimeLeft);
+    const [meetingTimeText, setMeetingTimeText] = useState<string | null>(formatMeetingTime(thread?.matchTimestamp));
 
     useEffect(() => {
         if (!thread?.matchTimestamp) return;
 
+        // Update every minute, which is sufficient for this display format
         const timer = setInterval(() => {
-            setTimeLeftInfo(calculateTimeLeft());
-        }, 1000);
+            setMeetingTimeText(formatMeetingTime(thread.matchTimestamp));
+        }, 60000);
 
         return () => clearInterval(timer);
     }, [thread?.matchTimestamp]);
@@ -143,14 +129,6 @@ const ChatPage: React.FC = () => {
         setMessages([...messages, message]);
         setNewMessage('');
     };
-    
-    const getTimerColor = (msLeft: number): string => {
-        const oneDay = 24 * 60 * 60 * 1000;
-        const fourHours = 4 * 60 * 60 * 1000;
-        if (msLeft > oneDay) return 'bg-green-500';
-        if (msLeft > fourHours) return 'bg-yellow-500';
-        return 'bg-red-500';
-    };
 
     return (
         <div className="flex flex-col h-full bg-white">
@@ -165,20 +143,8 @@ const ChatPage: React.FC = () => {
                         <Shield className="w-5 h-5 ml-1 text-blue-500" strokeWidth={2.5} />
                     </h2>
                     <p className="text-xs text-text-secondary">Last seen 2hrs ago</p>
-                     {timeLeftInfo && (
-                        <div className="mt-2 px-2">
-                            <p className="text-sm text-rose-500 font-semibold mb-1">
-                                {timeLeftInfo.text}
-                            </p>
-                            {timeLeftInfo.difference > 0 && (
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div
-                                        className={`h-2 rounded-full transition-colors duration-500 ${getTimerColor(timeLeftInfo.difference)}`}
-                                        style={{ width: `${timeLeftInfo.percentage}%` }}
-                                    ></div>
-                                </div>
-                            )}
-                        </div>
+                    {meetingTimeText && (
+                        <p className="text-xs text-text-secondary font-semibold mt-1">{meetingTimeText}</p>
                     )}
                 </div>
                 <button className="bg-primary text-white font-bold py-2 px-4 rounded-full text-sm hover:bg-primary-dark transition-colors">
