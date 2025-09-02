@@ -68,3 +68,15 @@ export interface Organization {
     imageUrl: string;
   }[];
 }
+
+export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';
+
+export interface Notification {
+  id: number;
+  message: string;
+  type: NotificationType;
+  timestamp: number;
+  read: boolean;
+  actor?: User;
+  icon?: string;
+}

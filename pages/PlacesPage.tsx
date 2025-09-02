@@ -3,6 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare } from 'lucide-react';
 import type { Place, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
+import NotificationIcon from '../components/NotificationIcon';
 
 const mockPlaces: Place[] = [
   { id: 1, name: 'Espresso House', offer: '2 x gratis kaffe', address: 'Bispensgade 16, 9000 Aalborg', userCount: 209, userImages: ['https://picsum.photos/id/10/30/30', 'https://picsum.photos/id/20/30/30'], icon: '☕', category: 'Café', description: 'Espresso House er Nordens største kaffebarkæde. Vi støtter kampen mod ensomhed ved at tilbyde et hyggeligt mødested, hvor nye venskaber kan blomstre over en god kop kaffe.', isSponsored: true, phone: '+45 12 34 56 78', openingHours: 'Man-Fre: 07:30 - 19:00' },
@@ -85,7 +86,7 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
             <Share2 size={20} className="mr-2"/> Del med SoulMate
           </button>
           <button 
-            onClick={() => navigate('/checkin')}
+            onClick={() => navigate('/checkin', { state: { place } })}
             className="w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg transition duration-300 shadow-lg hover:bg-primary-dark flex items-center justify-center"
           >
             <CheckSquare size={20} className="mr-2"/> Check ind
@@ -120,7 +121,11 @@ const PlacesPage: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 relative">
-      <h1 className="text-center text-2xl font-bold text-primary mb-4">SoulMatch</h1>
+       <div className="flex justify-between items-center mb-4">
+        <div className="w-10"></div> {/* Spacer */}
+        <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+        <NotificationIcon />
+      </div>
       <div className="relative mb-4">
         <input 
           type="text" 

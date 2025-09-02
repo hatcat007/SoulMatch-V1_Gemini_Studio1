@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Shield, Plus, Ticket } from 'lucide-react';
@@ -47,6 +48,12 @@ const mockMessages: { [key: number]: ChatItem[] } = {
   4: [{ id: 10, text: 'Yeeeeeeah 👍', timestamp: '10:43', senderId: 3 }],
 };
 
+interface TimeLeftInfo {
+    text: string;
+    percentage: number;
+    difference: number;
+}
+
 
 const ChatPage: React.FC = () => {
     const { chatId } = useParams<{ chatId: string }>();
@@ -57,14 +64,15 @@ const ChatPage: React.FC = () => {
     const [messages, setMessages] = useState<ChatItem[]>(mockMessages[Number(chatId)] || []);
     const [newMessage, setNewMessage] = useState('');
 
-    const calculateTimeLeft = () => {
-        if (!thread?.matchTimestamp) return '';
+    const calculateTimeLeft = (): TimeLeftInfo | null => {
+        if (!thread?.matchTimestamp) return null;
     
-        const deadline = thread.matchTimestamp + 3 * 24 * 60 * 60 * 1000;
+        const totalDuration = 3 * 24 * 60 * 60 * 1000; // 3 days in ms
+        const deadline = thread.matchTimestamp + totalDuration;
         const difference = deadline - Date.now();
     
         if (difference <= 0) {
-            return "Tiden er udløbet!";
+            return { text: "Tiden er udløbet!", percentage: 0, difference: 0 };
         }
     
         const days = Math.floor(difference / (1000 * 60 * 60 * 24));
@@ -83,16 +91,22 @@ const ChatPage: React.FC = () => {
             timerString = `${seconds} sek`;
         }
     
-        return `Skal mødes inden: ${timerString}`;
+        const percentage = (difference / totalDuration) * 100;
+    
+        return {
+            text: `Skal mødes inden: ${timerString}`,
+            percentage: Math.max(0, percentage),
+            difference,
+        };
     };
 
-    const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
+    const [timeLeftInfo, setTimeLeftInfo] = useState<TimeLeftInfo | null>(calculateTimeLeft);
 
     useEffect(() => {
         if (!thread?.matchTimestamp) return;
 
         const timer = setInterval(() => {
-            setTimeLeft(calculateTimeLeft());
+            setTimeLeftInfo(calculateTimeLeft());
         }, 1000);
 
         return () => clearInterval(timer);
@@ -129,6 +143,14 @@ const ChatPage: React.FC = () => {
         setMessages([...messages, message]);
         setNewMessage('');
     };
+    
+    const getTimerColor = (msLeft: number): string => {
+        const oneDay = 24 * 60 * 60 * 1000;
+        const fourHours = 4 * 60 * 60 * 1000;
+        if (msLeft > oneDay) return 'bg-green-500';
+        if (msLeft > fourHours) return 'bg-yellow-500';
+        return 'bg-red-500';
+    };
 
     return (
         <div className="flex flex-col h-full bg-white">
@@ -143,10 +165,20 @@ const ChatPage: React.FC = () => {
                         <Shield className="w-5 h-5 ml-1 text-blue-500" strokeWidth={2.5} />
                     </h2>
                     <p className="text-xs text-text-secondary">Last seen 2hrs ago</p>
-                     {timeLeft && (
-                         <p className="text-sm text-rose-500 font-semibold mt-1">
-                            {timeLeft}
-                         </p>
+                     {timeLeftInfo && (
+                        <div className="mt-2 px-2">
+                            <p className="text-sm text-rose-500 font-semibold mb-1">
+                                {timeLeftInfo.text}
+                            </p>
+                            {timeLeftInfo.difference > 0 && (
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                        className={`h-2 rounded-full transition-colors duration-500 ${getTimerColor(timeLeftInfo.difference)}`}
+                                        style={{ width: `${timeLeftInfo.percentage}%` }}
+                                    ></div>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
                 <button className="bg-primary text-white font-bold py-2 px-4 rounded-full text-sm hover:bg-primary-dark transition-colors">

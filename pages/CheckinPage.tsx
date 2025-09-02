@@ -1,10 +1,15 @@
-
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import IconCloud from '../components/magicui/IconCloud';
+import NFCAnimation from '../components/NFCAnimation';
+import type { Place } from '../types';
 
 const CheckinPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isConnecting, setIsConnecting] = useState(false);
+  
+  const place = location.state?.place as Place | undefined;
 
   // Avatars for the icon cloud
   const iconCloudImages = [
@@ -17,6 +22,18 @@ const CheckinPage: React.FC = () => {
     'https://i.pravatar.cc/80?u=a7',
     'https://i.pravatar.cc/80?u=a8',
   ];
+  
+  const handleConnectionComplete = () => {
+    // Navigate back after a delay to allow the user to see the "complete" state
+    setTimeout(() => {
+      navigate(-1);
+    }, 4000); // 4 seconds delay
+  };
+
+  if (isConnecting) {
+    return <NFCAnimation discountOffer={place?.offer} onConnectionComplete={handleConnectionComplete} />;
+  }
+
 
   return (
     <div className="flex flex-col h-full bg-white p-6 justify-between text-center">
@@ -45,7 +62,7 @@ const CheckinPage: React.FC = () => {
 
       <footer className="flex-shrink-0">
         <button
-          onClick={() => navigate(-1)} // Navigates back for now
+          onClick={() => setIsConnecting(true)}
           className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
         >
           Fortsæt

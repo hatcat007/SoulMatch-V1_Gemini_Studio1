@@ -1,5 +1,6 @@
 import React from 'react';
 import { Settings, MessageCircle } from 'lucide-react';
+import NotificationIcon from '../components/NotificationIcon';
 
 interface Trait {
   label: string;
@@ -41,14 +42,18 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="bg-gray-50 min-h-full">
       <div className="p-4 md:p-6 lg:max-w-6xl lg:mx-auto">
-        <h1 className="text-center text-2xl font-bold text-primary mb-4">SoulMatch</h1>
-        <div className="flex justify-end space-x-3 mb-4">
-            <button className="p-2 border border-gray-300 rounded-full text-gray-600">
-                <MessageCircle size={24}/>
-            </button>
-            <button className="p-2 border border-gray-300 rounded-full text-gray-600">
-                <Settings size={24}/>
-            </button>
+        <div className="flex justify-between items-center mb-4">
+            <div className="w-10"></div> {/* Spacer */}
+            <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+            <div className="flex items-center space-x-1">
+                 <NotificationIcon />
+                <button className="p-2 text-gray-600 hover:text-primary">
+                    <MessageCircle size={24}/>
+                </button>
+                <button className="p-2 text-gray-600 hover:text-primary">
+                    <Settings size={24}/>
+                </button>
+            </div>
         </div>
         
         <div className="lg:grid lg:grid-cols-3 lg:gap-8">

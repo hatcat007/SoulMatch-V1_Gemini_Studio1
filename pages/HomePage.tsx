@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import type { Event, User } from '../types';
+import NotificationIcon from '../components/NotificationIcon';
 
 const mockOnlineNowUsers: User[] = [
   { id: 101, name: 'Chris', age: 20, avatarUrl: 'https://i.pravatar.cc/80?u=101', online: true },
@@ -118,7 +119,11 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6">
-      <h1 className="text-center text-2xl font-bold text-primary mb-4">SoulMatch</h1>
+      <div className="flex justify-between items-center mb-4">
+        <div className="w-10"></div> {/* Spacer */}
+        <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+        <NotificationIcon />
+      </div>
       <div className="relative mb-6">
         <input 
           type="text" 

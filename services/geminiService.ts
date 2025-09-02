@@ -1,14 +1,12 @@
 
-import { GoogleGenAI } from "@google/genai";
+
+
+import { GoogleGenAI, Type } from "@google/genai";
 import type { User } from '../types';
 
-// IMPORTANT: API key must be set in environment variables
-const apiKey = process.env.API_KEY;
-if (!apiKey) {
-  console.warn("API_KEY for Gemini is not set. Gemini services will be disabled.");
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+// FIX: Aligned with Gemini API guidelines.
+// API key is expected to be in environment variables and is a hard requirement.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Generates a list of recommended user IDs based on a user's profile.
@@ -18,11 +16,6 @@ const ai = new GoogleGenAI({ apiKey: apiKey || '' });
  * @returns A list of user IDs sorted by match compatibility.
  */
 export async function getAiMatches(currentUser: User, allUsers: User[]): Promise<number[]> {
-  if (!apiKey) {
-    // Return a random subset if API key is not available
-    return allUsers.filter(u => u.id !== currentUser.id).map(u => u.id).sort(() => 0.5 - Math.random()).slice(0, 5);
-  }
-
   const prompt = `
     You are a sophisticated matchmaking AI for an app called SoulMatch, which aims to combat loneliness.
     Your task is to find the most compatible friends for a user based on their profile.
@@ -44,19 +37,27 @@ export async function getAiMatches(currentUser: User, allUsers: User[]): Promise
   `;
 
   try {
+    // FIX: Configured the model to return JSON with a specific schema for reliability.
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.INTEGER,
+          },
+        },
+      },
     });
     
-    // In a real application, you would need to configure the model to return JSON
-    // and parse it safely.
     const textResponse = response.text.trim();
     const matches = JSON.parse(textResponse);
     return matches as number[];
   } catch (error) {
     console.error("Error fetching AI matches:", error);
-    // Fallback to random matches on error
+    // Fallback to random matches on API error, as per error handling guidelines.
     return allUsers.filter(u => u.id !== currentUser.id).map(u => u.id).sort(() => 0.5 - Math.random()).slice(0, 5);
   }
 }

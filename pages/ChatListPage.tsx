@@ -2,6 +2,7 @@ import React from 'react';
 import { Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { MessageThread, User } from '../types';
+import NotificationIcon from '../components/NotificationIcon';
 
 const mockOnlineUsers: User[] = [
   { id: 1, name: 'Anne', age: 24, avatarUrl: 'https://picsum.photos/id/1011/100/100', online: true },
@@ -19,7 +20,11 @@ const mockThreads: MessageThread[] = [
 const ChatListPage: React.FC = () => {
   return (
     <div className="p-4 flex flex-col h-full">
-      <h1 className="text-center text-3xl font-bold text-primary mb-4">SoulMatch</h1>
+      <div className="flex justify-between items-center mb-4">
+        <div className="w-10"></div> {/* Spacer */}
+        <h1 className="text-3xl font-bold text-primary">SoulMatch</h1>
+        <NotificationIcon />
+      </div>
       <div className="relative mb-6">
         <input 
           type="text" 
