@@ -29,6 +29,8 @@ export interface Place {
   name: string;
   offer: string;
   address: string;
+  user_count: number;
+  user_images: string[];
   icon: string;
   category: string;
   description: string;
@@ -39,12 +41,11 @@ export interface Place {
 
 export interface MessageThread {
   id: number;
-  user: User;
-  userId: number;
-  lastMessage: string;
+  last_message: string;
   timestamp: string;
-  unreadCount: number;
-  matchTimestamp?: number;
+  unread_count: number;
+  match_timestamp?: string;
+  participants: { user: User }[];
 }
 
 export interface Message {
@@ -55,23 +56,27 @@ export interface Message {
   imageUrl?: string;
 }
 
+export interface OrganizationOpportunity {
+    name: string;
+    icon: string;
+}
+
+export interface OrganizationUpdate {
+    id: number;
+    image_url: string;
+}
+
 export interface Organization {
   id: number;
   name: string;
   logo_url: string;
   address: string;
   description: string;
-  opportunities: {
-    name: string;
-    icon: string;
-  }[];
-  updates: {
-    id: number;
-    imageUrl: string;
-  }[];
   phone?: string;
   email?: string;
   website?: string;
+  opportunities?: OrganizationOpportunity[];
+  updates?: OrganizationUpdate[];
 }
 
 export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';
