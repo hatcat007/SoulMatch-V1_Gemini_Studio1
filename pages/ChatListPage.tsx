@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -20,7 +19,7 @@ const mockThreads: MessageThread[] = [
 const ChatListPage: React.FC = () => {
   return (
     <div className="p-4 flex flex-col h-full">
-      <h1 className="text-3xl font-bold text-text-primary mb-4">Soul mates 💫</h1>
+      <h1 className="text-center text-3xl font-bold text-primary mb-4">SoulMatch</h1>
       <div className="relative mb-6">
         <input 
           type="text" 

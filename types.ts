@@ -18,6 +18,7 @@ export interface Event {
   category: string;
   description?: string;
   participants?: User[];
+  organizationId: number;
 }
 
 export interface Place {
@@ -50,4 +51,20 @@ export interface Message {
   timestamp: string;
   senderId: number;
   imageUrl?: string;
+}
+
+export interface Organization {
+  id: number;
+  name: string;
+  logoUrl: string;
+  address: string;
+  description: string;
+  opportunities: {
+    name: string;
+    icon: string;
+  }[];
+  updates: {
+    id: number;
+    imageUrl: string;
+  }[];
 }

@@ -16,8 +16,8 @@ const BottomNav: React.FC = () => {
   const inactiveLinkClass = 'text-gray-400';
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto bg-white border-t border-gray-200 shadow-t-lg">
-      <div className="flex justify-around items-center h-16">
+    <nav className="fixed z-20 bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-t-lg md:relative md:z-auto md:h-screen md:w-20 md:flex-shrink-0 md:max-w-none md:border-r md:border-t-0 md:shadow-none md:mx-0">
+      <div className="flex justify-around items-center h-16 md:flex-col md:h-auto md:w-full md:pt-8 md:space-y-6">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -25,25 +25,28 @@ const BottomNav: React.FC = () => {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center w-full ${
+                `flex flex-col items-center justify-center w-full transition-colors duration-200 group ${
                   isActive ? activeLinkClass : inactiveLinkClass
-                } ${item.isCentral ? '-mt-6' : ''}`
+                } ${item.isCentral ? '-mt-6 md:mt-0' : ''}`
               }
             >
               {({ isActive }) => (
                 <>
                   {item.isCentral ? (
-                     <Icon className="h-14 w-14 text-primary bg-white rounded-full p-1 border-4 border-white" strokeWidth={1.5} />
+                     <Icon className="h-14 w-14 text-primary bg-white rounded-full p-1 border-4 border-white md:border-none md:bg-transparent md:text-primary-dark md:h-12 md:w-12" strokeWidth={1.5} />
                   ) : (
                     <Icon className="h-6 w-6" strokeWidth={isActive ? 2.5 : 2} />
                   )}
+                  <span className={`text-xs mt-1 hidden md:block group-hover:text-primary-dark ${isActive ? 'font-bold' : ''}`}>
+                    {item.label}
+                  </span>
                 </>
               )}
             </NavLink>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 };
 

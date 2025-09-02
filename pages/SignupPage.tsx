@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Home } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 interface SignupPageProps {
   onSignup: () => void;
@@ -22,10 +21,8 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 hover:text-primary">
           <ArrowLeft size={28} />
         </button>
-        <Link to="/" className="flex items-center text-sm text-gray-600 hover:text-primary">
-          Gå til velkomst skærm
-          <Home size={16} className="ml-2" />
-        </Link>
+        <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+        <div className="w-11 h-11" /> {/* Spacer for centering */}
       </div>
       <div className="flex-grow flex flex-col justify-center">
         <h1 className="text-4xl font-bold text-text-primary mb-4">Opret en bruger</h1>

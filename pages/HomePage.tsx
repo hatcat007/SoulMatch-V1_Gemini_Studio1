@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
@@ -44,15 +43,26 @@ const mockParticipants3: User[] = [
   ...Array.from({ length: 15 }, (_, i) => ({ id: 500 + i, name: `Player ${i}`, age: 25, avatarUrl: `https://i.pravatar.cc/80?u=${500 + i}`, online: false })),
 ];
 
+const mockParticipants4: User[] = Array.from({ length: 8 }, (_, i) => ({ id: 600 + i, name: `Walker ${i}`, age: 27, avatarUrl: `https://i.pravatar.cc/80?u=${600 + i}`, online: Math.random() > 0.5 }));
+const mockParticipants5: User[] = Array.from({ length: 22 }, (_, i) => ({ id: 700 + i, name: `Cinephile ${i}`, age: 24, avatarUrl: `https://i.pravatar.cc/80?u=${700 + i}`, online: Math.random() > 0.5 }));
+const mockParticipants6: User[] = Array.from({ length: 15 }, (_, i) => ({ id: 800 + i, name: `Artist ${i}`, age: 29, avatarUrl: `https://i.pravatar.cc/80?u=${800 + i}`, online: Math.random() > 0.5 }));
+const mockParticipants7: User[] = Array.from({ length: 12 }, (_, i) => ({ id: 900 + i, name: `Runner ${i}`, age: 31, avatarUrl: `https://i.pravatar.cc/80?u=${900 + i}`, online: Math.random() > 0.5 }));
+const mockParticipants8: User[] = Array.from({ length: 6 }, (_, i) => ({ id: 1000 + i, name: `CoffeeLover ${i}`, age: 26, avatarUrl: `https://i.pravatar.cc/80?u=${1000 + i}`, online: Math.random() > 0.5 }));
+
 
 const mockEvents: Event[] = [
-  { id: 1, title: 'Musik koncert sammen', time: 'Lige nu', participantCount: 35, host: 'Jesper fra Studenterhuset Aalborg', hostAvatarUrl: 'https://picsum.photos/id/237/40/40', icon: '🎸', color: 'bg-yellow-100', category: 'Musik', description: 'Kom og hør Andreas Odbjerg.\nVi gir den første øl 🍺 #stopensomhed', participants: mockParticipants },
-  { id: 2, title: 'Fælles spisning', time: 'Om 31 min', participantCount: 4, host: 'SIND Ungdom Aalborg', hostAvatarUrl: 'https://picsum.photos/id/238/40/40', icon: '🍽️', color: 'bg-teal-100', category: 'Mad', description: 'Vi mødes til en hyggelig aften med god mad og snak. Alle er velkomne, og vi laver maden sammen. Medbring godt humør!', participants: mockParticipants2 },
-  { id: 3, title: 'Fælles brætspil', time: 'I dag klokken 18:00', participantCount: 18, host: 'Ventilen Aalborg', hostAvatarUrl: 'https://picsum.photos/id/239/40/40', icon: '🎲', color: 'bg-green-100', category: 'Brætspil', description: 'Er du til Settlers, Bezzerwizzer eller noget helt tredje? Kom og vær med til en aften i brætspillets tegn. Vi har masser af spil, men tag også gerne dit eget yndlingsspil med.', participants: mockParticipants3 },
+  { id: 1, title: 'Musik koncert sammen', time: 'Lige nu', participantCount: 35, host: 'Jesper fra Studenterhuset Aalborg', hostAvatarUrl: 'https://picsum.photos/id/237/40/40', icon: '🎸', color: 'bg-yellow-100', category: 'Musik', description: 'Kom og hør Andreas Odbjerg.\nVi gir den første øl 🍺 #stopensomhed', participants: mockParticipants, organizationId: 2 },
+  { id: 2, title: 'Fælles spisning', time: 'Om 31 min', participantCount: 4, host: 'SIND Ungdom Aalborg', hostAvatarUrl: 'https://i.imgur.com/8S8V5c2.png', icon: '🍽️', color: 'bg-teal-100', category: 'Mad', description: 'Vi mødes til en hyggelig aften med god mad og snak. Alle er velkomne, og vi laver maden sammen. Medbring godt humør!', participants: mockParticipants2, organizationId: 1 },
+  { id: 3, title: 'Fælles brætspil', time: 'I dag klokken 18:00', participantCount: 18, host: 'Ventilen Aalborg', hostAvatarUrl: 'https://picsum.photos/id/239/40/40', icon: '🎲', color: 'bg-green-100', category: 'Brætspil', description: 'Er du til Settlers, Bezzerwizzer eller noget helt tredje? Kom og vær med til en aften i brætspillets tegn. Vi har masser af spil, men tag også gerne dit eget yndlingsspil med.', participants: mockParticipants3, organizationId: 3 },
+  { id: 4, title: 'Gåtur i Kildeparken', time: 'I morgen kl. 14:00', participantCount: 8, host: 'Aalborg Gå-klub', hostAvatarUrl: 'https://picsum.photos/id/40/40/40', icon: '🚶‍♀️', color: 'bg-blue-100', category: 'Gåtur', description: 'En afslappende gåtur i smukke omgivelser. Vi mødes ved hovedindgangen og går en tur i roligt tempo.', participants: mockParticipants4, organizationId: 1 },
+  { id: 5, title: 'Biograf aften: Ny storfilm', time: 'Fredag kl. 20:00', participantCount: 22, host: 'Filmklubben', hostAvatarUrl: 'https://picsum.photos/id/50/40/40', icon: '🎬', color: 'bg-indigo-100', category: 'Biograf', description: 'Vi skal se den nyeste blockbuster! Popcorn er et must. Vi mødes i foyeren kl. 19:45.', participants: mockParticipants5, organizationId: 2 },
+  { id: 6, title: 'Kreativt Værksted', time: 'Lørdag kl. 12:00', participantCount: 15, host: 'Kunst & Håndværk', hostAvatarUrl: 'https://picsum.photos/id/60/40/40', icon: '🎨', color: 'bg-purple-100', category: 'Kultur', description: 'Slip din indre kunstner løs. Vi maler, tegner og hygger os. Alle materialer er til rådighed.', participants: mockParticipants6, organizationId: 3 },
+  { id: 7, title: 'Løbeklub for begyndere', time: 'Hver onsdag kl. 17:30', participantCount: 12, host: 'Aalborg Løberne', hostAvatarUrl: 'https://picsum.photos/id/70/40/40', icon: '💪', color: 'bg-orange-100', category: 'Træning', description: 'En løbetur for alle, der vil i gang. Vi løber 3-5 km i et tempo, hvor alle kan være med.', participants: mockParticipants7, organizationId: 2 },
+  { id: 8, title: 'Café hygge', time: 'Søndag eftermiddag', participantCount: 6, host: 'Kaffeklubben', hostAvatarUrl: 'https://picsum.photos/id/80/40/40', icon: '☕', color: 'bg-amber-100', category: 'Mad', description: 'Lad os mødes til en kop kaffe og en god snak på en hyggelig café i centrum.', participants: mockParticipants8, organizationId: 1 },
 ];
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => (
-  <div className={`p-4 rounded-2xl ${event.color} shadow-sm mb-4`}>
+  <div className={`p-4 rounded-2xl ${event.color} shadow-sm h-full flex flex-col`}>
     <div className="flex justify-between items-start">
       <div>
         <p className="text-sm text-gray-600">{event.time}</p>
@@ -60,8 +70,8 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => (
       </div>
       <div className="text-4xl">{event.icon}</div>
     </div>
-    <div className="mt-4 flex items-center">
-      <img src={event.hostAvatarUrl} alt={event.host} className="w-8 h-8 rounded-full mr-2" />
+    <div className="mt-auto pt-4 flex items-center">
+      <img src={event.hostAvatarUrl} alt={event.host} className="w-8 h-8 rounded-full mr-2 object-contain" />
       <div>
         <p className="text-sm text-gray-700">{event.participantCount} deltagere</p>
         <p className="text-xs text-gray-500">Host: {event.host}</p>
@@ -107,7 +117,8 @@ const HomePage: React.FC = () => {
   }, [selectedCategory]);
 
   return (
-    <div className="p-4">
+    <div className="p-4 md:p-6">
+      <h1 className="text-center text-2xl font-bold text-primary mb-4">SoulMatch</h1>
       <div className="relative mb-6">
         <input 
           type="text" 
@@ -130,35 +141,22 @@ const HomePage: React.FC = () => {
       </div>
       
       {selectedCategory && (
-        <div className="flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
+        <div className="inline-flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
           <span>Filter: {selectedCategory}</span>
-          <button onClick={() => setSearchParams({})} className="ml-auto p-1 -mr-1 hover:bg-primary/20 rounded-full">
+          <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 rounded-full">
             <X size={16} />
           </button>
         </div>
       )}
 
       {filteredEvents.length > 0 ? (
-        <>
-          <div>
-            <Link to={`/event/${filteredEvents[0].id}`} className="block">
-              <EventCard event={filteredEvents[0]} />
-            </Link>
-          </div>
-
-          {filteredEvents.length > 1 && (
-            <>
-              <h2 className="text-xl font-bold text-text-primary my-4">Andre events</h2>
-              <div>
-                {filteredEvents.slice(1).map(event => (
-                  <Link to={`/event/${event.id}`} key={event.id} className="block">
-                    <EventCard event={event} />
-                  </Link>
-                ))}
-              </div>
-            </>
-          )}
-        </>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredEvents.map(event => (
+              <Link to={`/event/${event.id}`} key={event.id} className="block mb-4 md:mb-0">
+                <EventCard event={event} />
+              </Link>
+            ))}
+        </div>
       ) : (
         <p className="text-center text-text-secondary mt-8">Ingen events fundet for den valgte kategori.</p>
       )}

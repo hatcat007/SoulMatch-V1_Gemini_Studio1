@@ -69,7 +69,9 @@ const OnboardingPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-white text-center p-8 justify-between">
-      <div className="flex-1 flex items-center justify-center min-h-0">
+      <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+
+      <div className="flex-1 flex items-center justify-center min-h-0 my-4">
         {currentStep.graphic}
       </div>
       

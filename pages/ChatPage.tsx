@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Shield, Plus, Ticket } from 'lucide-react';
@@ -154,7 +155,7 @@ const ChatPage: React.FC = () => {
             </header>
 
             {/* Messages */}
-            <main className="flex-1 overflow-y-auto p-4 space-y-4">
+            <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
                 {messages.map((item) => {
                     if ('type' in item && item.type === 'date') {
                         return (
@@ -195,7 +196,7 @@ const ChatPage: React.FC = () => {
 
             {/* Input */}
             <footer className="p-3 border-t border-gray-200 bg-white sticky bottom-0">
-                <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+                <form onSubmit={handleSendMessage} className="flex items-center space-x-2 max-w-3xl mx-auto">
                     <div className="flex items-center w-full p-1 border border-gray-300 rounded-full">
                          <button type="button" className="p-2 text-primary hover:bg-primary-light rounded-full" aria-label="Add content">
                             <Plus size={24} />

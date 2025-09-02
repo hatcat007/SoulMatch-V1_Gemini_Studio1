@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare } from 'lucide-react';
@@ -18,7 +17,7 @@ const mockSoulmates: MessageThread[] = [
 ];
 
 const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
-  <div className="bg-teal-100 p-4 rounded-2xl shadow-sm mb-4 cursor-pointer hover:shadow-lg transition-shadow">
+  <div className="bg-teal-100 p-4 rounded-2xl shadow-sm h-full cursor-pointer hover:shadow-lg transition-shadow">
     <div className="flex justify-between items-start">
       <div>
         <p className="font-semibold text-teal-800">{place.offer}</p>
@@ -44,9 +43,9 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
   const navigate = useNavigate();
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50" onClick={onClose}>
-      <div className="bg-white w-full rounded-t-3xl p-6 relative max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1.5 bg-gray-300 rounded-full"></div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end md:items-center md:justify-center z-50" onClick={onClose}>
+      <div className="bg-white w-full md:max-w-lg rounded-t-3xl md:rounded-2xl p-6 relative max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1.5 bg-gray-300 rounded-full md:hidden"></div>
         
         <header className="text-center mt-4 mb-6 flex-shrink-0">
           <h2 className="text-xl font-bold text-text-primary">
@@ -120,7 +119,8 @@ const PlacesPage: React.FC = () => {
 
 
   return (
-    <div className="p-4 relative">
+    <div className="p-4 md:p-6 relative">
+      <h1 className="text-center text-2xl font-bold text-primary mb-4">SoulMatch</h1>
       <div className="relative mb-4">
         <input 
           type="text" 
@@ -140,9 +140,9 @@ const PlacesPage: React.FC = () => {
       </div>
 
       {selectedCategory && (
-        <div className="flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
+        <div className="inline-flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
           <span>Filter: {selectedCategory}</span>
-          <button onClick={() => setSearchParams({})} className="ml-auto p-1 -mr-1 hover:bg-primary/20 rounded-full">
+          <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 rounded-full">
             <X size={16} />
           </button>
         </div>
@@ -150,11 +150,13 @@ const PlacesPage: React.FC = () => {
 
       <div>
         {filteredPlaces.length > 0 ? (
-          filteredPlaces.map(place => (
-            <div key={place.id} onClick={() => setSelectedPlace(place)}>
-                <PlaceCard place={place} />
-            </div>
-          ))
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredPlaces.map(place => (
+              <div key={place.id} onClick={() => setSelectedPlace(place)}>
+                  <PlaceCard place={place} />
+              </div>
+            ))}
+          </div>
         ) : (
           <p className="text-center text-text-secondary mt-8">Ingen steder fundet for den valgte kategori.</p>
         )}

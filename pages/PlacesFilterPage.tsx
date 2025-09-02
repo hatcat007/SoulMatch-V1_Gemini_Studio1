@@ -29,7 +29,7 @@ const PlacesFilterPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <header className="flex-shrink-0 z-10 p-4">
+      <header className="flex-shrink-0 z-10 p-4 md:max-w-3xl md:mx-auto md:w-full">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => navigate(-1)} className="p-2 -ml-2" aria-label="Go back">
             <ArrowLeft size={24} className="text-text-primary" />
@@ -48,13 +48,13 @@ const PlacesFilterPage: React.FC = () => {
         </div>
       </header>
       
-      <div className="flex-1 flex flex-col items-center px-4">
-        <div className="w-10 h-1.5 bg-gray-300 rounded-full my-4"></div>
-         <button onClick={() => navigate('/places')} className="self-start p-2 -ml-2 mb-4" aria-label="Go back to all places">
+      <div className="flex-1 flex flex-col items-center px-4 md:max-w-3xl md:mx-auto md:w-full">
+        <div className="w-10 h-1.5 bg-gray-300 rounded-full my-4 md:hidden"></div>
+         <button onClick={() => navigate('/places')} className="self-start p-2 -ml-2 mb-4 md:hidden" aria-label="Go back to all places">
             <ArrowLeft size={24} className="text-text-primary" />
          </button>
 
-        <div className="w-full grid grid-cols-3 gap-4">
+        <div className="w-full grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
           {placeCategories.map((category) => (
             <button
               key={category.name}
