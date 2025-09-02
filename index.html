@@ -10,6 +10,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -28,6 +29,14 @@
               background: '#F8F9FA',
               'text-primary': '#212529',
               'text-secondary': '#6C757D',
+              dark: {
+                background: '#121826', // A dark navy blue
+                surface: '#1d2432', // Slightly lighter for cards
+                'surface-light': '#2a3343', // Lighter for inputs/hovers
+                border: '#3c465b', // Border color
+                'text-primary': '#e2e8f0', // Off-white
+                'text-secondary': '#94a3b8', // Grayish blue
+              }
             }
           }
         }
@@ -48,7 +57,7 @@
 }
 </script>
 </head>
-  <body class="bg-background">
+  <body class="bg-background dark:bg-dark-background">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

@@ -67,6 +67,9 @@ export interface Organization {
     id: number;
     imageUrl: string;
   }[];
+  phone?: string;
+  email?: string;
+  website?: string;
 }
 
 export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';

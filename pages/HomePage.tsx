@@ -63,27 +63,27 @@ const mockEvents: Event[] = [
 ];
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => (
-  <div className={`p-4 rounded-2xl ${event.color} shadow-sm h-full flex flex-col`}>
+  <div className={`p-4 rounded-2xl ${event.color} dark:bg-dark-surface shadow-sm h-full flex flex-col`}>
     <div className="flex justify-between items-start">
       <div>
-        <p className="text-sm text-gray-600">{event.time}</p>
-        <h3 className="text-xl font-bold text-text-primary mt-1">{event.title}</h3>
+        <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{event.time}</p>
+        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1">{event.title}</h3>
       </div>
       <div className="text-4xl">{event.icon}</div>
     </div>
     <div className="mt-auto pt-4 flex items-center">
       <img src={event.hostAvatarUrl} alt={event.host} className="w-8 h-8 rounded-full mr-2 object-contain" />
       <div>
-        <p className="text-sm text-gray-700">{event.participantCount} deltagere</p>
-        <p className="text-xs text-gray-500">Host: {event.host}</p>
+        <p className="text-sm text-gray-700 dark:text-dark-text-secondary">{event.participantCount} deltagere</p>
+        <p className="text-xs text-gray-500 dark:text-dark-text-secondary/70">Host: {event.host}</p>
       </div>
     </div>
   </div>
 );
 
 const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
-  <div className="bg-primary-light p-4 rounded-2xl mb-6">
-    <h2 className="text-xl font-bold text-text-primary mb-4">Online nu</h2>
+  <div className="bg-primary-light dark:bg-primary/20 p-4 rounded-2xl mb-6">
+    <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Online nu</h2>
     <div className="flex justify-around">
       {users.map(user => (
         <div key={user.id} className="flex flex-col items-center text-center w-16">
@@ -97,9 +97,9 @@ const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
                 {user.name.charAt(0)}
               </div>
             )}
-            <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-primary-light"></span>
+            <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-primary-light dark:border-primary/20"></span>
           </div>
-          <p className="mt-2 text-sm font-semibold text-text-secondary truncate w-full">{user.name}</p>
+          <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
         </div>
       ))}
     </div>
@@ -128,27 +128,27 @@ const HomePage: React.FC = () => {
         <input 
           type="text" 
           placeholder="Søg på dine interesser eller ønsker" 
-          className="w-full bg-gray-100 border border-gray-200 rounded-full py-3 pl-10 pr-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full bg-gray-100 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border rounded-full py-3 pl-10 pr-4 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
         />
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-dark-text-secondary" size={20} />
       </div>
 
       <OnlineNowSection users={mockOnlineNowUsers.slice(0, 4)} />
 
       <div className="flex justify-between items-center mb-4">
         <div>
-            <h2 className="text-2xl font-bold text-text-primary">Undersøg nye muligheder</h2>
-            <p className="text-text-secondary text-sm">Valgt baseret på dine interesser</p>
+            <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Undersøg nye muligheder</h2>
+            <p className="text-text-secondary dark:text-dark-text-secondary text-sm">Valgt baseret på dine interesser</p>
         </div>
-        <Link to="/home/filter" className="p-2 bg-gray-100 rounded-md">
-            <SlidersHorizontal className="text-gray-600" />
+        <Link to="/home/filter" className="p-2 bg-gray-100 dark:bg-dark-surface-light rounded-md">
+            <SlidersHorizontal className="text-gray-600 dark:text-dark-text-secondary" />
         </Link>
       </div>
       
       {selectedCategory && (
-        <div className="inline-flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
+        <div className="inline-flex items-center bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
           <span>Filter: {selectedCategory}</span>
-          <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 rounded-full">
+          <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 dark:hover:bg-primary/30 rounded-full">
             <X size={16} />
           </button>
         </div>
@@ -163,7 +163,7 @@ const HomePage: React.FC = () => {
             ))}
         </div>
       ) : (
-        <p className="text-center text-text-secondary mt-8">Ingen events fundet for den valgte kategori.</p>
+        <p className="text-center text-text-secondary dark:text-dark-text-secondary mt-8">Ingen events fundet for den valgte kategori.</p>
       )}
     </div>
   );

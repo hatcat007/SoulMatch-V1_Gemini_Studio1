@@ -131,20 +131,20 @@ const ChatPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-white">
+        <div className="flex flex-col h-full bg-white dark:bg-dark-surface">
             {/* Header */}
-            <header className="flex items-center p-3 border-b border-gray-200 bg-white sticky top-0 z-10">
-                <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 hover:text-primary">
+            <header className="flex items-center p-3 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky top-0 z-10">
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary">
                     <ArrowLeft size={28} />
                 </button>
                 <div className="flex-1 text-center">
-                    <h2 className="font-bold text-lg text-text-primary flex items-center justify-center">
+                    <h2 className="font-bold text-lg text-text-primary dark:text-dark-text-primary flex items-center justify-center">
                         {thread.user.name}
                         <Shield className="w-5 h-5 ml-1 text-blue-500" strokeWidth={2.5} />
                     </h2>
-                    <p className="text-xs text-text-secondary">Last seen 2hrs ago</p>
+                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary">Last seen 2hrs ago</p>
                     {meetingTimeText && (
-                        <p className="text-xs text-text-secondary font-semibold mt-1">{meetingTimeText}</p>
+                        <p className="text-xs text-text-secondary dark:text-dark-text-secondary font-semibold mt-1">{meetingTimeText}</p>
                     )}
                 </div>
                 <button className="bg-primary text-white font-bold py-2 px-4 rounded-full text-sm hover:bg-primary-dark transition-colors">
@@ -157,7 +157,7 @@ const ChatPage: React.FC = () => {
                 {messages.map((item) => {
                     if ('type' in item && item.type === 'date') {
                         return (
-                            <div key={item.id} className="text-center text-gray-500 text-xs my-3">
+                            <div key={item.id} className="text-center text-gray-500 dark:text-dark-text-secondary text-xs my-3">
                                 {item.label}
                             </div>
                         );
@@ -175,7 +175,7 @@ const ChatPage: React.FC = () => {
                                 className={`flex flex-col max-w-[80%] ${
                                     isCurrentUser
                                         ? 'bg-primary text-white rounded-t-2xl rounded-bl-2xl'
-                                        : 'bg-gray-100 text-gray-800 rounded-t-2xl rounded-br-2xl'
+                                        : 'bg-gray-100 dark:bg-dark-surface-light text-gray-800 dark:text-dark-text-primary rounded-t-2xl rounded-br-2xl'
                                 }`}
                             >
                                 {msg.imageUrl && (
@@ -183,7 +183,7 @@ const ChatPage: React.FC = () => {
                                 )}
                                 <div className="flex items-end space-x-2 px-3 py-2">
                                     {msg.text && <p className="break-words">{msg.text}</p>}
-                                    <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500'}`}>{msg.timestamp}</p>
+                                    <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{msg.timestamp}</p>
                                 </div>
                             </div>
                         </div>
@@ -193,13 +193,13 @@ const ChatPage: React.FC = () => {
             </main>
 
             {/* Input */}
-            <footer className="p-3 border-t border-gray-200 bg-white sticky bottom-0">
+            <footer className="p-3 border-t border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky bottom-0">
                 <form onSubmit={handleSendMessage} className="flex items-center space-x-2 max-w-3xl mx-auto">
-                    <div className="flex items-center w-full p-1 border border-gray-300 rounded-full">
-                         <button type="button" className="p-2 text-primary hover:bg-primary-light rounded-full" aria-label="Add content">
+                    <div className="flex items-center w-full p-1 border border-gray-300 dark:border-dark-border rounded-full">
+                         <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add content">
                             <Plus size={24} />
                         </button>
-                        <button type="button" className="p-2 text-primary hover:bg-primary-light rounded-full" aria-label="Add ticket">
+                        <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add ticket">
                             <Ticket size={24} />
                         </button>
                         <input
@@ -207,12 +207,12 @@ const ChatPage: React.FC = () => {
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             placeholder="Send en besked"
-                            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400 px-2"
+                            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-dark-text-secondary px-2"
                             aria-label="Chat message input"
                         />
                          <button
                             type="submit"
-                            className="text-primary rounded-full p-2 flex-shrink-0 hover:bg-primary-light transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="text-primary rounded-full p-2 flex-shrink-0 hover:bg-primary-light dark:hover:bg-primary/20 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={!newMessage.trim()}
                             aria-label="Send message"
                         >
