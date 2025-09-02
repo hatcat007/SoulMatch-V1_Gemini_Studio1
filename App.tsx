@@ -20,6 +20,8 @@ import SettingsPage from './pages/SettingsPage';
 import FAQPage from './pages/FAQPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
+import CreateOrganizationPage from './pages/CreateOrganizationPage';
+import ConfirmOrganizationPage from './pages/ConfirmOrganizationPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { useNotifications } from './hooks/useNotifications';
 import type { NotificationType, User } from './types';
@@ -120,6 +122,8 @@ const App: React.FC = () => {
                   <Route path="/" element={<OnboardingPage />} />
                   <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
                   <Route path="/signup" element={<SignupPage onSignup={handleSignup} />} />
+                  <Route path="/create-organization" element={<CreateOrganizationPage />} />
+                  <Route path="/confirm-organization" element={<ConfirmOrganizationPage onConfirm={handleSignup} />} />
                   <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
               </div>

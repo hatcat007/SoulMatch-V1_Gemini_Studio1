@@ -81,6 +81,12 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignup }) => {
             Log ind
           </Link>
         </p>
+        <p className="mt-4 text-center text-text-secondary">
+          Er du en organisation?{' '}
+          <Link to="/create-organization" className="font-bold text-primary hover:underline">
+            Opret profil her
+          </Link>
+        </p>
       </div>
     </div>
   );
