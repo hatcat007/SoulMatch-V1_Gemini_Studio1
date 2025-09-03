@@ -26,6 +26,7 @@ export interface Event {
   description?: string;
   participants?: User[];
   organization_id: number;
+  image_url?: string;
 }
 
 export interface Place {

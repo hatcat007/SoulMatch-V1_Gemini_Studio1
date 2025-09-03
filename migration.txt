@@ -99,6 +99,7 @@ CREATE TABLE "public"."events" (
     "color" character varying,
     "category" character varying,
     "description" text,
+    "image_url" text,
     "organization_id" bigint REFERENCES public.organizations(id) ON DELETE CASCADE,
     "created_at" timestamptz DEFAULT now() NOT NULL
 );

@@ -63,3 +63,50 @@ export async function uploadFile(file: File): Promise<string> {
         throw new Error("File upload failed. Please check your S3 configuration and network connection.");
     }
 }
+
+
+/**
+ * Converts a base64 string to a Blob object.
+ * @param base64 The base64 encoded string.
+ * @param contentType The MIME type of the file.
+ * @returns A Blob object representing the file.
+ */
+function base64ToBlob(base64: string, contentType: string = 'image/jpeg'): Blob {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: contentType });
+}
+
+
+/**
+ * Uploads a file represented by a base64 string to S3.
+ * @param base64String The base64 encoded file content.
+ * @param fileName The desired file name in the bucket.
+ * @param contentType The MIME type of the file.
+ * @returns The public URL of the uploaded file.
+ */
+export async function uploadBase64File(base64String: string, fileName: string, contentType: string = 'image/jpeg'): Promise<string> {
+    const s3Client = new S3(s3Config);
+    const fileBody = base64ToBlob(base64String, contentType);
+
+    const params = {
+        Bucket: BUCKET_NAME,
+        Key: fileName,
+        Body: fileBody,
+        ACL: ObjectCannedACL.public_read,
+        ContentType: contentType,
+    };
+
+    try {
+        await s3Client.send(new PutObjectCommand(params));
+        const url = `${PUBLIC_URL_BASE}/${fileName}`;
+        return url;
+    } catch (error: any) {
+        console.error("Error uploading base64 file to S3:", error);
+        throw new Error(`File upload from base64 failed: ${error.message || 'Unknown S3 error'}`);
+    }
+}

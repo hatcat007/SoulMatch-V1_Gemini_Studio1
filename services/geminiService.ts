@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import type { User, Interest } from '../types';
 
 // Lazily initialize the AI client to avoid accessing process.env on initial module load,
@@ -20,6 +20,15 @@ interface PersonalityTrait {
 interface PersonalityAnalysisResult {
     personality_type: string; // e.g. "INFJ"
     traits: PersonalityTrait[];
+}
+
+export interface ImportedEventData {
+    title: string;
+    description: string;
+    datetime: string | null;
+    category: string | null;
+    emoji: string | null;
+    error?: string;
 }
 
 /**
@@ -169,4 +178,105 @@ export async function getAiMatches(currentUser: User, allUsers: User[]): Promise
     // Fallback to random matches on API error, as per error handling guidelines.
     return allUsers.filter(u => u.id !== currentUser.id).map(u => u.id).sort(() => 0.5 - Math.random()).slice(0, 5);
   }
+}
+
+/**
+ * Extracts structured event data from a block of text using AI.
+ * @param eventText - The raw text content copied from an event page.
+ * @param categoryOptions - A list of valid categories for the AI to choose from.
+ * @param emojiOptions - A list of valid emojis for the AI to choose from.
+ * @returns A structured object with the event details.
+ */
+export async function importEventFromText(
+    eventText: string,
+    categoryOptions: string[],
+    emojiOptions: string[]
+): Promise<ImportedEventData> {
+    const prompt = `
+        You are an intelligent assistant that extracts structured data from raw text.
+        Analyze the following text copied from an event page:
+
+        --- START OF PASTED TEXT ---
+        ${eventText}
+        --- END OF PASTED TEXT ---
+
+        Your task is to extract the following information:
+        1.  **title**: The official title of the event.
+        2.  **description**: The full, detailed description of the event. Try to find the event's location/address and include it.
+        3.  **datetime**: The specific starting date and time of the event. Format this as a valid string for an HTML datetime-local input (e.g., "2024-09-21T19:00"). If the text describes a recurring event without a specific date (e.g., "Every Thursday"), return null for this field. You may add a note about the recurring nature in the description.
+        4.  **category**: The most appropriate category for the event. Choose ONE from this list: [${categoryOptions.join(', ')}]. If no suitable category is found, return null.
+        5.  **emoji**: The most fitting emoji icon for the event. Choose ONE from this list: [${emojiOptions.join(', ')}]. If none fit well, return null.
+
+        Return this information as a single, valid JSON object.
+        If you cannot find a title or description, return a JSON object with an "error" key explaining the problem.
+    `;
+
+    try {
+        const aiClient = getAiClient();
+        const response = await aiClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        title: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        datetime: { type: Type.STRING, nullable: true },
+                        category: { type: Type.STRING, nullable: true },
+                        emoji: { type: Type.STRING, nullable: true },
+                        error: { type: Type.STRING, nullable: true },
+                    },
+                },
+            },
+        });
+
+        const jsonString = response.text.trim();
+        const result = JSON.parse(jsonString);
+        return result as ImportedEventData;
+
+    } catch (error) {
+        console.error("Error importing event data from AI:", error);
+        throw new Error("AI analysis failed. Please check the provided text or try again later.");
+    }
+}
+
+
+/**
+ * Generates a realistic event image based on a description using AI.
+ * @param description - The event description.
+ * @returns A base64 encoded string of the generated JPEG image.
+ */
+export async function generateEventImageFromText(description: string): Promise<string> {
+    const prompt = `
+        Generate a realistic, high-quality, photorealistic image that visually represents the following event description. The image should be suitable for a social event promotion. Focus on capturing the mood and key elements described.
+
+        Event Description: "${description}"
+
+        Style guidelines:
+        - Aspect Ratio: 16:9
+        - Mood: Welcoming, friendly, and social.
+        - Avoid text overlays on the image.
+    `;
+    try {
+        const aiClient = getAiClient();
+        const response = await aiClient.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/jpeg',
+                aspectRatio: '16:9',
+            },
+        });
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            return response.generatedImages[0].image.imageBytes;
+        } else {
+            throw new Error("AI did not generate an image.");
+        }
+    } catch (error) {
+        console.error("Error generating event image:", error);
+        throw new Error("AI image generation failed.");
+    }
 }

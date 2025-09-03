@@ -76,7 +76,6 @@ const OrganizationDashboardPage: React.FC = () => {
   return (
     <div className="p-6 md:p-8">
       <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Dashboard</h1>
-      <p className="text-text-secondary dark:text-dark-text-secondary mt-1">Velkommen, {organization.name}!</p>
 
       <section className="mt-8">
         <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Statistik</h2>
