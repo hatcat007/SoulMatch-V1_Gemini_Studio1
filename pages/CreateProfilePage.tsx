@@ -100,12 +100,6 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
         e.preventDefault();
         setLoading(true);
         setError(null);
-        
-        if (images.length === 0) {
-            setError("Upload venligst mindst ét profilbillede.");
-            setLoading(false);
-            return;
-        }
 
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
@@ -122,6 +116,8 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
             return;
         }
 
+        const defaultAvatar = `https://i.pravatar.cc/150?u=${user.id}`;
+
         const { data: profileData, error: upsertError } = await supabase
             .from('users')
             .upsert({
@@ -131,7 +127,7 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
                 location,
                 bio,
                 emojis: selectedEmojis,
-                avatar_url: images[0],
+                avatar_url: images.length > 0 ? images[0] : defaultAvatar,
             }, { onConflict: 'auth_id' })
             .select()
             .single();
@@ -144,10 +140,12 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
 
         if (profileData) {
             await supabase.from('user_profile_images').delete().eq('user_id', profileData.id);
-            const profileImagesData = images.map(url => ({ user_id: profileData.id, image_url: url }));
-            const { error: imageInsertError } = await supabase.from('user_profile_images').insert(profileImagesData);
-            if (imageInsertError) {
-                setError(`Profil gemt, men billeder kunne ikke gemmes: ${imageInsertError.message}`);
+            if (images.length > 0) {
+                const profileImagesData = images.map(url => ({ user_id: profileData.id, image_url: url }));
+                const { error: imageInsertError } = await supabase.from('user_profile_images').insert(profileImagesData);
+                if (imageInsertError) {
+                    setError(`Profil gemt, men billeder kunne ikke gemmes: ${imageInsertError.message}`);
+                }
             }
 
             await supabase.from('user_interests').delete().eq('user_id', profileData.id);
@@ -186,7 +184,7 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
                         {/* Left Column */}
                         <div className="space-y-4">
                              <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Profilbilleder (1-6 påkrævet)</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Profilbilleder (valgfrit)</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {images.map((img, index) => (
                                         <div key={index} className="relative aspect-square">

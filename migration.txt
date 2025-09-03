@@ -314,7 +314,6 @@ CREATE POLICY "Allow users to manage their own traits" ON public.user_traits FOR
 );
 -- Organizations
 CREATE POLICY "Allow public read access to organizations" ON public.organizations FOR SELECT USING (true);
-CREATE POLICY "Allow users to create their own organization profile" ON public.organizations FOR INSERT WITH CHECK (auth.uid() = auth_id);
 CREATE POLICY "Allow organization owner to update their profile" ON public.organizations FOR UPDATE USING (auth.uid() = auth_id);
 -- Organization Opportunities & Updates
 CREATE POLICY "Allow public read access to organization opportunities" ON public.organization_opportunities FOR SELECT USING (true);
@@ -386,20 +385,32 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
--- Section 6: Stored Procedures
-CREATE OR REPLACE FUNCTION public.create_organization_profile(
-    auth_id uuid,
-    name text,
-    phone text,
-    description text,
-    logo_url text
-)
-RETURNS void AS $$
+-- Section 6: Stored Procedures & Triggers
+-- Drop the old RPC function as it's now replaced by the trigger
+DROP FUNCTION IF EXISTS public.create_organization_profile(uuid, text, text, text, text);
+
+-- Function to automatically create an organization profile when a new organization user signs up
+CREATE OR REPLACE FUNCTION public.handle_new_organization_user()
+RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.organizations (auth_id, name, phone, description, logo_url)
-  VALUES (create_organization_profile.auth_id, create_organization_profile.name, create_organization_profile.phone, create_organization_profile.description, create_organization_profile.logo_url);
+  -- Check if the new user is marked as an organization in their metadata
+  IF NEW.raw_user_meta_data->>'is_organization' = 'true' THEN
+    -- Insert a corresponding profile into the public.organizations table
+    INSERT INTO public.organizations (auth_id, name)
+    VALUES (NEW.id, NEW.raw_user_meta_data->>'full_name');
+  END IF;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Grant execution rights
-GRANT EXECUTE ON FUNCTION public.create_organization_profile(uuid, text, text, text, text) TO authenticated;
+-- Assign ownership to the correct Supabase admin role for auth triggers
+-- This is critical for the function to have the necessary permissions.
+ALTER FUNCTION public.handle_new_organization_user() OWNER TO supabase_auth_admin;
+
+-- Trigger to execute the function after a new user is created
+-- Drop existing trigger if it exists, to prevent duplication on re-running script
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_organization_user();

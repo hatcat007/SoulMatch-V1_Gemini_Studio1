@@ -1,5 +1,6 @@
 // Fix: Import ObjectCannedACL to use its type-safe values.
-import { S3Client, PutObjectCommand, ObjectCannedACL } from '@aws-sdk/client-s3';
+// FIX: Changed S3Client to S3 to resolve a potential type resolution issue where the `send` method was not found.
+import { S3, PutObjectCommand, ObjectCannedACL } from '@aws-sdk/client-s3';
 
 // ===================================================================================
 // !!! SECURITY WARNING !!!
@@ -35,7 +36,8 @@ export async function uploadFile(file: File): Promise<string> {
     // This is a robust pattern that ensures the client is instantiated in a clean
     // browser execution context, avoiding environment detection conflicts caused
     // by polyfills from other services (which leads to the 'fs.readFile' error).
-    const s3Client = new S3Client(s3Config);
+    // FIX: Changed S3Client to S3. The S3 class extends S3Client and should also have the .send() method.
+    const s3Client = new S3(s3Config);
     
     // Use a unique file name to avoid overwrites, sanitizing the original name.
     const sanitizedFileName = file.name.replace(/\s+/g, '_');

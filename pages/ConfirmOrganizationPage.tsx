@@ -108,7 +108,7 @@ const ConfirmOrganizationPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-     if (!email || !password) {
+    if (!email || !password) {
         setError("Email and password are required to create an account.");
         return;
     }
@@ -116,13 +116,14 @@ const ConfirmOrganizationPage: React.FC = () => {
     setError(null);
     setMessage(null);
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    // Step 1: Sign up the user. The trigger will automatically create the basic organization row.
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
             data: {
                 full_name: formData.name,
-                is_organization: true,
+                is_organization: true, // This metadata is crucial for the trigger
             }
         }
     });
@@ -133,36 +134,37 @@ const ConfirmOrganizationPage: React.FC = () => {
         return;
     }
 
-    if (data.user && data.user.identities?.length === 0) {
+    if (signUpData.user && signUpData.user.identities?.length === 0) {
         setMessage('User with this email already exists. Please log in.');
         setLoading(false);
         return;
     }
 
-    if (data.user) {
-        const { error: rpcError } = await supabase.rpc('create_organization_profile', {
-            auth_id: data.user.id,
-            name: formData.name,
-            phone: formData.phone,
-            description: formData.description,
-            logo_url: formData.logo
-        });
+    // Step 2: If user is created, update the organization profile with the form details.
+    if (signUpData.user) {
+        const { error: updateError } = await supabase
+            .from('organizations')
+            .update({
+                name: formData.name,
+                phone: formData.phone,
+                description: formData.description,
+                logo_url: formData.logo,
+            })
+            .eq('auth_id', signUpData.user.id);
 
-        if (rpcError) {
-            setError(`Account created, but failed to save organization profile: ${rpcError.message}`);
+        if (updateError) {
+            setError(`Account created, but failed to update organization profile: ${updateError.message}`);
             setLoading(false);
             return;
         }
     }
     
     // If email verification is disabled, user is logged in.
-    // Give a more appropriate message.
-    if (data.session) {
+    if (signUpData.session) {
         setMessage('Success! Your organization profile has been created. You will be logged in shortly.');
          setTimeout(() => {
-            // The App.tsx listener will handle the redirect, but we can force it
              window.location.hash = '/dashboard';
-             window.location.reload(); // Force a refresh to re-evaluate auth state
+             window.location.reload();
         }, 2000);
     } else {
         setMessage('Tjek din email for at bekræfte din organisations konto.');
