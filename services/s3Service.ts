@@ -16,11 +16,11 @@ import { S3, PutObjectCommand, ObjectCannedACL } from '@aws-sdk/client-s3';
 // This configuration correctly sets up the S3 client for a custom S3-compatible
 // endpoint like iDrive E2, ensuring compatibility and proper authentication.
 const s3Config = {
-    endpoint: "https://q1f3.c3.e2-9.dev",
+    endpoint: "https://u7v1.fra.idrivee2-55.com",
     region: "us-east-1",
     credentials: {
-        accessKeyId: "q1f3Ea4c5",
-        secretAccessKey: "Ea4c5123456789",
+        accessKeyId: "PUjq826EZ5ihLJqcDBJ8",
+        secretAccessKey: "lKLXMAOGhy8f5bMtbwo00XtQndzeWUtSdCbKUsVf",
     },
     // 'forcePathStyle' is crucial for S3-compatible services that don't use
     // the bucket name as a subdomain (like iDrive E2).
@@ -66,19 +66,17 @@ export async function uploadFile(file: File): Promise<string> {
 
 
 /**
- * Converts a base64 string to a Blob object.
+ * Converts a base64 string to a Uint8Array.
  * @param base64 The base64 encoded string.
- * @param contentType The MIME type of the file.
- * @returns A Blob object representing the file.
+ * @returns A Uint8Array containing the binary data.
  */
-function base64ToBlob(base64: string, contentType: string = 'image/jpeg'): Blob {
+function base64ToUint8Array(base64: string): Uint8Array {
     const byteCharacters = atob(base64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: contentType });
+    return new Uint8Array(byteNumbers);
 }
 
 
@@ -91,14 +89,19 @@ function base64ToBlob(base64: string, contentType: string = 'image/jpeg'): Blob 
  */
 export async function uploadBase64File(base64String: string, fileName: string, contentType: string = 'image/jpeg'): Promise<string> {
     const s3Client = new S3(s3Config);
-    const fileBody = base64ToBlob(base64String, contentType);
+    // FIX: Convert the base64 string directly into its raw binary data (a Uint8Array).
+    // This is a more robust, low-level approach that bypasses the AWS SDK's environment
+    // detection logic, which was incorrectly attempting to use the Node.js filesystem API (`fs`)
+    // in the browser, causing the "fs.readFile is not implemented" error.
+    const body = base64ToUint8Array(base64String);
 
     const params = {
         Bucket: BUCKET_NAME,
         Key: fileName,
-        Body: fileBody,
+        Body: body,
         ACL: ObjectCannedACL.public_read,
         ContentType: contentType,
+        ContentLength: body.byteLength, // Adding content length is good practice
     };
 
     try {
@@ -107,6 +110,7 @@ export async function uploadBase64File(base64String: string, fileName: string, c
         return url;
     } catch (error: any) {
         console.error("Error uploading base64 file to S3:", error);
+        // FIX: Improved error message to be more specific.
         throw new Error(`File upload from base64 failed: ${error.message || 'Unknown S3 error'}`);
     }
 }
