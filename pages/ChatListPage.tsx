@@ -118,18 +118,30 @@ const ChatListPage: React.FC = () => {
             </div>
 
             <div>
-                <h2 className="text-lg font-semibold text-text-primary mb-3">Online nu</h2>
-                <div className="flex space-x-4 overflow-x-auto pb-2">
-                    {onlineUsers.map(user => (
-                        <div key={user.id} className="flex flex-col items-center flex-shrink-0 w-20">
-                            <div className="relative">
-                                <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover" />
-                                <span className="absolute bottom-0 right-0 block h-4 w-4 rounded-full bg-green-500 border-2 border-white"></span>
+                <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Online nu</h2>
+                {onlineUsers.length > 0 ? (
+                    <div className="flex space-x-4 overflow-x-auto pb-3 scrollbar-hide">
+                        {onlineUsers.map(user => (
+                            <div key={user.id} className="flex flex-col items-center text-center w-20 flex-shrink-0">
+                                <div className="relative">
+                                    {user.avatar_url ? (
+                                        <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
+                                    ) : (
+                                        <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold shadow-md">
+                                            {user.name.charAt(0)}
+                                        </div>
+                                    )}
+                                    <span className="absolute bottom-0.5 right-0.5 block h-4 w-4 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface animate-pulse-slow"></span>
+                                </div>
+                                <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
                             </div>
-                            <p className="text-sm mt-1 truncate w-full text-center">{user.name}</p>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-sm text-text-secondary dark:text-dark-text-secondary bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+                        Ingen er online lige nu.
+                    </div>
+                )}
             </div>
 
             <div className="mt-6 flex-1">

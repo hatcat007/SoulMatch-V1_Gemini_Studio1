@@ -31,6 +31,7 @@ CREATE TABLE "public"."users" (
     "personality_type" character varying(4),
     "emojis" text[],
     "personality_test_completed" boolean DEFAULT false NOT NULL,
+    "is_admin" boolean DEFAULT false NOT NULL,
     "created_at" timestamptz DEFAULT now() NOT NULL,
     "auth_id" uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE
 );
@@ -171,11 +172,11 @@ ALTER TABLE public.messages DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_participants DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.friends DISABLE ROW LEVEL SECURITY;
 
-INSERT INTO "public"."users" ("id", "name", "age", "avatar_url", "online", "bio", "location", "personality_type", "emojis", "personality_test_completed") VALUES
-(1, 'Anne', 24, 'https://picsum.photos/id/1011/100/100', true, 'Kreativt menneske som elsker film, gaming, katte og gåture. Lad os mødes til en god kaffe 😊', 'Aalborg, Denmark', 'INFJ', ARRAY['😉','🎮','☕'], true),
-(2, 'Jens', 26, 'https://picsum.photos/id/1025/100/100', true, 'Elsker natur og brætspil.', 'København, Denmark', 'ESTP', ARRAY['🌳','🎲','🍻'], true),
-(4, 'Victoria', 25, 'https://picsum.photos/id/1013/100/100', false, 'Bogelsker og museums-entusiast.', 'Aarhus, Denmark', 'INFP', ARRAY['📚','🎨','🏛️'], true),
-(999, 'Mig', 25, 'https://i.pravatar.cc/80?u=999', true, 'Søger nye venner at udforske byen med.', 'Odense, Denmark', 'ENFP', ARRAY['🗺️','🍕','🎵'], true);
+INSERT INTO "public"."users" ("id", "name", "age", "avatar_url", "online", "bio", "location", "personality_type", "emojis", "personality_test_completed", "is_admin") VALUES
+(1, 'Anne', 24, 'https://picsum.photos/id/1011/100/100', true, 'Kreativt menneske som elsker film, gaming, katte og gåture. Lad os mødes til en god kaffe 😊', 'Aalborg, Denmark', 'INFJ', ARRAY['😉','🎮','☕'], true, false),
+(2, 'Jens', 26, 'https://picsum.photos/id/1025/100/100', true, 'Elsker natur og brætspil.', 'København, Denmark', 'ESTP', ARRAY['🌳','🎲','🍻'], true, false),
+(4, 'Victoria', 25, 'https://picsum.photos/id/1013/100/100', false, 'Bogelsker og museums-entusiast.', 'Aarhus, Denmark', 'INFP', ARRAY['📚','🎨','🏛️'], true, false),
+(999, 'Mig', 25, 'https://i.pravatar.cc/80?u=999', true, 'Søger nye venner at udforske byen med.', 'Odense, Denmark', 'ENFP', ARRAY['🗺️','🍕','🎵'], true, true);
 
 INSERT INTO "public"."interests" ("id", "name") VALUES
 (1, 'Gaming'), (2, 'Film'), (3, 'Kaffe'), (4, 'Brætspil'), (5, 'Musik'), (6, 'Gåtur'), (7, 'Madlavning'), (8, 'Fotografering'), (9, 'Bøger');
@@ -284,6 +285,8 @@ CREATE POLICY "Allow public read access to event participants" ON public.event_p
 CREATE POLICY "Allow users to manage their own event participation" ON public.event_participants FOR ALL USING (
     (SELECT auth_id FROM public.users WHERE id = user_id) = auth.uid()
 );
+-- Places
+CREATE POLICY "Allow public read access to places" ON public.places FOR SELECT USING (true);
 -- Messages and Threads
 CREATE POLICY "Allow users to access their own threads" ON public.message_threads FOR SELECT USING (
     id IN (

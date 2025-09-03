@@ -1,4 +1,6 @@
 
+
+
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
@@ -26,6 +28,7 @@ import ConfirmOrganizationPage from './pages/ConfirmOrganizationPage';
 import CreateProfilePage from './pages/CreateProfilePage';
 import PersonalityTestPage from './pages/PersonalityTestPage';
 import FriendsPage from './pages/FriendsPage';
+import AdminPage from './pages/AdminPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { useNotifications } from './hooks/useNotifications';
 import type { NotificationType, User } from './types';
@@ -73,7 +76,7 @@ const MockNotificationGenerator: React.FC = () => {
   return null;
 };
 
-const MainAppRoutes: React.FC = () => (
+const MainAppRoutes: React.FC<{ onTestComplete: () => void }> = ({ onTestComplete }) => (
     <NotificationProvider>
       <div className="relative md:flex max-w-7xl mx-auto">
         <BottomNav />
@@ -98,6 +101,8 @@ const MainAppRoutes: React.FC = () => (
                 <Route path="/faq" element={<FAQPage />} />
                 <Route path="/privacy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms" element={<TermsOfServicePage />} />
+                <Route path="/personality-test" element={<PersonalityTestPage onTestComplete={onTestComplete} />} />
+                <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<Navigate to="/home" />} />
               </Routes>
           </div>
@@ -195,7 +200,7 @@ const AppContent: React.FC = () => {
 
   // User is logged in, determine which part of the app to show.
   if (profile && profile.personality_test_completed) {
-    return <MainAppRoutes />;
+    return <MainAppRoutes onTestComplete={handleTestComplete} />;
   }
 
   // Onboarding Flow for logged-in users

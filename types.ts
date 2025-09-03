@@ -9,6 +9,7 @@ export interface User {
   personality_type?: string;
   emojis?: string[] | null;
   personality_test_completed?: boolean;
+  is_admin?: boolean;
 }
 
 export interface Event {

@@ -1,7 +1,9 @@
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, MessageCircle, Edit, Save, Plus, X, Users } from 'lucide-react';
+import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck } from 'lucide-react';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import type { User, Interest } from '../types';
@@ -25,13 +27,22 @@ interface ProfileImage {
 const emojiOptions = ['😉', '🎮', '☕', '🌳', '🎲', '🍻', '📚', '🎨', '🏛️', '🗺️', '🍕', '🎵'];
 const MAX_EMOJIS = 3;
 
-const TraitSlider: React.FC<{ trait: Trait; isEditing: boolean; onChange: (value: number) => void }> = ({ trait, isEditing, onChange }) => {
+const traitLabels: Record<string, { low: string; high: string }> = {
+    'Abstrakt opfattelse': { low: 'Observant', high: 'Abstrakt' },
+    'Emotionel tænkning': { low: 'Logik-baseret', high: 'Følelses-baseret' },
+    'Rationel tænkning': { low: 'Følelses-baseret', high: 'Logik-baseret' },
+    'Konkret opfattelse': { low: 'Abstrakt', high: 'Praktisk' }
+};
+
+const TraitSlider: React.FC<{ trait: Trait }> = ({ trait }) => {
   const isBalanced = trait.value > 40 && trait.value < 60;
+  const labels = traitLabels[trait.label] || { low: '', high: '' };
+  
   return (
     <div className="mb-4">
         <div className="flex justify-between items-center mb-1 text-sm text-gray-600 dark:text-dark-text-secondary">
             <span>{trait.label}</span>
-            {isEditing && <span>{trait.value}</span>}
+            <span>{trait.value}</span>
         </div>
         <div className="w-full bg-gray-200 dark:bg-dark-surface-light rounded-full h-2 relative">
              <div className="bg-gray-300 dark:bg-dark-border h-2 absolute top-0 left-1/2 w-px"></div>
@@ -40,19 +51,12 @@ const TraitSlider: React.FC<{ trait: Trait; isEditing: boolean; onChange: (value
                 style={{ width: `${Math.abs(trait.value - 50)}%`, left: `${Math.min(trait.value, 50)}%` }}
             ></div>
         </div>
-        {isEditing && (
-            <input 
-                type="range" min="0" max="100" value={trait.value} 
-                onChange={(e) => onChange(parseInt(e.target.value, 10))}
-                className="w-full mt-2"
-            />
-        )}
         <div className="flex justify-between items-center mt-1 text-xs text-gray-500 dark:text-dark-text-secondary/80">
-            <span>{trait.value > 50 ? '' : 'Indadvendt'}</span>
-            <span>{trait.value < 50 ? '' : 'Udadvendt'}</span>
+            <span>{labels.low}</span>
+            <span>{labels.high}</span>
         </div>
     </div>
-  )
+  );
 };
 
 const ProfilePage: React.FC = () => {
@@ -124,9 +128,6 @@ const ProfilePage: React.FC = () => {
             emojis: formState.emojis,
         }).eq('id', user.id);
         if (userError) console.error('Error updating user:', userError);
-
-        // Personality traits are no longer updated here.
-        // They are exclusively managed by the PersonalityTestPage.
 
         await fetchProfile(); // Re-fetch to show saved data
     };
@@ -218,13 +219,24 @@ const ProfilePage: React.FC = () => {
                     )}
                 </div>
                  <div className="w-full max-w-xs space-y-3">
-                    <button onClick={isEditing ? handleSave : () => setIsEditing(true)} className="flex items-center justify-center w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg">
-                        {isEditing ? <><Save size={20} className="mr-2"/> Gem Profil</> : <><Edit size={20} className="mr-2"/> Rediger Profil</>}
-                    </button>
-                    {!isEditing && (
-                        <Link to="/friends" className="flex items-center justify-center w-full bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition duration-300">
-                            <Users size={20} className="mr-2"/> Venner
-                        </Link>
+                    {isEditing ? (
+                        <button onClick={handleSave} className="flex items-center justify-center w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg">
+                            <Save size={20} className="mr-2"/> Gem Profil
+                        </button>
+                    ) : (
+                       <>
+                            <button onClick={() => setIsEditing(true)} className="flex items-center justify-center w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg">
+                                <Edit size={20} className="mr-2"/> Rediger Profil
+                            </button>
+                            <Link to="/friends" className="flex items-center justify-center w-full bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition duration-300">
+                                <Users size={20} className="mr-2"/> Venner
+                            </Link>
+                            {user?.is_admin && (
+                               <Link to="/admin" className="flex items-center justify-center w-full bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 font-bold py-3 px-4 rounded-full text-lg hover:bg-red-200 dark:hover:bg-red-500/30 transition duration-300">
+                                   <ShieldCheck size={20} className="mr-2"/> Admin Panel
+                               </Link>
+                           )}
+                       </>
                     )}
                 </div>
             </div>
@@ -265,19 +277,19 @@ const ProfilePage: React.FC = () => {
                     {displayTraits.map(trait => (
                         <TraitSlider 
                             key={trait.label} 
-                            trait={trait} 
-                            isEditing={false} 
-                            onChange={() => {}}
+                            trait={trait}
                         />
                     ))}
-                    {isEditing && (
-                        <button
-                            type="button"
-                            onClick={() => navigate('/personality-test')}
-                            className="mt-4 w-full bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition duration-300"
-                        >
-                            Tag testen igen
-                        </button>
+                    {!isEditing && (
+                        <div className="mt-6">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/personality-test')}
+                                className="flex items-center justify-center w-full bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition duration-300"
+                            >
+                                <BrainCircuit size={20} className="mr-2"/> Tag testen igen
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
