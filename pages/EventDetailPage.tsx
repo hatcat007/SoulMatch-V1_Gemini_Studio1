@@ -83,7 +83,7 @@ const EventDetailPage: React.FC = () => {
                 console.error('Error fetching event details:', error);
                 setEvent(null);
             } else {
-                const transformedEvent = { ...data, participants: data.participants.map((p: any) => p.user) };
+                const transformedEvent = { ...data, participants: data.participants.map((p: any) => p.user).filter(Boolean) };
                 setEvent(transformedEvent as Event);
                 setIsJoined(transformedEvent.participants.some((p: User) => p.id === userProfile.id));
             }

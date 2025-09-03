@@ -70,25 +70,30 @@ const HomePage: React.FC = () => {
     const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            const { data: eventsData, error: eventsError } = await supabase
-                .from('events')
-                .select(`
-                    *,
-                    event_participants ( count )
-                `);
+    const fetchEvents = async () => {
+        const { data: eventsData, error: eventsError } = await supabase
+            .from('events')
+            .select(`
+                *,
+                event_participants ( count )
+            `);
 
-            if (eventsError) {
-                console.error('Error fetching events:', eventsError);
-            } else {
-                const eventsWithParticipantCount = eventsData.map(e => ({
-                    ...e,
-                    participantCount: e.event_participants?.[0]?.count || 0
-                }));
-                setEvents(eventsWithParticipantCount);
-            }
+        if (eventsError) {
+            console.error('Error fetching events:', eventsError);
+            return [];
+        } else {
+            return eventsData.map(e => ({
+                ...e,
+                participantCount: e.event_participants?.[0]?.count || 0
+            }));
+        }
+    };
+
+    useEffect(() => {
+        const fetchInitialData = async () => {
+            setLoading(true);
+            const eventsData = await fetchEvents();
+            setEvents(eventsData);
 
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
@@ -96,14 +101,22 @@ const HomePage: React.FC = () => {
                 .eq('online', true)
                 .limit(4);
 
-            if (usersError) {
-                console.error('Error fetching online users:', usersError);
-            } else {
-                setOnlineUsers(usersData);
-            }
+            if (usersError) console.error('Error fetching online users:', usersError);
+            else setOnlineUsers(usersData);
             setLoading(false);
         };
-        fetchData();
+        fetchInitialData();
+
+        const channel = supabase.channel('realtime events')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, async () => {
+                const updatedEvents = await fetchEvents();
+                setEvents(updatedEvents);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const filteredEvents = useMemo(() => {

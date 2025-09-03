@@ -97,12 +97,20 @@ const PlacesPage: React.FC = () => {
     const [shareConfirmation, setShareConfirmation] = useState('');
     const [loading, setLoading] = useState(true);
 
+    const fetchPlaces = async () => {
+        const { data, error } = await supabase.from('places').select('*');
+        if (error) {
+            console.error('Error fetching places:', error);
+            return [];
+        }
+        return data || [];
+    };
+
     useEffect(() => {
         const fetchInitialData = async () => {
             setLoading(true);
-            const { data: placesData, error: placesError } = await supabase.from('places').select('*');
-            if (placesError) console.error('Error fetching places:', placesError);
-            else setPlaces(placesData || []);
+            const placesData = await fetchPlaces();
+            setPlaces(placesData);
 
             const { data: { user: authUser } } = await supabase.auth.getUser();
             if (authUser) {
@@ -115,7 +123,6 @@ const PlacesPage: React.FC = () => {
                         
                         if (soulmateParticipants) {
                             const uniqueSoulmates = new Map<number, User>();
-                            // FIX: Supabase may return an array for a relationship. We take the first user if it's an array.
                             soulmateParticipants.forEach(p => {
                                 const userObject = Array.isArray(p.user) ? p.user[0] : p.user;
                                 if (userObject) {
@@ -134,6 +141,16 @@ const PlacesPage: React.FC = () => {
             setLoading(false);
         };
         fetchInitialData();
+
+        const channel = supabase.channel('realtime places')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'places' }, (payload) => {
+                setPlaces(currentPlaces => [payload.new as Place, ...currentPlaces]);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const filteredPlaces = useMemo(() => {

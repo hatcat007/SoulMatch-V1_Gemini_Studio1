@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit } from 'lucide-react';
+import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical } from 'lucide-react';
 import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
-import { GoogleGenAI } from "@google/genai";
+import { getAiClient } from '../services/geminiService';
 import type { Chat } from "@google/genai";
+import ReportUserModal from '../components/ReportUserModal';
 
 
 const formatMeetingTime = (matchTimestamp?: string): string | null => {
@@ -31,6 +32,7 @@ const ChatPage: React.FC = () => {
     const { chatId } = useParams<{ chatId: string }>();
     const navigate = useNavigate();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const optionsMenuRef = useRef<HTMLDivElement>(null);
     
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
@@ -41,6 +43,9 @@ const ChatPage: React.FC = () => {
     const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>('loading');
     const [aiChat, setAiChat] = useState<Chat | null>(null);
     const [isAiReplying, setIsAiReplying] = useState(false);
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+
 
     const isAiMentorChat = chatId === 'ai-mentor';
     const meetingTimeText = useMemo(() => formatMeetingTime(thread?.match_timestamp), [thread]);
@@ -69,7 +74,7 @@ const ChatPage: React.FC = () => {
                 thread_id: 'ai-mentor'
             }]);
             
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = getAiClient();
             const chat = ai.chats.create({
               model: 'gemini-2.5-flash',
               config: {
@@ -149,6 +154,19 @@ const ChatPage: React.FC = () => {
         ).subscribe();
         return () => { supabase.removeChannel(channel); };
     }, [chatId, isAiMentorChat]);
+
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) {
+                setIsOptionsMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
 
     const scrollToBottom = () => {
@@ -254,6 +272,37 @@ const ChatPage: React.FC = () => {
         }
     };
 
+    const renderHeaderActions = () => {
+        if (isAiMentorChat) return null;
+        return (
+            <div className="flex items-center space-x-1">
+                {renderFriendButton()}
+                <div className="relative" ref={optionsMenuRef}>
+                    <button 
+                        onClick={() => setIsOptionsMenuOpen(prev => !prev)} 
+                        className="p-2 text-gray-500 dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-surface-light rounded-full"
+                        aria-label="Flere valg"
+                    >
+                        <MoreVertical size={24} />
+                    </button>
+                    {isOptionsMenuOpen && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface rounded-lg shadow-xl z-20 border border-gray-100 dark:border-dark-border">
+                            <button
+                                onClick={() => {
+                                    setIsReportModalOpen(true);
+                                    setIsOptionsMenuOpen(false);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 font-semibold"
+                            >
+                                Anmeld {otherUser?.name}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     if (loading) {
         return <div className="p-4 text-center">Loading chat...</div>;
     }
@@ -285,7 +334,9 @@ const ChatPage: React.FC = () => {
                         <p className="text-xs text-text-secondary dark:text-dark-text-secondary font-semibold mt-1">{meetingTimeText}</p>
                     )}
                 </div>
-                {isAiMentorChat ? <div className="w-24 h-8" /> : renderFriendButton()}
+                <div className="min-w-[140px] flex justify-end">
+                    {renderHeaderActions()}
+                </div>
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
@@ -354,6 +405,14 @@ const ChatPage: React.FC = () => {
                     </div>
                 </form>
             </footer>
+            {currentUser && otherUser && (
+                <ReportUserModal
+                    isOpen={isReportModalOpen}
+                    onClose={() => setIsReportModalOpen(false)}
+                    reporterUser={currentUser}
+                    reportedUser={otherUser}
+                />
+            )}
         </div>
     );
 };

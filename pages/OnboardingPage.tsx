@@ -1,11 +1,12 @@
+
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 
 // A simple component for the animated avatar graphic
 const AvatarGraphic: React.FC<{ mainImage: string; orbitingImages: string[] }> = ({ mainImage, orbitingImages }) => (
-    <div className="relative w-48 h-48">
-        <img src={mainImage} alt="Main user" className="rounded-full w-48 h-48 border-4 border-white shadow-lg"/>
+    <div className="relative w-48 h-48 sm:w-64 sm:h-64 lg:w-80 lg:h-80">
+        <img src={mainImage} alt="Main user" className="rounded-full w-full h-full border-4 border-white shadow-lg"/>
         {/* These positions are approximations based on the design */}
         <img src={orbitingImages[0]} alt="User 1" className="rounded-full w-14 h-14 absolute top-0 left-0 transform -translate-x-4 -translate-y-4 shadow-md"/>
         <img src={orbitingImages[1]} alt="User 2" className="rounded-full w-12 h-12 absolute top-0 right-0 transform translate-x-4 -translate-y-2 shadow-md"/>
@@ -41,9 +42,9 @@ const onboardingSteps = [
   },
   {
     graphic: (
-        <div className="relative w-48 h-48 flex items-center justify-center">
-             <div className="absolute w-48 h-48 bg-blue-100 rounded-full"></div>
-             <Shield size={96} className="text-primary z-10" strokeWidth={1.5}/>
+        <div className="relative w-48 h-48 sm:w-64 sm:h-64 flex items-center justify-center">
+             <div className="absolute w-full h-full bg-blue-100 dark:bg-primary/20 rounded-full"></div>
+             <Shield size={128} className="text-primary z-10" strokeWidth={1.5}/>
         </div>
     ),
     title: "Sikkerhed er utrolig vigtigt",
@@ -68,36 +69,50 @@ const OnboardingPage: React.FC = () => {
   const currentStep = onboardingSteps[step];
 
   return (
-    <div className="flex flex-col h-full bg-white text-center p-8 justify-between">
-      <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-dark-background flex flex-col">
+        <header className="p-6 self-start">
+             <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
+        </header>
+        <main className="flex-1 w-full grid grid-cols-1 lg:grid-cols-2 items-center justify-items-center gap-8 px-6 pb-8">
+            {/* Left: Graphic */}
+            <div className="hidden lg:flex items-center justify-center w-full h-full">
+                <div className="transform scale-110">
+                    {currentStep.graphic}
+                </div>
+            </div>
 
-      <div className="flex-1 flex items-center justify-center min-h-0 my-4">
-        {currentStep.graphic}
-      </div>
-      
-      <div className="flex-1 flex flex-col justify-center min-h-0">
-        <h1 className="text-3xl font-bold text-text-primary mb-4">{currentStep.title}</h1>
-        <p className="text-text-secondary text-lg mb-8 px-4">
-          {currentStep.description}
-        </p>
-      </div>
+             {/* Right / Main Content */}
+            <div className="w-full max-w-md flex flex-col items-center text-center">
+                 {/* Graphic for mobile */}
+                <div className="flex-1 flex items-center justify-center min-h-0 my-4 lg:hidden">
+                    {currentStep.graphic}
+                </div>
+                
+                <div className="flex-1 flex flex-col justify-center min-h-0 mt-8">
+                    <h2 className="text-3xl sm:text-4xl font-bold text-text-primary dark:text-dark-text-primary mb-4">{currentStep.title}</h2>
+                    <p className="text-text-secondary dark:text-dark-text-secondary text-lg mb-8 px-4">
+                        {currentStep.description}
+                    </p>
+                </div>
 
-      <div className="flex-shrink-0">
-        <div className="flex justify-center space-x-2 mb-8">
-            {onboardingSteps.map((_, index) => (
-                <div key={index} className={`w-2.5 h-2.5 rounded-full transition-colors duration-300 ${step === index ? 'bg-primary' : 'bg-gray-300'}`}></div>
-            ))}
-        </div>
-        <button
-          onClick={handleNext}
-          className="block w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
-        >
-          Fortsæt
-        </button>
-        <p className="mt-4 text-text-secondary">
-          Har du allerede en bruger? <Link to="/login" className="font-bold text-primary">Log ind</Link>
-        </p>
-      </div>
+                <div className="w-full flex-shrink-0">
+                    <div className="flex justify-center space-x-2 mb-8">
+                        {onboardingSteps.map((_, index) => (
+                            <div key={index} className={`w-2.5 h-2.5 rounded-full transition-colors duration-300 ${step === index ? 'bg-primary' : 'bg-gray-300 dark:bg-dark-border'}`}></div>
+                        ))}
+                    </div>
+                    <button
+                        onClick={handleNext}
+                        className="block w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+                    >
+                        Fortsæt
+                    </button>
+                    <p className="mt-4 text-text-secondary dark:text-dark-text-secondary">
+                        Har du allerede en bruger? <Link to="/login" className="font-bold text-primary hover:underline">Log ind</Link>
+                    </p>
+                </div>
+            </div>
+        </main>
     </div>
   );
 };

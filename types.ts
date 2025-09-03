@@ -10,6 +10,7 @@ export interface User {
   emojis?: string[] | null;
   personality_test_completed?: boolean;
   is_admin?: boolean;
+  auth_id?: string;
 }
 
 export interface Event {
@@ -40,6 +41,7 @@ export interface Place {
   is_sponsored: boolean;
   phone: string;
   opening_hours: string;
+  organization_id?: number;
 }
 
 export interface MessageThread {
@@ -81,6 +83,7 @@ export interface Organization {
   website?: string;
   opportunities?: OrganizationOpportunity[];
   updates?: OrganizationUpdate[];
+  auth_id?: string;
 }
 
 export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';
@@ -111,4 +114,22 @@ export interface Friendship {
   // Eager-loaded user profiles for easier display
   user1?: User;
   user2?: User;
+}
+
+export interface UserReport {
+  id: number;
+  reporter_user_id: number;
+  reported_user_id: number;
+  reason: string;
+  comment?: string;
+  status: 'new' | 'under_review' | 'resolved';
+  created_at: string;
+}
+
+export interface Checkin {
+  id: number;
+  place_id: number;
+  user_id_1: number;
+  user_id_2: number;
+  created_at: string;
 }

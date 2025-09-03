@@ -1,0 +1,131 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../services/supabase';
+import type { Organization, Event, Place } from '../../types';
+import BarChart from '../../components/BarChart';
+import { Calendar, MapPin, Users, CheckCircle } from 'lucide-react';
+
+interface EventWithParticipants extends Event {
+  participant_count: number;
+}
+
+interface PlaceWithCheckins extends Place {
+  checkin_count: number;
+}
+
+const OrganizationDashboardPage: React.FC = () => {
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [events, setEvents] = useState<EventWithParticipants[]>([]);
+  const [places, setPlaces] = useState<PlaceWithCheckins[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (orgData) {
+        setOrganization(orgData);
+
+        const { data: eventsData } = await supabase
+            .from('events')
+            .select('*, event_participants(count)')
+            .eq('organization_id', orgData.id);
+
+        if (eventsData) {
+            setEvents(eventsData.map(e => ({ ...e, participant_count: e.event_participants[0]?.count || 0 })));
+        }
+
+        // FIX: Replaced an inefficient and buggy multi-step process for fetching check-in counts
+        // with a single, performant query using Supabase's relationship count feature.
+        // This resolves the original TypeScript error and aligns with best practices shown
+        // elsewhere in this file for fetching event participant counts.
+        const { data: placesData } = await supabase
+            .from('places')
+            .select('*, checkins(count)')
+            .eq('organization_id', orgData.id);
+
+        if (placesData) {
+            setPlaces(placesData.map((p: any) => ({ ...p, checkin_count: p.checkins[0]?.count || 0 })));
+        }
+      }
+      setLoading(false);
+    };
+    fetchDashboardData();
+  }, []);
+  
+  if (loading) {
+    return <div className="p-8 text-center">Loading Dashboard...</div>;
+  }
+  if (!organization) {
+    return <div className="p-8 text-center">Could not find organization data.</div>;
+  }
+  
+  const eventChartData = events.map(e => ({ label: e.title, value: e.participant_count })).slice(0, 5);
+  const placeChartData = places.map(p => ({ label: p.name, value: p.checkin_count })).slice(0, 5);
+
+  return (
+    <div className="p-6 md:p-8">
+      <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Dashboard</h1>
+      <p className="text-text-secondary dark:text-dark-text-secondary mt-1">Velkommen, {organization.name}!</p>
+
+      <section className="mt-8">
+        <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Statistik</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <BarChart data={eventChartData} title="Deltagere pr. Event (Top 5)" />
+            <BarChart data={placeChartData} title="Check-ins pr. Mødested (Top 5)" />
+        </div>
+      </section>
+
+      <section className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Dine Events</h2>
+            <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-4 space-y-3 max-h-96 overflow-y-auto">
+                {events.length > 0 ? events.map(event => (
+                    <div key={event.id} className="flex items-center p-2 rounded-md hover:bg-gray-50 dark:hover:bg-dark-surface-light">
+                        <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-md mr-3"><Calendar className="text-primary" /></div>
+                        <div className="flex-1">
+                            <p className="font-semibold">{event.title}</p>
+                            <p className="text-sm text-text-secondary dark:text-dark-text-secondary">{new Date(event.time).toLocaleDateString('da-DK')}</p>
+                        </div>
+                        <div className="flex items-center text-sm font-semibold">
+                            <Users size={16} className="mr-1.5" />
+                            {event.participant_count}
+                        </div>
+                    </div>
+                )) : <p className="text-center text-text-secondary dark:text-dark-text-secondary p-4">Ingen events oprettet.</p>}
+            </div>
+        </div>
+        <div>
+            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Dine Mødesteder</h2>
+             <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-4 space-y-3 max-h-96 overflow-y-auto">
+                {places.length > 0 ? places.map(place => (
+                    <div key={place.id} className="flex items-center p-2 rounded-md hover:bg-gray-50 dark:hover:bg-dark-surface-light">
+                        <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-md mr-3"><MapPin className="text-primary" /></div>
+                        <div className="flex-1">
+                            <p className="font-semibold">{place.name}</p>
+                            <p className="text-sm text-text-secondary dark:text-dark-text-secondary">{place.address}</p>
+                        </div>
+                         <div className="flex items-center text-sm font-semibold">
+                            <CheckCircle size={16} className="mr-1.5" />
+                            {place.checkin_count}
+                        </div>
+                    </div>
+                )) : <p className="text-center text-text-secondary dark:text-dark-text-secondary p-4">Ingen mødesteder oprettet.</p>}
+            </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default OrganizationDashboardPage;

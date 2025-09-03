@@ -1,13 +1,11 @@
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck } from 'lucide-react';
+import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import type { User, Interest } from '../types';
 import { uploadFile } from '../services/s3Service';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Trait {
   label: string;
@@ -22,10 +20,12 @@ interface UserTrait {
 interface ProfileImage {
     id: number;
     image_url: string;
+    user_id: number;
 }
 
 const emojiOptions = ['😉', '🎮', '☕', '🌳', '🎲', '🍻', '📚', '🎨', '🏛️', '🗺️', '🍕', '🎵'];
 const MAX_EMOJIS = 3;
+const MAX_IMAGES = 6;
 
 const traitLabels: Record<string, { low: string; high: string }> = {
     'Abstrakt opfattelse': { low: 'Observant', high: 'Abstrakt' },
@@ -59,6 +59,106 @@ const TraitSlider: React.FC<{ trait: Trait }> = ({ trait }) => {
   );
 };
 
+const ProfileImageSlider: React.FC<{
+    images: ProfileImage[];
+    isEditing: boolean;
+    onDelete: (id: number) => void;
+    onAdd: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}> = ({ images, isEditing, onDelete, onAdd }) => {
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+
+    const prevSlide = () => {
+        const isFirstSlide = currentIndex === 0;
+        const newIndex = isFirstSlide ? images.length - 1 : currentIndex - 1;
+        setCurrentIndex(newIndex);
+    };
+
+    const nextSlide = () => {
+        const isLastSlide = currentIndex === images.length - 1;
+        const newIndex = isLastSlide ? 0 : currentIndex + 1;
+        setCurrentIndex(newIndex);
+    };
+    
+    const goToSlide = (slideIndex: number) => {
+        setCurrentIndex(slideIndex);
+    }
+    
+    useEffect(() => {
+        if(currentIndex >= images.length && images.length > 0) {
+            setCurrentIndex(images.length -1);
+        }
+    }, [images, currentIndex])
+
+    if (images.length === 0) {
+        return (
+            <div className="w-full aspect-square relative group bg-gray-100 dark:bg-dark-surface-light rounded-2xl flex items-center justify-center">
+                <div className="text-center text-gray-400 dark:text-dark-text-secondary">
+                    <ImageIcon size={48} className="mx-auto mb-2"/>
+                    <p>Ingen billeder</p>
+                </div>
+                 {isEditing && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                         <input type="file" ref={imageInputRef} onChange={onAdd} accept="image/*" className="hidden" />
+                         <button onClick={() => imageInputRef.current?.click()} className="bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary-dark transition flex items-center">
+                             <Plus size={24} className="mr-2"/> Tilføj billede
+                         </button>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+
+    return (
+        <div className="w-full aspect-square relative group">
+            <AnimatePresence>
+                <motion.div
+                    key={currentIndex}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-full h-full rounded-2xl bg-cover bg-center"
+                    style={{ backgroundImage: `url(${images[currentIndex]?.image_url})` }}
+                >
+                     {isEditing && (
+                        <button
+                            onClick={() => onDelete(images[currentIndex].id)}
+                            className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 z-10 hover:bg-red-700 transition"
+                            aria-label="Delete image"
+                        >
+                            <X size={18} />
+                        </button>
+                    )}
+                </motion.div>
+            </AnimatePresence>
+            
+            {images.length > 1 && (
+                 <>
+                    <button onClick={prevSlide} className="absolute top-1/2 -translate-y-1/2 left-2 bg-black/30 text-white p-2 rounded-full group-hover:opacity-100 opacity-0 transition-opacity z-10"><ChevronLeft size={24}/></button>
+                    <button onClick={nextSlide} className="absolute top-1/2 -translate-y-1/2 right-2 bg-black/30 text-white p-2 rounded-full group-hover:opacity-100 opacity-0 transition-opacity z-10"><ChevronRight size={24}/></button>
+                </>
+            )}
+
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1.5 z-10">
+                {images.map((_, slideIndex) => (
+                    <button key={slideIndex} onClick={() => goToSlide(slideIndex)} className={`w-2 h-2 rounded-full transition-colors ${currentIndex === slideIndex ? 'bg-white' : 'bg-white/50'}`}></button>
+                ))}
+            </div>
+
+            {isEditing && images.length < MAX_IMAGES && (
+                <div className="absolute bottom-0 right-0 m-2 z-10">
+                     <input type="file" ref={imageInputRef} onChange={onAdd} accept="image/*" className="hidden" />
+                     <button onClick={() => imageInputRef.current?.click()} className="bg-primary text-white p-3 rounded-full shadow-lg hover:bg-primary-dark transition">
+                         <Plus size={24}/>
+                     </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ProfilePage: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [profileImages, setProfileImages] = useState<ProfileImage[]>([]);
@@ -67,7 +167,6 @@ const ProfilePage: React.FC = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(true);
     const [formState, setFormState] = useState({ name: '', location: '', bio: '', emojis: [] as string[] });
-    const imageInputRef = useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
 
     const fetchProfile = async () => {
@@ -131,15 +230,37 @@ const ProfilePage: React.FC = () => {
 
         await fetchProfile(); // Re-fetch to show saved data
     };
+    
+    const updateMainAvatar = async (images: ProfileImage[]) => {
+        if (!user) return;
+        const newAvatar = images.length > 0 ? images[0].image_url : `https://i.pravatar.cc/120?u=${user.auth_id}`;
+
+        if (user.avatar_url !== newAvatar) {
+            const { error } = await supabase.from('users').update({ avatar_url: newAvatar }).eq('id', user.id);
+            if (!error) {
+                setUser(prev => prev ? { ...prev, avatar_url: newAvatar } : null);
+            } else {
+                console.error("Failed to update main avatar:", error);
+            }
+        }
+    };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0] && user) {
+        if (e.target.files && e.target.files[0] && user && profileImages.length < MAX_IMAGES) {
             const file = e.target.files[0];
             try {
                 const imageUrl = await uploadFile(file);
-                const { error } = await supabase.from('user_profile_images').insert({ user_id: user.id, image_url: imageUrl });
+                const { data: newImage, error } = await supabase
+                    .from('user_profile_images')
+                    .insert({ user_id: user.id, image_url: imageUrl })
+                    .select()
+                    .single();
+
                 if (error) throw error;
-                await fetchProfile();
+
+                const updatedImages = [...profileImages, newImage as ProfileImage];
+                setProfileImages(updatedImages);
+                await updateMainAvatar(updatedImages);
             } catch (error) {
                 console.error("Error uploading image:", error);
             }
@@ -148,9 +269,15 @@ const ProfilePage: React.FC = () => {
     
     const handleImageDelete = async (imageId: number) => {
         const { error } = await supabase.from('user_profile_images').delete().eq('id', imageId);
-        if (error) console.error("Error deleting image:", error);
-        else setProfileImages(prev => prev.filter(img => img.id !== imageId));
+        if (error) {
+            console.error("Error deleting image:", error);
+        } else {
+            const updatedImages = profileImages.filter(img => img.id !== imageId);
+            setProfileImages(updatedImages);
+            await updateMainAvatar(updatedImages);
+        }
     };
+
 
     if (loading) return <div className="p-4 text-center">Loading profile...</div>;
     if (!user) return <div className="p-4 text-center">Could not load profile.</div>;
@@ -180,12 +307,17 @@ const ProfilePage: React.FC = () => {
         </div>
         
         <div className="lg:grid lg:grid-cols-3 lg:gap-8">
+            {/* Left Column / Top Section on Mobile */}
             <div className="lg:col-span-1 flex flex-col items-center text-center">
-                <img 
-                    src={user.avatar_url || 'https://i.pravatar.cc/120?u=placeholder'}
-                    alt={user.name} 
-                    className="w-28 h-28 rounded-full border-4 border-white dark:border-dark-surface shadow-lg mb-3 object-cover"
-                />
+                 <div className="w-full max-w-sm mb-4">
+                    <ProfileImageSlider 
+                        images={profileImages}
+                        isEditing={isEditing}
+                        onDelete={handleImageDelete}
+                        onAdd={handleImageUpload}
+                    />
+                </div>
+                
                 {isEditing ? (
                     <input type="text" name="name" value={formState.name} onChange={handleInputChange} className="text-2xl font-bold text-center bg-gray-100 dark:bg-dark-surface-light rounded-md p-1"/>
                 ) : (
@@ -240,7 +372,8 @@ const ProfilePage: React.FC = () => {
                     )}
                 </div>
             </div>
-
+            
+            {/* Right Column / Bottom Section on Mobile */}
             <div className="lg:col-span-2 mt-8 lg:mt-0">
                 <div className="mb-6">
                     <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Interesser</h2>
@@ -250,27 +383,14 @@ const ProfilePage: React.FC = () => {
                                 {interest.name}
                             </div>
                         ))}
+                         {isEditing && (
+                            <button className="bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-full text-sm hover:bg-gray-300">
+                                + Tilføj
+                            </button>
+                        )}
                     </div>
                 </div>
                 
-                <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Billeder som beskriver mig</h2>
-                    <div className="grid grid-cols-3 gap-2">
-                        {profileImages.map(img => (
-                            <div key={img.id} className="relative aspect-square">
-                                <img src={img.image_url} alt="profile" className="rounded-lg aspect-square object-cover"/>
-                                {isEditing && <button onClick={() => handleImageDelete(img.id)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"><X size={16}/></button>}
-                            </div>
-                        ))}
-                        {isEditing && profileImages.length < 6 && (
-                            <button onClick={() => imageInputRef.current?.click()} className="flex items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
-                                <Plus size={32} className="text-gray-400"/>
-                            </button>
-                        )}
-                        <input type="file" ref={imageInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-                    </div>
-                </div>
-
                 <div>
                     <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Personlighed</h2>
                     <p className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">{user.personality_type}</p>

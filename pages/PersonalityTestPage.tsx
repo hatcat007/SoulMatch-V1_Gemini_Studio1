@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { analyzePersonality } from '../services/geminiService';
@@ -28,17 +28,6 @@ const longTestQuestions = [
     'Du stoler mere på din erfaring end din fantasi.',
 ];
 
-const thinkingSteps = [
-    { text: "Modtager brugerdata...", duration: 500 },
-    { text: "Analyserer bio for nøgleord...", duration: 1000 },
-    { text: "Krydsrefererer interesser...", duration: 1200 },
-    { text: "Vurderer testsvar...", duration: 1500 },
-    { text: "Syntetiserer træk-scores...", duration: 800 },
-    { text: "Kalibrerer personlighedsmodel...", duration: 1000 },
-    { text: "Færdiggør personlighedstype...", duration: 500 },
-];
-
-
 const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplete }) => {
     const navigate = useNavigate();
     const [user, setUser] = useState<User | null>(null);
@@ -49,7 +38,8 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<number[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [analysisLog, setAnalysisLog] = useState<{ text: string; status: 'pending' | 'complete' }[]>([]);
+    const [analysisLog, setAnalysisLog] = useState<string[]>([]);
+    const analysisLogRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -75,40 +65,10 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
     }, [navigate]);
     
     useEffect(() => {
-        if (step === 'analyzing') {
-            let logIndex = 0;
-            let isMounted = true;
-            
-            const runLog = () => {
-                if (!isMounted || logIndex >= thinkingSteps.length) {
-                    if (isMounted) {
-                        setAnalysisLog(prev => prev.map(log => ({ ...log, status: 'complete' })));
-                    }
-                    return;
-                };
-
-                const currentStepData = thinkingSteps[logIndex];
-                
-                // Add the new "pending" log entry
-                setAnalysisLog(prev => [...prev, { text: currentStepData.text, status: 'pending' as const }]);
-                
-                setTimeout(() => {
-                    if (!isMounted) return;
-                    
-                    // Update the last entry to "complete"
-                    setAnalysisLog(prev => prev.map((log, index) => 
-                        index === logIndex ? { ...log, status: 'complete' as const } : log
-                    ));
-
-                    logIndex++;
-                    runLog(); // Schedule the next log entry
-                }, currentStepData.duration);
-            };
-            
-            runLog();
-            return () => { isMounted = false; };
+        if (analysisLogRef.current) {
+            analysisLogRef.current.scrollTop = analysisLogRef.current.scrollHeight;
         }
-    }, [step]);
+    }, [analysisLog]);
 
 
     const handleStartTest = (testType: 'short' | 'long') => {
@@ -140,14 +100,18 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
     const handleFinishTest = async () => {
         if (!user) return;
         setStep('analyzing');
-        setAnalysisLog([]); // Reset log
+        setAnalysisLog([]);
         setError(null);
 
         const formattedAnswers = questions.map((q, i) => ({ question: q, answer: answers[i] }));
         const testType = questions.length > shortTestQuestions.length ? 'long' : 'short';
 
+        const onThinkingUpdate = (update: string) => {
+            setAnalysisLog(prev => [...prev, update]);
+        };
+
         try {
-            const result = await analyzePersonality(user, interests, testType, formattedAnswers);
+            const result = await analyzePersonality(user, interests, testType, formattedAnswers, onThinkingUpdate);
             
             const { error: traitsError } = await supabase.from('user_traits').upsert(
                 result.traits.map(t => ({ user_id: user.id, trait: t.trait, value: t.value })),
@@ -162,13 +126,14 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
             if (userUpdateError) throw userUpdateError;
 
             setStep('complete');
-            setTimeout(() => {
-                onTestComplete();
-            }, 2000);
+            // Calling onTestComplete immediately makes the state flow more robust.
+            // App.tsx will handle the navigation/re-render, and this component will show the 'complete'
+            // UI until it gets unmounted.
+            onTestComplete();
 
         } catch (err: any) {
             setError(`Der skete en fejl under analysen: ${err.message}`);
-            setStep('testing'); // Go back to the test on error
+            setStep('testing');
         }
     };
     
@@ -181,13 +146,13 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
             case 'testing':
                 const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
                 return (
-                     <div key="testing" className="w-full max-w-md mx-auto h-full flex flex-col justify-between">
+                     <div key="testing" className="w-full max-w-xl mx-auto h-full flex flex-col justify-between p-4">
                          <div>
-                            <div className="w-full bg-gray-200 rounded-full h-2 my-4">
-                                <div className="bg-primary h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                            <div className="w-full bg-gray-200 dark:bg-dark-border rounded-full h-2 my-4">
+                                <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
                             </div>
-                            <p className="text-sm text-text-secondary mb-8">Spørgsmål {currentQuestionIndex + 1} af {questions.length}</p>
-                            <h3 className="text-2xl font-bold text-text-primary min-h-[6rem]">{questions[currentQuestionIndex]}</h3>
+                            <p className="text-sm text-text-secondary dark:text-dark-text-secondary mb-8">Spørgsmål {currentQuestionIndex + 1} af {questions.length}</p>
+                            <h3 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary min-h-[6rem]">{questions[currentQuestionIndex]}</h3>
                          </div>
                         
                          <div className="my-8">
@@ -196,9 +161,9 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
                                 min="0" max="100"
                                 value={answers[currentQuestionIndex]}
                                 onChange={(e) => handleAnswerChange(parseInt(e.target.value))}
-                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                                className="w-full h-2 bg-gray-200 dark:bg-dark-border rounded-lg appearance-none cursor-pointer accent-primary"
                             />
-                            <div className="flex justify-between text-xs text-text-secondary mt-2">
+                            <div className="flex justify-between text-xs text-text-secondary dark:text-dark-text-secondary mt-2">
                                 <span>Uenig</span>
                                 <span>Neutral</span>
                                 <span>Enig</span>
@@ -206,7 +171,7 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
                          </div>
 
                         <div className="flex justify-between items-center">
-                             <button onClick={handleBack} disabled={currentQuestionIndex === 0} className="p-3 rounded-full bg-gray-200 text-gray-700 disabled:opacity-50">
+                             <button onClick={handleBack} disabled={currentQuestionIndex === 0} className="p-3 rounded-full bg-gray-200 dark:bg-dark-surface-light text-gray-700 dark:text-dark-text-primary disabled:opacity-50">
                                 <ArrowLeft size={24}/>
                             </button>
                              {currentQuestionIndex < questions.length - 1 ? (
@@ -225,8 +190,8 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
             
             case 'analyzing':
                 return (
-                     <div key="analyzing-log" className="w-full max-w-md mx-auto text-left">
-                        <h3 className="text-2xl font-bold text-center mb-4">Analyserer din personlighed...</h3>
+                     <div key="analyzing-log" className="w-full max-w-xl mx-auto text-left p-4">
+                        <h3 className="text-2xl font-bold text-center mb-4 text-text-primary dark:text-dark-text-primary">Analyserer din personlighed...</h3>
                         <div className="font-mono bg-gray-800 text-white p-4 rounded-lg shadow-lg h-64 flex flex-col">
                             <div className="flex items-center border-b border-gray-600 pb-2 mb-2 flex-shrink-0">
                                 <span className="w-3 h-3 bg-red-500 rounded-full mr-1.5"></span>
@@ -234,48 +199,56 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
                                 <span className="w-3 h-3 bg-green-500 rounded-full"></span>
                                 <span className="ml-auto text-xs text-gray-400">AI Analysis Log</span>
                             </div>
-                            <div className="overflow-y-auto flex-1">
-                                {analysisLog.map((log, index) => (
-                                    <div key={index} className="flex items-center text-sm mb-1">
-                                        {log.status === 'complete' ? 
-                                            <CheckCircle size={14} className="text-green-400 mr-2 flex-shrink-0" /> :
-                                            <Loader size={14} className="text-blue-400 mr-2 animate-spin flex-shrink-0" />
-                                        }
-                                        <span className={log.status === 'complete' ? 'text-gray-400' : 'text-green-300'}>{log.text}</span>
-                                    </div>
-                                ))}
+                            <div ref={analysisLogRef} className="overflow-y-auto flex-1 text-sm text-green-300 whitespace-pre-wrap">
+                                {analysisLog.join('')}
+                                <span className="inline-block w-2 h-4 bg-green-300 animate-pulse ml-1" />
                             </div>
                         </div>
                     </div>
                 );
             case 'complete':
                  return (
-                    <div key="complete-state">
+                    <div key="complete-state" className="p-4">
                         <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
-                        <h3 className="text-2xl font-bold">Analyse Fuldført!</h3>
-                        <p className="text-text-secondary mt-2">Du bliver nu sendt videre...</p>
+                        <h3 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Analyse Fuldført!</h3>
+                        <p className="text-text-secondary dark:text-dark-text-secondary mt-2">Du bliver nu sendt videre...</p>
                     </div>
                 );
 
             case 'selection':
             default:
                  return (
-                     <div key="selection">
-                        <div className="mx-auto bg-primary-light dark:bg-primary/20 text-primary dark:text-primary-light p-5 rounded-full mb-6">
-                            <BrainCircuit size={48} strokeWidth={1.5} />
+                     <div key="selection" className="w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 items-center gap-12 p-8">
+                        {/* Left Decorative Panel */}
+                        <div className="hidden lg:flex flex-col items-center justify-center text-center">
+                            <div className="mx-auto bg-primary-light dark:bg-primary/20 text-primary dark:text-primary-light p-5 rounded-full mb-6">
+                                <BrainCircuit size={64} strokeWidth={1.5} />
+                            </div>
+                            <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-3">Personlighedstest</h2>
+                            <p className="text-text-secondary dark:text-dark-text-secondary max-w-sm mx-auto">
+                                Vores AI analyserer dine informationer for at finde de bedste soulmates til dig.
+                            </p>
                         </div>
-                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-3">Tag en personlighedstest</h2>
-                        <p className="text-text-secondary dark:text-dark-text-secondary mb-10 max-w-sm mx-auto">
-                           Vores AI analyserer dine informationer for at finde de bedste soulmates til dig.
-                        </p>
-                        {error && <p className="text-red-500 bg-red-100 p-3 rounded-lg text-sm mb-4">{error}</p>}
-                        <div className="space-y-4 max-w-xs mx-auto">
-                            <button onClick={() => handleStartTest('short')} className="w-full bg-primary text-white font-bold py-4 rounded-full text-lg hover:bg-primary-dark transition shadow-lg">
-                                Tag den hurtige test
-                            </button>
-                             <button onClick={() => handleStartTest('long')} className="w-full bg-primary-light text-primary font-bold py-4 rounded-full text-lg hover:bg-primary/20 transition">
-                                Tag den lange og præcise
-                            </button>
+                        {/* Right Action Panel */}
+                        <div className="w-full max-w-sm mx-auto text-center">
+                            <div className="lg:hidden">
+                                <div className="mx-auto inline-block bg-primary-light dark:bg-primary/20 text-primary dark:text-primary-light p-5 rounded-full mb-6">
+                                    <BrainCircuit size={48} strokeWidth={1.5} />
+                                </div>
+                                <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-3">Tag en personlighedstest</h2>
+                                <p className="text-text-secondary dark:text-dark-text-secondary mb-10 max-w-sm mx-auto">
+                                    Vores AI analyserer dine informationer for at finde de bedste soulmates til dig.
+                                </p>
+                            </div>
+                            {error && <p className="text-red-500 bg-red-100 dark:bg-red-500/10 dark:text-red-400 p-3 rounded-lg text-sm mb-4">{error}</p>}
+                            <div className="space-y-4">
+                                <button onClick={() => handleStartTest('short')} className="w-full bg-primary text-white font-bold py-4 rounded-full text-lg hover:bg-primary-dark transition shadow-lg">
+                                    Tag den hurtige test
+                                </button>
+                                <button onClick={() => handleStartTest('long')} className="w-full bg-primary-light dark:bg-dark-surface-light text-primary dark:text-dark-text-primary font-bold py-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition">
+                                    Tag den lange og præcise
+                                </button>
+                            </div>
                         </div>
                     </div>
                 );
@@ -284,14 +257,14 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
 
 
     return (
-        <div className="p-6 h-full flex flex-col bg-gray-50 dark:bg-dark-background text-center">
-            <div className="flex-shrink-0">
+        <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-dark-background">
+            <header className="flex-shrink-0 p-6 self-center">
                 <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
-            </div>
+            </header>
             
-            <div className="flex-1 flex flex-col items-center justify-center">
+            <main className="flex-1 flex flex-col items-center justify-center">
                 {renderContent()}
-            </div>
+            </main>
         </div>
     );
 };

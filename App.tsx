@@ -1,6 +1,5 @@
 
 
-
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
@@ -31,10 +30,15 @@ import FriendsPage from './pages/FriendsPage';
 import AdminPage from './pages/AdminPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { useNotifications } from './hooks/useNotifications';
-import type { NotificationType, User } from './types';
+import type { NotificationType, User, Organization } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { supabase } from './services/supabase';
 import type { Session } from '@supabase/supabase-js';
+
+import OrganizationLayout from './pages/organization/OrganizationLayout';
+import OrganizationDashboardPage from './pages/organization/OrganizationDashboardPage';
+import CreateOrgEventPage from './pages/organization/CreateOrgEventPage';
+import CreatePlacePage from './pages/organization/CreatePlacePage';
 
 const MockNotificationGenerator: React.FC = () => {
   const { addNotification } = useNotifications();
@@ -112,10 +116,23 @@ const MainAppRoutes: React.FC<{ onTestComplete: () => void }> = ({ onTestComplet
     </NotificationProvider>
 );
 
+const OrganizationRoutes: React.FC = () => (
+    <OrganizationLayout>
+        <Routes>
+            <Route path="/dashboard" element={<OrganizationDashboardPage />} />
+            <Route path="/create-event" element={<CreateOrgEventPage />} />
+            <Route path="/create-place" element={<CreatePlacePage />} />
+            <Route path="*" element={<Navigate to="/dashboard" />} />
+        </Routes>
+    </OrganizationLayout>
+);
+
+
 const AppContent: React.FC = () => {
   const [session, setSession] = React.useState<Session | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [profile, setProfile] = React.useState<User | null>(null);
+  const [organization, setOrganization] = React.useState<Organization | null>(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
   const [refreshProfileToggle, setRefreshProfileToggle] = React.useState(false);
   const [testJustCompleted, setTestJustCompleted] = React.useState(false);
@@ -147,29 +164,50 @@ const AppContent: React.FC = () => {
   React.useEffect(() => {
     if (loading) return;
 
-    if (session) {
-      setCheckingProfile(true);
-      supabase
-        .from('users')
-        .select('*')
-        .eq('auth_id', session.user.id)
-        .single()
-        .then(({ data, error }) => {
-          setProfile(data ? (data as User) : null);
+    const checkUserProfile = async () => {
+      if (session) {
+        setCheckingProfile(true);
+
+        // The metadata check can be unreliable immediately after signup.
+        // Querying the database directly is more robust.
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('auth_id', session.user.id)
+          .single();
+
+        if (orgData) {
+          // Found an organization profile, so this is an org user.
+          setOrganization(orgData as Organization);
+          setProfile(null);
           setCheckingProfile(false);
-        });
-    } else {
-      setProfile(null);
-      setCheckingProfile(false);
-    }
+        } else {
+          // No org profile, check for a regular user profile.
+          const { data: userData } = await supabase
+            .from('users')
+            .select('*')
+            .eq('auth_id', session.user.id)
+            .single();
+
+          setProfile(userData ? (userData as User) : null);
+          setOrganization(null);
+          setCheckingProfile(false);
+        }
+      } else {
+        setProfile(null);
+        setOrganization(null);
+        setCheckingProfile(false);
+      }
+    };
+
+    checkUserProfile();
   }, [session, loading, refreshProfileToggle]);
 
+
   React.useEffect(() => {
-    // This effect runs when the profile data changes.
-    // If the test was just completed and the profile now reflects that, navigate.
     if (testJustCompleted && profile?.personality_test_completed) {
       navigate('/profile');
-      setTestJustCompleted(false); // Reset flag after navigation to prevent loops
+      setTestJustCompleted(false);
     }
   }, [testJustCompleted, profile, navigate]);
 
@@ -183,40 +221,36 @@ const AppContent: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto">
-          <Routes>
-            <Route path="/" element={<OnboardingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/create-organization" element={<CreateOrganizationPage />} />
-            <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </div>
-      </main>
+      <Routes>
+        <Route path="/" element={<OnboardingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/create-organization" element={<CreateOrganizationPage />} />
+        <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
     );
   }
 
-  // User is logged in, determine which part of the app to show.
+  // User is logged in, check if organization or regular user
+  if (organization) {
+    return <OrganizationRoutes />;
+  }
+
   if (profile && profile.personality_test_completed) {
     return <MainAppRoutes onTestComplete={handleTestComplete} />;
   }
 
-  // Onboarding Flow for logged-in users
+  // Onboarding Flow for regular users
   return (
-    <main className="w-full max-w-sm mx-auto h-screen bg-white dark:bg-dark-surface shadow-2xl flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto">
-        <Routes>
-          {!profile && (
-            <Route path="*" element={<CreateProfilePage onProfileCreated={handleStateRefresh} />} />
-          )}
-          {profile && !profile.personality_test_completed && (
-            <Route path="*" element={<PersonalityTestPage onTestComplete={handleTestComplete} />} />
-          )}
-        </Routes>
-      </div>
-    </main>
+    <Routes>
+      {!profile && (
+        <Route path="*" element={<CreateProfilePage onProfileCreated={handleStateRefresh} />} />
+      )}
+      {profile && !profile.personality_test_completed && (
+        <Route path="*" element={<PersonalityTestPage onTestComplete={handleTestComplete} />} />
+      )}
+    </Routes>
   );
 };
 

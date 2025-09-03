@@ -95,7 +95,7 @@ const ChatListPage: React.FC = () => {
     
     const getOtherParticipant = (thread: MessageThread): User | null => {
         if (thread.id === 'ai-mentor') return thread.participants[0].user;
-        const participant = thread.participants.find(p => p.user.id !== currentUserId);
+        const participant = thread.participants.find(p => p.user && p.user.id !== currentUserId);
         return participant ? participant.user : null;
     }
 
