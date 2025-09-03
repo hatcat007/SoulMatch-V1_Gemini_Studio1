@@ -40,6 +40,24 @@ const fetchSoulmates = async (currentUserId: number): Promise<MessageThread[]> =
     }));
 };
 
+const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
+    const formatText = (inputText: string) => {
+        // Replace **text** with <strong>text</strong>
+        let formatted = inputText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        // Replace *text* with <em>text</em>
+        formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        // Handle list items starting with - or *
+        formatted = formatted.replace(/^\s*[-*]\s+(.*)/gm, '<li class="ml-4 list-disc">$1</li>');
+        // Wrap consecutive list items in a <ul>
+        formatted = formatted.replace(/(<li.*?>.*?<\/li>)+/gs, '<ul>$&</ul>');
+        // Replace newlines with <br> for paragraph breaks, but not inside lists
+        formatted = formatted.replace(/<\/ul>\n/g, '</ul><br/>').replace(/\n/g, '<br />');
+        return formatted;
+    };
+
+    return <div dangerouslySetInnerHTML={{ __html: formatText(text) }} className="break-words whitespace-pre-wrap leading-relaxed" />;
+};
+
 const EventDetailPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
@@ -190,8 +208,8 @@ const EventDetailPage: React.FC = () => {
 
                     <section>
                         <h3 className="text-xl font-bold text-text-primary mb-4">Beskrivelse</h3>
-                        <div className="bg-gray-100 p-4 rounded-xl">
-                            <p className="text-text-secondary whitespace-pre-line">{event.description}</p>
+                        <div className="bg-gray-100 dark:bg-dark-surface-light p-4 rounded-xl text-text-secondary dark:text-dark-text-primary">
+                            <MarkdownRenderer text={event.description || ''} />
                         </div>
                     </section>
                 </div>

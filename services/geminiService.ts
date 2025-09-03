@@ -185,13 +185,32 @@ export async function getAiMatches(currentUser: User, allUsers: User[]): Promise
  * @param eventText - The raw text content copied from an event page.
  * @param categoryOptions - A list of valid categories for the AI to choose from.
  * @param emojiOptions - A list of valid emojis for the AI to choose from.
+ * @param emojiLevel - The desired level of emoji usage in the description.
  * @returns A structured object with the event details.
  */
 export async function importEventFromText(
     eventText: string,
     categoryOptions: string[],
-    emojiOptions: string[]
+    emojiOptions: string[],
+    emojiLevel: 'ai' | 'none' | 'some' | 'many'
 ): Promise<ImportedEventData> {
+    let emojiInstruction = '';
+    switch (emojiLevel) {
+        case 'none':
+            emojiInstruction = 'Do not use any emojis in the description.';
+            break;
+        case 'some':
+            emojiInstruction = 'Use a few emojis where appropriate in the description to seem friendly.';
+            break;
+        case 'many':
+            emojiInstruction = 'Use emojis generously in the description to make the text lively and expressive.';
+            break;
+        case 'ai':
+        default:
+            emojiInstruction = 'You can use emojis in the description if you feel it enhances the message.';
+            break;
+    }
+
     const prompt = `
         You are an intelligent assistant that extracts structured data from raw text.
         Analyze the following text copied from an event page:
@@ -202,7 +221,7 @@ export async function importEventFromText(
 
         Your task is to extract the following information:
         1.  **title**: The official title of the event.
-        2.  **description**: The full, detailed description of the event. Try to find the event's location/address and include it.
+        2.  **description**: The full, detailed description of the event. Format this description using simple markdown (like **bold text** for emphasis, bullet points starting with a hyphen for lists, and natural paragraph breaks with double newlines). ${emojiInstruction} Try to find the event's location/address and include it.
         3.  **datetime**: The specific starting date and time of the event. Format this as a valid string for an HTML datetime-local input (e.g., "2024-09-21T19:00"). If the text describes a recurring event without a specific date (e.g., "Every Thursday"), return null for this field. You may add a note about the recurring nature in the description.
         4.  **category**: The most appropriate category for the event. Choose ONE from this list: [${categoryOptions.join(', ')}]. If no suitable category is found, return null.
         5.  **emoji**: The most fitting emoji icon for the event. Choose ONE from this list: [${emojiOptions.join(', ')}]. If none fit well, return null.
@@ -244,21 +263,49 @@ export async function importEventFromText(
 
 
 /**
- * Generates a realistic event image based on a description using AI.
+ * Generates an event image based on a description using AI.
  * @param description - The event description.
+ * @param style - The desired image style: 'realistic' or 'illustration'.
+ * @param title - The event title, to be optionally included on the image.
+ * @param includeTitle - Boolean flag to determine if the title should be on the image.
  * @returns A base64 encoded string of the generated JPEG image.
  */
-export async function generateEventImageFromText(description: string): Promise<string> {
-    const prompt = `
-        Generate a realistic, high-quality, photorealistic image that visually represents the following event description. The image should be suitable for a social event promotion. Focus on capturing the mood and key elements described.
+export async function generateEventImageFromText(
+    description: string,
+    style: 'realistic' | 'illustration',
+    title: string | null,
+    includeTitle: boolean
+): Promise<string> {
+    let prompt = '';
+    const titleInstruction = includeTitle && title
+        ? `Elegantly and clearly overlay the following title on the image using a suitable font and placement: "${title}"`
+        : 'Do not add any text overlays to the image.';
 
-        Event Description: "${description}"
+    if (style === 'realistic') {
+        prompt = `
+            Generate an ultra-realistic, high-quality, photorealistic image that visually represents the following event description. The image should be suitable for a social event promotion. Focus on capturing the mood and key elements described.
 
-        Style guidelines:
-        - Aspect Ratio: 16:9
-        - Mood: Welcoming, friendly, and social.
-        - Avoid text overlays on the image.
-    `;
+            Event Description: "${description}"
+
+            Style guidelines:
+            - Aspect Ratio: 16:9
+            - Mood: Welcoming, friendly, and social.
+            - Text: ${titleInstruction}
+        `;
+    } else { // style === 'illustration'
+        prompt = `
+            Create a beautiful 2D illustration that captures the essence and emotion of the following event description. The style should be elegant, modern, and visually appealing, suitable for a social event promotion. The color palette and overall mood of the illustration must align perfectly with the feelings and theme conveyed in the text (e.g., joyful, calm, energetic, cozy).
+
+            Event Description: "${description}"
+
+            Style guidelines:
+            - Aspect Ratio: 16:9
+            - Style: High-quality, detailed 2D illustration.
+            - Emotion and Color: The colors and artistic style must match the event's described atmosphere.
+            - Text: ${titleInstruction}
+        `;
+    }
+
     try {
         const aiClient = getAiClient();
         const response = await aiClient.models.generateImages({

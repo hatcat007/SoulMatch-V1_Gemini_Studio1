@@ -2,13 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { generateEventImageFromText, importEventFromText } from '../../services/geminiService';
-import { uploadBase64File } from '../../services/s3Service';
 import type { Organization } from '../../types';
-import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X } from 'lucide-react';
+import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X, Camera, Palette, XCircle } from 'lucide-react';
 
 const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
 const categoryOptions = ['Mad', 'Events', 'Kultur', 'Brætspil', 'Biograf', 'Gåtur', 'Gaming', 'Træning', 'Fest', 'Musik'];
 const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-indigo-100', 'bg-pink-100', 'bg-teal-100', 'bg-orange-100', 'bg-cyan-100'];
+
+const emojiMenuOptions: { level: 'ai' | 'none' | 'some' | 'many'; label: string }[] = [
+    { level: 'ai', label: 'Lad AI beslutte' },
+    { level: 'none', label: 'Ingen emojis' },
+    { level: 'some', label: 'En smule' },
+    { level: 'many', label: 'Mange' },
+];
 
 const ImportEventPage: React.FC = () => {
     const navigate = useNavigate();
@@ -20,7 +26,9 @@ const ImportEventPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [dateTimeWarning, setDateTimeWarning] = useState<string | null>(null);
     const [importStatus, setImportStatus] = useState('');
-    const [shouldGenerateImage, setShouldGenerateImage] = useState(false);
+    const [imageGenerationStyle, setImageGenerationStyle] = useState<'none' | 'realistic' | 'illustration'>('realistic');
+    const [includeTitleOnImage, setIncludeTitleOnImage] = useState(true);
+    const [emojiLevel, setEmojiLevel] = useState<'ai' | 'none' | 'some' | 'many'>('ai');
     
     const [formData, setFormData] = useState({
         title: '',
@@ -55,7 +63,7 @@ const ImportEventPage: React.FC = () => {
 
         try {
             setImportStatus('Analyserer tekst...');
-            const importedData = await importEventFromText(eventText, categoryOptions, emojiOptions);
+            const importedData = await importEventFromText(eventText, categoryOptions, emojiOptions, emojiLevel);
             if (importedData.error) {
                 throw new Error(importedData.error);
             }
@@ -65,11 +73,15 @@ const ImportEventPage: React.FC = () => {
             }
 
             let imageUrl = '';
-            if (shouldGenerateImage) {
+            if (imageGenerationStyle !== 'none') {
                 setImportStatus('Genererer billede (kan tage et øjeblik)...');
-                const base64Image = await generateEventImageFromText(importedData.description);
-                const fileName = `event-image-${Date.now()}.jpeg`;
-                imageUrl = await uploadBase64File(base64Image, fileName);
+                const base64Image = await generateEventImageFromText(
+                    importedData.description,
+                    imageGenerationStyle,
+                    importedData.title,
+                    includeTitleOnImage
+                );
+                imageUrl = `data:image/jpeg;base64,${base64Image}`;
             }
             
             setFormData(prev => ({
@@ -95,7 +107,9 @@ const ImportEventPage: React.FC = () => {
         setFormData({ title: '', description: '', time: '', category: '', emoji: '🎉', color: 'bg-blue-100', image_url: '' });
         setError(null);
         setDateTimeWarning(null);
-        setShouldGenerateImage(false);
+        setImageGenerationStyle('realistic');
+        setIncludeTitleOnImage(true);
+        setEmojiLevel('ai');
         setStep('input');
     };
 
@@ -166,15 +180,74 @@ const ImportEventPage: React.FC = () => {
                                 placeholder="Indsæt event titel, beskrivelse, dato, tid, sted her..."
                             />
                         </div>
-                         <div className="bg-gray-50 dark:bg-dark-surface-light p-3 rounded-lg flex items-center justify-between">
-                            <div className="flex items-center">
-                                <ImageIcon size={20} className="mr-3 text-primary"/>
-                                <label htmlFor="image-toggle" className="font-semibold text-text-primary dark:text-dark-text-primary cursor-pointer">Generer et billede til eventet</label>
+                         <div className="space-y-4">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Emojis i beskrivelse</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {emojiMenuOptions.map(option => (
+                                    <button
+                                        key={option.level}
+                                        type="button"
+                                        onClick={() => setEmojiLevel(option.level)}
+                                        className={`text-center p-3 rounded-lg border-2 transition-colors text-sm font-semibold ${emojiLevel === option.level ? 'border-primary bg-primary-light dark:bg-primary/20' : 'border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-light hover:border-gray-400'}`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
                             </div>
-                            <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
-                                <input type="checkbox" id="image-toggle" checked={shouldGenerateImage} onChange={() => setShouldGenerateImage(!shouldGenerateImage)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
-                                <label htmlFor="image-toggle" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Generer billede til eventet</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setImageGenerationStyle('realistic')}
+                                    className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-colors ${imageGenerationStyle === 'realistic' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-light hover:border-gray-400'}`}
+                                >
+                                    <Camera size={24} className="mb-1 text-primary"/>
+                                    <span className="text-sm font-semibold text-text-primary dark:text-dark-text-primary">Realistisk Foto</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setImageGenerationStyle('illustration')}
+                                    className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-colors ${imageGenerationStyle === 'illustration' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-light hover:border-gray-400'}`}
+                                >
+                                    <Palette size={24} className="mb-1 text-primary"/>
+                                    <span className="text-sm font-semibold text-text-primary dark:text-dark-text-primary">2D Illustration</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setImageGenerationStyle('none')}
+                                    className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-colors ${imageGenerationStyle === 'none' ? 'border-gray-500 bg-gray-200 dark:bg-dark-border' : 'border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-light hover:border-gray-400'}`}
+                                >
+                                    <XCircle size={24} className="mb-1 text-gray-500"/>
+                                    <span className="text-sm font-semibold text-text-secondary dark:text-dark-text-secondary">Intet billede</span>
+                                </button>
                             </div>
+                            {imageGenerationStyle !== 'none' && (
+                                <div className="mt-4">
+                                    <label
+                                        htmlFor="includeTitleToggle"
+                                        className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
+                                    >
+                                        <span className="font-medium text-sm text-gray-700 dark:text-dark-text-secondary">
+                                            Inkluder titel på billedet
+                                        </span>
+                                        <div className="relative inline-block w-10 flex-shrink-0 align-middle select-none">
+                                            <input
+                                                type="checkbox"
+                                                id="includeTitleToggle"
+                                                checked={includeTitleOnImage}
+                                                onChange={(e) => setIncludeTitleOnImage(e.target.checked)}
+                                                className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
+                                            />
+                                            <label
+                                                htmlFor="includeTitleToggle"
+                                                className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"
+                                            ></label>
+                                        </div>
+                                    </label>
+                                </div>
+                            )}
                         </div>
                         <button
                             onClick={handleImport}

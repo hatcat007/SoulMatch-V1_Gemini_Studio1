@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check } from 'lucide-react';
 import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
 import { getAiClient } from '../services/geminiService';
@@ -27,12 +27,33 @@ const formatMeetingTime = (matchTimestamp?: string): string | null => {
 };
 
 type FriendshipStatus = 'not_friends' | 'pending_them' | 'pending_me' | 'friends' | 'loading';
+type EmojiLevel = 'ai' | 'none' | 'some' | 'many';
+
+const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
+    const formatText = (inputText: string) => {
+        // Replace **text** with <strong>text</strong>
+        let formatted = inputText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        // Replace *text* with <em>text</em>
+        formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        // Handle list items starting with - or *
+        formatted = formatted.replace(/^\s*[-*]\s+(.*)/gm, '<li class="ml-4 list-disc">$1</li>');
+        // Wrap consecutive list items in a <ul>
+        formatted = formatted.replace(/(<li.*?>.*?<\/li>)+/gs, '<ul>$&</ul>');
+        // Replace newlines with <br> for paragraph breaks, but not inside lists
+        formatted = formatted.replace(/<\/ul>\n/g, '</ul><br/>').replace(/\n/g, '<br />');
+        return formatted;
+    };
+
+    return <div dangerouslySetInnerHTML={{ __html: formatText(text) }} className="break-words whitespace-pre-wrap leading-relaxed" />;
+};
+
 
 const ChatPage: React.FC = () => {
     const { chatId } = useParams<{ chatId: string }>();
     const navigate = useNavigate();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const optionsMenuRef = useRef<HTMLDivElement>(null);
+    const emojiMenuRef = useRef<HTMLDivElement>(null);
     
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
@@ -45,44 +66,53 @@ const ChatPage: React.FC = () => {
     const [isAiReplying, setIsAiReplying] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+    const [isEmojiMenuOpen, setIsEmojiMenuOpen] = useState(false);
+    const [emojiLevel, setEmojiLevel] = useState<EmojiLevel>('ai');
 
 
     const isAiMentorChat = chatId === 'ai-mentor';
     const meetingTimeText = useMemo(() => formatMeetingTime(thread?.match_timestamp), [thread]);
     
     useEffect(() => {
-        const setupAiChat = async () => {
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (!authUser) { navigate('/login'); return; }
-            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
-            setCurrentUser(userProfile);
-            
-            const aiUser: User = {
-                id: -1,
-                name: 'SoulMatch AI mentor',
-                age: 0,
-                avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png',
-                online: true,
-            };
-            setOtherUser(aiUser);
-            
-            setMessages([{
-                id: 'welcome-1',
-                text: 'Hej! Jeg er din personlige AI mentor. Hvordan kan jeg hjælpe dig i dag? Du kan spørge mig om alt fra samtaleemner til råd, hvis en samtale er gået i stå.',
-                created_at: new Date().toISOString(),
-                sender_id: -1,
-                thread_id: 'ai-mentor'
-            }]);
-            
+        const setupAiChat = () => {
+            let emojiInstruction = '';
+            switch (emojiLevel) {
+                case 'none':
+                    emojiInstruction = 'Do not use any emojis in your response.';
+                    break;
+                case 'some':
+                    emojiInstruction = 'Use a few emojis where appropriate to seem friendly.';
+                    break;
+                case 'many':
+                    emojiInstruction = 'Use emojis generously to make the conversation lively and expressive.';
+                    break;
+                case 'ai':
+                default:
+                    emojiInstruction = 'You can use emojis if you feel it enhances the message.';
+                    break;
+            }
+
+            const systemInstruction = `You are "SoulMatch AI mentor", a friendly and supportive assistant for the SoulMatch app. Your goal is to help users combat loneliness by improving their social interactions. You can offer conversation starters, give advice when a conversation stalls, suggest appropriate replies, and provide support. Provide helpful, kind, and actionable advice. Keep responses concise and easy to read on a mobile device. Always respond in Danish. Format your responses in simple markdown (e.g., **bold**, *italics*, and lists starting with a hyphen). ${emojiInstruction}`;
+
             const ai = getAiClient();
             const chat = ai.chats.create({
               model: 'gemini-2.5-flash',
-              config: {
-                systemInstruction: 'You are "SoulMatch AI mentor", a friendly and supportive assistant for the SoulMatch app. Your goal is to help users combat loneliness by improving their social interactions. You can offer conversation starters, give advice when a conversation stalls, suggest appropriate replies, and provide support as the 3-day meeting deadline approaches. Provide helpful, kind, and actionable advice. Keep responses concise and easy to read on a mobile device. Always respond in Danish.',
-              },
+              config: { systemInstruction },
             });
             setAiChat(chat);
-            setLoading(false);
+        };
+
+        if (isAiMentorChat) {
+            setupAiChat();
+        }
+    }, [emojiLevel, isAiMentorChat]);
+    
+    useEffect(() => {
+        const fetchInitialData = async () => {
+             const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (!authUser) { navigate('/login'); return; }
+            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
+            setCurrentUser(userProfile);
         };
         
         const fetchChatData = async () => {
@@ -133,7 +163,19 @@ const ChatPage: React.FC = () => {
         };
         
         if (isAiMentorChat) {
-            setupAiChat();
+            fetchInitialData().then(() => {
+                const aiUser: User = {
+                    id: -1, name: 'SoulMatch AI mentor', age: 0,
+                    avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png',
+                    online: true,
+                };
+                setOtherUser(aiUser);
+                 setMessages([{
+                    id: 'welcome-1', text: 'Hej! Jeg er din personlige AI mentor. Hvordan kan jeg hjælpe dig i dag? Du kan spørge mig om alt fra samtaleemner til råd, hvis en samtale er gået i stå.',
+                    created_at: new Date().toISOString(), sender_id: -1, thread_id: 'ai-mentor'
+                }]);
+                setLoading(false);
+            });
         } else {
             fetchChatData();
         }
@@ -160,6 +202,9 @@ const ChatPage: React.FC = () => {
         const handleClickOutside = (event: MouseEvent) => {
             if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) {
                 setIsOptionsMenuOpen(false);
+            }
+            if (emojiMenuRef.current && !emojiMenuRef.current.contains(event.target as Node)) {
+                setIsEmojiMenuOpen(false);
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
@@ -318,6 +363,13 @@ const ChatPage: React.FC = () => {
     
     const getMessageTimestamp = (msg: Message) => new Date(msg.created_at).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
 
+    const emojiMenuOptions: { level: EmojiLevel; label: string }[] = [
+        { level: 'ai', label: 'Lad AI beslutte' },
+        { level: 'none', label: 'Ingen emojis' },
+        { level: 'some', label: 'En smule emojis' },
+        { level: 'many', label: 'Mange emojis' },
+    ];
+
     return (
         <div className="flex flex-col h-full bg-white dark:bg-dark-surface">
             <header className="flex items-center p-3 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky top-0 z-10">
@@ -342,6 +394,7 @@ const ChatPage: React.FC = () => {
             <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
                 {messages.map((msg) => {
                     const isCurrentUser = msg.sender_id === currentUser.id;
+                    const isAi = msg.sender_id === -1;
                     return (
                         <div
                             key={msg.id}
@@ -358,7 +411,7 @@ const ChatPage: React.FC = () => {
                                     <img src={msg.image_url} alt="Chat content" className="rounded-xl m-1" />
                                 )}
                                 <div className="flex items-end space-x-2 px-3 py-2">
-                                    {msg.text && <p className="break-words whitespace-pre-wrap">{msg.text}</p>}
+                                    {msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}
                                     <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{getMessageTimestamp(msg)}</p>
                                 </div>
                             </div>
@@ -380,9 +433,37 @@ const ChatPage: React.FC = () => {
             <footer className="p-3 border-t border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky bottom-0">
                 <form onSubmit={handleSendMessage} className="flex items-center space-x-2 max-w-3xl mx-auto">
                     <div className="flex items-center w-full p-1 border border-gray-300 dark:border-dark-border rounded-full">
-                         <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add content">
-                            <Plus size={24} />
-                        </button>
+                        {isAiMentorChat ? (
+                           <div className="relative" ref={emojiMenuRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEmojiMenuOpen(prev => !prev)}
+                                    className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full"
+                                    aria-label="Change emoji level"
+                                >
+                                    <Smile size={24} />
+                                </button>
+                                {isEmojiMenuOpen && (
+                                    <div className="absolute bottom-full mb-2 w-48 bg-white dark:bg-dark-surface-light rounded-lg shadow-lg border border-gray-100 dark:border-dark-border">
+                                        {emojiMenuOptions.map(option => (
+                                            <button
+                                                key={option.level}
+                                                type="button"
+                                                onClick={() => { setEmojiLevel(option.level); setIsEmojiMenuOpen(false); }}
+                                                className="w-full text-left px-3 py-2 text-sm flex items-center justify-between font-medium text-text-primary dark:text-dark-text-primary hover:bg-gray-50 dark:hover:bg-dark-border"
+                                            >
+                                                {option.label}
+                                                {emojiLevel === option.level && <Check size={16} className="text-primary" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                           </div>
+                        ) : (
+                            <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add content">
+                                <Plus size={24} />
+                            </button>
+                        )}
                         <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add ticket">
                             <Ticket size={24} />
                         </button>
