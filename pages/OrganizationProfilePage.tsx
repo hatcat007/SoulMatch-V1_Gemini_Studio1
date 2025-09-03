@@ -4,6 +4,29 @@ import { ArrowLeft, MoreVertical, MessageCircle, ChevronRight, Phone, Mail, Glob
 import type { Organization, MessageThread, User, OrganizationOpportunity, OrganizationUpdate } from '../types';
 import ShareModal from '../components/ShareModal';
 import { supabase } from '../services/supabase';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if (!imageUrl) return <div className={`${className} bg-gray-200 animate-pulse`} />;
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
 
 const OrganizationProfilePage: React.FC = () => {
     const { organizationId } = useParams<{ organizationId: string }>();
@@ -128,7 +151,7 @@ const OrganizationProfilePage: React.FC = () => {
                     {/* Organization Info */}
                     <section className="mb-8 md:flex md:items-start md:space-x-6">
                         <div className="flex-shrink-0 flex justify-center mb-4 md:mb-0">
-                            <img src={organization.logo_url} alt={`${organization.name} logo`} className="w-24 h-24 object-contain" />
+                            <PrivateImage src={organization.logo_url} alt={`${organization.name} logo`} className="w-24 h-24 object-contain" />
                         </div>
                         <div className="flex-1">
                             <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">{organization.name}</h2>
@@ -191,7 +214,7 @@ const OrganizationProfilePage: React.FC = () => {
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {updates.map(update => (
                                     <div key={update.id} className="aspect-square">
-                                        <img src={update.image_url} alt={`Update ${update.id}`} className="w-full h-full object-cover rounded-lg shadow-md" />
+                                        <PrivateImage src={update.image_url} alt={`Update ${update.id}`} className="w-full h-full object-cover rounded-lg shadow-md" />
                                     </div>
                                 ))}
                             </div>

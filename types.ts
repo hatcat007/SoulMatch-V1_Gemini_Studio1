@@ -26,7 +26,11 @@ export interface Event {
   description?: string;
   participants?: User[];
   organization_id: number;
+  organization?: {
+    logo_url: string;
+  };
   image_url?: string;
+  address?: string;
 }
 
 export interface Place {
@@ -43,6 +47,10 @@ export interface Place {
   phone: string;
   opening_hours: string;
   organization_id?: number;
+  organization?: {
+    id: number;
+    name: string;
+  };
 }
 
 export interface MessageThread {
@@ -82,6 +90,10 @@ export interface Organization {
   phone?: string;
   email?: string;
   website?: string;
+  host_name?: string;
+  organization_type?: string;
+  facebook_url?: string;
+  emojis?: string[];
   opportunities?: OrganizationOpportunity[];
   updates?: OrganizationUpdate[];
   auth_id?: string;

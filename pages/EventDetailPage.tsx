@@ -4,6 +4,30 @@ import { ArrowLeft, Info } from 'lucide-react';
 import type { Event, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import { supabase } from '../services/supabase';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if (!imageUrl) return <div className={`${className} bg-gray-200 animate-pulse`} />;
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
+
 
 const fetchSoulmates = async (currentUserId: number): Promise<MessageThread[]> => {
     const { data: threadParticipants, error: tpError } = await supabase
@@ -162,44 +186,50 @@ const EventDetailPage: React.FC = () => {
     const remainingParticipants = event.participants ? event.participants.length - participantsToShow.length : 0;
 
     return (
-        <div className="flex flex-col h-full bg-white">
-            <header className="fixed top-0 left-0 right-0 z-20 bg-white bg-opacity-80 backdrop-blur-sm md:relative md:bg-transparent md:backdrop-blur-none">
+        <div className="flex flex-col h-full bg-background dark:bg-dark-background">
+            <header className="fixed top-0 left-0 right-0 z-20 bg-white bg-opacity-80 backdrop-blur-sm md:relative md:bg-transparent md:backdrop-blur-none dark:bg-dark-surface/80 dark:md:bg-transparent">
                 <div className="max-w-4xl mx-auto flex items-center justify-between p-4">
-                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-text-primary">
+                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-text-primary dark:text-dark-text-primary">
                         <ArrowLeft size={24} />
                     </button>
-                    <h1 className="text-xl font-bold text-text-primary">SoulMatch</h1>
+                    <h1 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">SoulMatch</h1>
                     <div className="w-8"></div>
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto pt-16 md:pt-4">
-                <div className="md:max-w-4xl mx-auto p-4 md:p-6">
-                    <div className="relative p-6 rounded-3xl shadow-xl bg-gray-50 mb-8">
+            <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
+                {event.image_url && (
+                    <div className="w-full aspect-video">
+                        <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover" />
+                    </div>
+                )}
+
+                <div className={`md:max-w-4xl mx-auto p-4 md:p-6 ${!event.image_url && 'md:pt-4'}`}>
+                    <div className="relative p-6 rounded-3xl shadow-xl bg-gray-50 dark:bg-dark-surface mb-8">
                         <div className="flex justify-between items-center">
                             <div>
-                                <h2 className="text-3xl font-bold text-text-primary">{event.title}</h2>
-                                <p className="text-text-secondary mt-1">Host: {event.host_name}</p>
+                                <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">{event.title}</h2>
+                                <p className="text-text-secondary dark:text-dark-text-secondary mt-1">Host: {event.host_name}</p>
                             </div>
-                            <Link to={`/organization/${event.organization_id}`} className="p-3 bg-white rounded-full border border-gray-200 text-primary hover:bg-primary-light">
+                            <Link to={`/organization/${event.organization_id}`} className="p-3 bg-white dark:bg-dark-surface-light rounded-full border border-gray-200 dark:border-dark-border text-primary hover:bg-primary-light dark:hover:bg-primary/20">
                                 <Info size={24} />
                             </Link>
                         </div>
                     </div>
 
                     <section className="mb-8">
-                        <h3 className="text-xl font-bold text-text-primary mb-4">Deltagere ({event.participants?.length || 0})</h3>
+                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Deltagere ({event.participants?.length || 0})</h3>
                         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
                             {participantsToShow.map(user => (
                                 <div key={user.id} className="text-center">
-                                    <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full mx-auto object-cover" />
-                                    <p className="text-sm mt-2 truncate font-semibold text-text-secondary">{user.name}</p>
+                                    <PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full mx-auto object-cover" />
+                                    <p className="text-sm mt-2 truncate font-semibold text-text-secondary dark:text-dark-text-secondary">{user.name}</p>
                                 </div>
                             ))}
                             {remainingParticipants > 0 && (
                                 <div className="flex flex-col items-center justify-center text-center">
-                                    <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
-                                        <span className="font-bold text-text-secondary">+{remainingParticipants}</span>
+                                    <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-dark-surface-light flex items-center justify-center">
+                                        <span className="font-bold text-text-secondary dark:text-dark-text-secondary">+{remainingParticipants}</span>
                                     </div>
                                 </div>
                             )}
@@ -207,7 +237,7 @@ const EventDetailPage: React.FC = () => {
                     </section>
 
                     <section>
-                        <h3 className="text-xl font-bold text-text-primary mb-4">Beskrivelse</h3>
+                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Beskrivelse</h3>
                         <div className="bg-gray-100 dark:bg-dark-surface-light p-4 rounded-xl text-text-secondary dark:text-dark-text-primary">
                             <MarkdownRenderer text={event.description || ''} />
                         </div>
@@ -215,11 +245,11 @@ const EventDetailPage: React.FC = () => {
                 </div>
             </main>
             
-            <footer className="sticky bottom-0 bg-white border-t border-gray-200 p-4 z-10">
+            <footer className="sticky bottom-0 bg-white dark:bg-dark-surface border-t border-gray-200 dark:border-dark-border p-4 z-10">
                 <div className="max-w-4xl mx-auto md:flex md:space-x-4 space-y-3 md:space-y-0">
                     <button
                         onClick={() => setShowShareModal(true)}
-                        className="w-full md:w-auto md:flex-1 bg-primary-light text-primary font-bold py-3 px-4 rounded-full text-lg transition duration-300 hover:bg-primary/20"
+                        className="w-full md:w-auto md:flex-1 bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg transition duration-300 hover:bg-primary/20 dark:hover:bg-dark-border"
                     >
                         Del med soulmate 😎
                     </button>

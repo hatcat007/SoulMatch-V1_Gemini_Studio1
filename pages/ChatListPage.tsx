@@ -4,6 +4,33 @@ import { Link } from 'react-router-dom';
 import type { MessageThread, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if(!imageUrl && src) {
+        return <div className={`${className} bg-gray-200`} />;
+    }
+
+    return imageUrl ? <img src={imageUrl} alt={alt} className={className} /> : <img src={src} alt={alt} className={className} />;
+};
 
 const ChatListPage: React.FC = () => {
     const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
@@ -124,13 +151,7 @@ const ChatListPage: React.FC = () => {
                         {onlineUsers.map(user => (
                             <div key={user.id} className="flex flex-col items-center text-center w-20 flex-shrink-0">
                                 <div className="relative">
-                                    {user.avatar_url ? (
-                                        <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
-                                    ) : (
-                                        <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold shadow-md">
-                                            {user.name.charAt(0)}
-                                        </div>
-                                    )}
+                                    <PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
                                     <span className="absolute bottom-0.5 right-0.5 block h-4 w-4 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface animate-pulse-slow"></span>
                                 </div>
                                 <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
@@ -155,7 +176,7 @@ const ChatListPage: React.FC = () => {
 
                         return (
                             <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
-                                <img src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4 object-cover" />
+                                <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4 object-cover" />
                                 <div className="flex-1 overflow-hidden">
                                     <p className="font-bold text-text-primary">{otherUser.name}</p>
                                     <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>

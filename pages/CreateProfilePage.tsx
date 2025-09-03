@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import type { Interest } from '../types';
-import { X, Plus, UploadCloud } from 'lucide-react';
-import { uploadFile } from '../services/s3Service';
+import { X, Plus, UploadCloud, Loader2, Image as ImageIcon } from 'lucide-react';
+import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 
 const emojiOptions = ['😉', '🎮', '☕', '🌳', '🎲', '🍻', '📚', '🎨', '🏛️', '🗺️', '🍕', '🎵'];
 const MAX_EMOJIS = 3;
@@ -12,6 +11,76 @@ const MAX_EMOJIS = 3;
 interface CreateProfilePageProps {
   onProfileCreated: () => void;
 }
+
+// This component can display a local blob URL directly or fetch a private S3 URL.
+const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = ({ src, alt, className }) => {
+    const [displayUrl, setDisplayUrl] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        let objectUrlToRevoke: string | null = null;
+        let isMounted = true;
+
+        const processUrl = async () => {
+            if (!src) {
+                if (isMounted) {
+                    setIsLoading(false);
+                    setDisplayUrl('');
+                }
+                return;
+            }
+            
+            setIsLoading(true);
+
+            if (src.startsWith('blob:')) {
+                // It's a local preview blob URL, use it directly.
+                setDisplayUrl(src);
+                setIsLoading(false);
+            } else {
+                // It's a permanent S3 URL, fetch it securely to get a temporary blob URL.
+                try {
+                    const fetchedBlobUrl = await fetchPrivateFile(src);
+                    if (isMounted) {
+                        objectUrlToRevoke = fetchedBlobUrl;
+                        setDisplayUrl(fetchedBlobUrl);
+                    }
+                } catch(e) {
+                    console.error("Failed to fetch private image", e);
+                    if (isMounted) setDisplayUrl(''); // Clear on error
+                } finally {
+                    if (isMounted) setIsLoading(false);
+                }
+            }
+        };
+
+        processUrl();
+
+        return () => {
+            isMounted = false;
+            if (objectUrlToRevoke) {
+                URL.revokeObjectURL(objectUrlToRevoke);
+            }
+        };
+    }, [src]);
+
+    if (isLoading) {
+        return (
+             <div className={`${className} bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center`}>
+                <Loader2 className="animate-spin text-gray-400" size={24} />
+            </div>
+        );
+    }
+    
+    if (!displayUrl) {
+        return (
+             <div className={`${className} bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center`}>
+                <ImageIcon className="text-gray-400" size={24} />
+            </div>
+        );
+    }
+
+    return <img src={displayUrl} alt={alt} className={className} />;
+};
 
 const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated }) => {
     const navigate = useNavigate();
@@ -72,27 +141,48 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
         setSelectedInterests(prev => prev.filter(i => i.id !== interestToRemove.id));
     };
     
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const filesToUpload = Array.from(e.target.files).slice(0, 6 - images.length);
-            if (filesToUpload.length === 0) return;
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
 
-            setIsUploading(true);
-            setError(null);
-            try {
-                const uploadPromises = filesToUpload.map(file => uploadFile(file));
-                const uploadedUrls = await Promise.all(uploadPromises);
-                setImages(prev => [...prev, ...uploadedUrls]);
-            } catch (error) {
-                console.error("Error uploading files:", error);
-                setError("Der skete en fejl under billed-upload.");
-            } finally {
-                setIsUploading(false);
-            }
-        }
+        const filesToUpload = Array.from(e.target.files).slice(0, 6 - images.length);
+        if (filesToUpload.length === 0) return;
+
+        setIsUploading(true);
+        setError(null);
+
+        const previews = filesToUpload.map(file => ({
+            blobUrl: URL.createObjectURL(file),
+            file: file,
+        }));
+        
+        setImages(prev => [...prev, ...previews.map(p => p.blobUrl)]);
+
+        const uploadPromises = previews.map(p => 
+            uploadFile(p.file)
+                .then(finalUrl => {
+                    setImages(currentImages => 
+                        currentImages.map(img => (img === p.blobUrl ? finalUrl : img))
+                    );
+                    URL.revokeObjectURL(p.blobUrl);
+                })
+                .catch(error => {
+                    console.error("Upload error:", error);
+                    if(!error) setError(`Upload fejlede for ${p.file.name}.`);
+                    setImages(currentImages => currentImages.filter(img => img !== p.blobUrl));
+                    URL.revokeObjectURL(p.blobUrl);
+                    throw error;
+                })
+        );
+        
+        Promise.allSettled(uploadPromises).finally(() => {
+            setIsUploading(false);
+        });
     };
 
     const removeImage = (imageToRemove: string) => {
+        if (imageToRemove.startsWith('blob:')) {
+            URL.revokeObjectURL(imageToRemove);
+        }
         setImages(images.filter(img => img !== imageToRemove));
     };
 
@@ -117,6 +207,8 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
         }
 
         const defaultAvatar = `https://i.pravatar.cc/150?u=${user.id}`;
+        
+        const finalImageUrls = images.filter(img => !img.startsWith('blob:'));
 
         const { data: profileData, error: upsertError } = await supabase
             .from('users')
@@ -127,7 +219,7 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
                 location,
                 bio,
                 emojis: selectedEmojis,
-                avatar_url: images.length > 0 ? images[0] : defaultAvatar,
+                avatar_url: finalImageUrls.length > 0 ? finalImageUrls[0] : defaultAvatar,
             }, { onConflict: 'auth_id' })
             .select()
             .single();
@@ -140,8 +232,8 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
 
         if (profileData) {
             await supabase.from('user_profile_images').delete().eq('user_id', profileData.id);
-            if (images.length > 0) {
-                const profileImagesData = images.map(url => ({ user_id: profileData.id, image_url: url }));
+            if (finalImageUrls.length > 0) {
+                const profileImagesData = finalImageUrls.map(url => ({ user_id: profileData.id, image_url: url }));
                 const { error: imageInsertError } = await supabase.from('user_profile_images').insert(profileImagesData);
                 if (imageInsertError) {
                     setError(`Profil gemt, men billeder kunne ikke gemmes: ${imageInsertError.message}`);
@@ -188,17 +280,19 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
                                 <div className="grid grid-cols-3 gap-2">
                                     {images.map((img, index) => (
                                         <div key={index} className="relative aspect-square">
-                                            <img src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
-                                            <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"><X size={16}/></button>
+                                            <SmartImage src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
+                                            {img.startsWith('blob:') && (
+                                                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded-lg">
+                                                    <Loader2 className="animate-spin text-white" size={24} />
+                                                </div>
+                                            )}
+                                            <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75 z-10"><X size={16}/></button>
                                         </div>
                                     ))}
                                     {images.length < 6 && (
                                         <div onClick={() => !isUploading && imageInputRef.current?.click()} className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 dark:border-dark-border rounded-lg transition-colors ${isUploading ? 'cursor-wait bg-gray-100 dark:bg-dark-surface-light' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-surface-light'}`}>
                                             {isUploading ? (
-                                                <>
-                                                    <UploadCloud size={32} className="text-gray-400 mb-2 animate-pulse"/>
-                                                    <p className="text-xs text-gray-500 text-center">Uploader...</p>
-                                                </>
+                                                <Loader2 className="animate-spin text-gray-400" size={32} />
                                             ) : (
                                                 <Plus size={32} className="text-gray-400"/>
                                             )}
@@ -283,7 +377,7 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
                     </div>
                     
                     <div className="pt-6">
-                        <button type="submit" disabled={loading}
+                        <button type="submit" disabled={loading || isUploading}
                             className="w-full max-w-xs mx-auto block bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50">
                             {loading ? 'Gemmer...' : 'Fortsæt til Personlighedstest'}
                         </button>

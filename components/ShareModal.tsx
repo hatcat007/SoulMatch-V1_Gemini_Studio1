@@ -1,6 +1,35 @@
 
-import React from 'react';
+
+
+import React, { useState, useEffect } from 'react';
 import type { MessageThread, User } from '../types';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if(!imageUrl) {
+        return <div className={`${className} bg-gray-200`} />;
+    }
+
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
 
 const ShareModal: React.FC<{
   title: string;
@@ -20,7 +49,7 @@ const ShareModal: React.FC<{
                     return (
                         <li key={thread.id} className="flex items-center justify-between">
                             <div className="flex items-center">
-                                <img src={user.avatar_url} alt={user.name} className="w-12 h-12 rounded-full mr-3"/>
+                                <PrivateImage src={user.avatar_url} alt={user.name} className="w-12 h-12 rounded-full mr-3 object-cover"/>
                                 <span className="font-semibold text-text-primary">{user.name}</span>
                             </div>
                             <button onClick={() => onShare(user)} className="bg-primary text-white px-4 py-1.5 rounded-full text-sm font-semibold hover:bg-primary-dark transition-colors">

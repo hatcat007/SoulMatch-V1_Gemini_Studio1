@@ -30,7 +30,7 @@ const OrganizationSidebar: React.FC = () => {
         { to: '/create-event', icon: PlusCircle, label: 'Opret Event', mobileLabel: 'Opret' },
         { to: '/import-event', icon: Sparkles, label: 'Importer Event', mobileLabel: 'Import' },
         { to: '/create-place', icon: MapPin, label: 'Opret Mødested', mobileLabel: 'Mødested' },
-        { to: '#', icon: Settings, label: 'Indstillinger', mobileLabel: 'Settings' },
+        { to: '/settings', icon: Settings, label: 'Indstillinger', mobileLabel: 'Settings' },
     ];
 
     const handleLogout = async () => {
@@ -67,27 +67,19 @@ const OrganizationSidebar: React.FC = () => {
                         <NavLink key={item.to} to={item.to} className={navLinkClasses}>
                             <item.icon className="h-6 w-6 md:h-5 md:w-5 md:mr-3" />
                             <span className="text-xs mt-1 md:hidden">{item.mobileLabel}</span>
-                            <span className="hidden md:inline md:text-base">{item.label}</span>
+                            <span className="hidden md:block">{item.label}</span>
                         </NavLink>
                     ))}
-                     <button
-                        onClick={handleLogout}
-                        className={`md:hidden flex flex-col items-center justify-center w-full transition-colors duration-200 group h-16 text-red-500`}
-                     >
-                        <LogOut className="h-6 w-6" />
-                        <span className="text-xs mt-1">Log ud</span>
-                    </button>
                 </div>
             </nav>
 
-            {/* Desktop Logout Button */}
             <div className="hidden md:block p-4 border-t border-gray-200 dark:border-dark-border">
-                <button
+                <button 
                     onClick={handleLogout}
-                    className="w-full flex items-center px-4 py-3 rounded-lg font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                    className="w-full flex items-center justify-start px-4 py-3 rounded-lg font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
                     <LogOut className="h-5 w-5 mr-3" />
-                    <span>Log ud</span>
+                    Log ud
                 </button>
             </div>
         </aside>

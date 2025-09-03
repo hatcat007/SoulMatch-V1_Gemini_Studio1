@@ -5,6 +5,34 @@ import type { Place, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if(!imageUrl) {
+        return <div className={`${className} bg-gray-200`} />;
+    }
+
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
+
 
 const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
     <div className="bg-teal-100 p-4 rounded-2xl shadow-sm h-full cursor-pointer hover:shadow-lg transition-shadow">
@@ -19,7 +47,7 @@ const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
             <div className="flex items-center">
                 <div className="flex -space-x-2 mr-2">
                     {(place.user_images || []).map((src, index) => (
-                        <img key={index} src={src} alt="user" className="w-8 h-8 rounded-full border-2 border-white"/>
+                        <PrivateImage key={index} src={src} alt="user" className="w-8 h-8 rounded-full border-2 border-white object-cover"/>
                     ))}
                 </div>
                 <p className="text-sm text-teal-700">{place.user_count || 0} har mødes her</p>
@@ -39,8 +67,16 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
         
         <header className="text-center mt-4 mb-6 flex-shrink-0">
           <h2 className="text-xl font-bold text-text-primary">
-            I kampen sammen om ensomhed tilbyder <br/> <span className="text-primary">{place.name}</span> jer
+            Kom sammen med eventet: <span className="text-primary">{place.name}</span>
           </h2>
+          {place.organization && (
+            <p className="text-sm text-text-secondary mt-1">
+              - I samarbejde om kampen om ensomhed med{' '}
+              <Link to={`/organization/${place.organization.id}`} className="font-semibold text-primary hover:underline">
+                {place.organization.name}
+              </Link>
+            </p>
+          )}
         </header>
 
         <main className="overflow-y-auto pb-4">
@@ -98,7 +134,7 @@ const PlacesPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchPlaces = async () => {
-        const { data, error } = await supabase.from('places').select('*');
+        const { data, error } = await supabase.from('places').select('*, organization:organizations(id, name)');
         if (error) {
             console.error('Error fetching places:', error);
             return [];

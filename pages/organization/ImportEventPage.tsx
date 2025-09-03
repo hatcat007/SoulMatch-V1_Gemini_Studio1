@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { generateEventImageFromText, importEventFromText } from '../../services/geminiService';
+import { uploadBase64File, fetchPrivateFile } from '../../services/s3Service';
 import type { Organization } from '../../types';
 import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X, Camera, Palette, XCircle } from 'lucide-react';
 
@@ -16,6 +17,33 @@ const emojiMenuOptions: { level: 'ai' | 'none' | 'some' | 'many'; label: string 
     { level: 'many', label: 'Mange' },
 ];
 
+const PrivateImage: React.FC<{src: string, onRemove: () => void}> = ({ src, onRemove }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+        return () => {
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if (!imageUrl) return <div className="aspect-video bg-gray-200 animate-pulse rounded-lg" />;
+    return (
+        <div className="relative aspect-video">
+            <img src={imageUrl} alt="AI generated for event" className="w-full h-full object-cover rounded-lg"/>
+            <button type="button" onClick={onRemove} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"><X size={16}/></button>
+        </div>
+    );
+};
+
 const ImportEventPage: React.FC = () => {
     const navigate = useNavigate();
     const [organization, setOrganization] = useState<Organization | null>(null);
@@ -29,6 +57,7 @@ const ImportEventPage: React.FC = () => {
     const [imageGenerationStyle, setImageGenerationStyle] = useState<'none' | 'realistic' | 'illustration'>('realistic');
     const [includeTitleOnImage, setIncludeTitleOnImage] = useState(true);
     const [emojiLevel, setEmojiLevel] = useState<'ai' | 'none' | 'some' | 'many'>('ai');
+    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
     
     const [formData, setFormData] = useState({
         title: '',
@@ -41,6 +70,11 @@ const ImportEventPage: React.FC = () => {
     });
 
     useEffect(() => {
+        const hasSeenGuide = localStorage.getItem('hasSeenImportEventGuide');
+        if (!hasSeenGuide) {
+            setShowWelcomeModal(true);
+        }
+
         const fetchOrg = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
@@ -51,6 +85,11 @@ const ImportEventPage: React.FC = () => {
         };
         fetchOrg();
     }, []);
+    
+    const handleCloseWelcomeModal = () => {
+        localStorage.setItem('hasSeenImportEventGuide', 'true');
+        setShowWelcomeModal(false);
+    };
 
     const handleImport = async () => {
         if (!eventText.trim()) {
@@ -81,7 +120,9 @@ const ImportEventPage: React.FC = () => {
                     importedData.title,
                     includeTitleOnImage
                 );
-                imageUrl = `data:image/jpeg;base64,${base64Image}`;
+                
+                setImportStatus('Uploader billede...');
+                imageUrl = await uploadBase64File(base64Image, importedData.title || 'event-image');
             }
             
             setFormData(prev => ({
@@ -154,6 +195,35 @@ const ImportEventPage: React.FC = () => {
 
     return (
         <div className="p-6 md:p-8 h-full overflow-y-auto">
+            {showWelcomeModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={handleCloseWelcomeModal}>
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 w-full max-w-lg relative" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-2xl font-bold text-center text-text-primary dark:text-dark-text-primary mb-4">Sådan fungerer "Importer Event med AI" 🤖</h3>
+                        <div className="text-text-secondary dark:text-dark-text-secondary space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                            <p><strong>📋 Kopier Tekst:</strong> Find et event, du vil oprette (f.eks. på Facebook, en hjemmeside eller i en e-mail). Kopier al teksten, der beskriver eventet.</p>
+                            <p><strong>✍️ Sæt Tekst Ind:</strong> Indsæt den kopierede tekst i det store tekstfelt.</p>
+                            <p><strong>✨ AI-Analyse:</strong> Systemets kunstige intelligens (AI) læser og forstår automatisk teksten. Den finder selv ud af, hvad der er titlen, beskrivelsen, datoen, tidspunktet og stedet for eventet.</p>
+                            <p><strong>😄 Vælg Emojis:</strong> Bestem, hvordan beskrivelsen skal se ud. Du kan lade AI'en vælge emojis for dig, eller du kan vælge "ingen", "en smule" eller "mange" emojis.</p>
+                            <p><strong>🖼️ Generer et Billede:</strong> Få AI'en til at lave et unikt billede til dit event.</p>
+                            <ul className="list-disc list-inside ml-4 text-sm space-y-1">
+                                <li><strong>📸 Realistisk Foto:</strong> Et billede, der ligner et rigtigt fotografi.</li>
+                                <li><strong>🎨 2D Illustration:</strong> En tegnet illustration.</li>
+                                <li><strong>❌ Intet Billede:</strong> Hvis du ikke ønsker et billede.</li>
+                                <li>Du kan også vælge, om eventets titel skal stå på billedet.</li>
+                            </ul>
+                            <p><strong>🚀 Importér & Færdig:</strong> Tryk på knappen "Import med AI". Nu bliver dit event oprettet automatisk med alle detaljerne udfyldt for dig. Det sparer dig for en masse tid og HELT GRATIS.</p>
+                        </div>
+                        <div className="mt-6 text-center">
+                            <button
+                                onClick={handleCloseWelcomeModal}
+                                className="bg-primary text-white font-bold py-2 px-8 rounded-full text-lg hover:bg-primary-dark transition duration-300"
+                            >
+                                Forstået!
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-1">Importer Event med AI</h1>
             <p className="text-text-secondary dark:text-dark-text-secondary mb-6">Kopier teksten fra en event-side (f.eks. Facebook). Vores AI vil analysere den og udfylde detaljerne for dig.</p>
             <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; } .input-style { display: block; width: 100%; padding: 0.75rem 1rem; color: #212529; background-color: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 0.5rem; outline: none; } .dark .input-style { background-color: #2a3343; border-color: #3c465b; color: #e2e8f0; } .input-style:focus { --tw-ring-color: #006B76; border-color: #006B76; box-shadow: 0 0 0 2px var(--tw-ring-color); }`}</style>
@@ -271,10 +341,7 @@ const ImportEventPage: React.FC = () => {
                         {formData.image_url && (
                              <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">AI-genereret billede</label>
-                                <div className="relative aspect-video">
-                                    <img src={formData.image_url} alt="AI generated for event" className="w-full h-full object-cover rounded-lg"/>
-                                    <button type="button" onClick={() => setFormData(p => ({...p, image_url: ''}))} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"><X size={16}/></button>
-                                </div>
+                                <PrivateImage src={formData.image_url} onRemove={() => setFormData(p => ({...p, image_url: ''}))} />
                             </div>
                         )}
 

@@ -16,6 +16,7 @@ const CreateOrgEventPage: React.FC = () => {
     const [time, setTime] = useState('');
     const [category, setCategory] = useState('');
     const [color, setColor] = useState('bg-blue-100');
+    const [address, setAddress] = useState('');
     
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ const CreateOrgEventPage: React.FC = () => {
             description,
             time,
             category,
+            address,
             icon: emoji,
             color,
             organization_id: organization.id,
@@ -122,6 +124,15 @@ const CreateOrgEventPage: React.FC = () => {
                         </select>
                     </div>
                  </div>
+
+                 <div>
+                    <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Adresse</label>
+                    <input
+                        type="text" id="address" value={address} onChange={e => setAddress(e.target.value)}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="F.eks. Gade 123, 9000 Aalborg" required
+                    />
+                </div>
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Kort farve</label>

@@ -48,6 +48,10 @@ CREATE TABLE "public"."organizations" (
     "phone" character varying,
     "email" character varying,
     "website" character varying,
+    "host_name" character varying,
+    "organization_type" character varying,
+    "facebook_url" character varying,
+    "emojis" text[],
     "created_at" timestamptz DEFAULT now() NOT NULL,
     "auth_id" uuid UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL
 );
@@ -76,6 +80,7 @@ CREATE TABLE "public"."events" (
     "category" character varying,
     "description" text,
     "image_url" text,
+    "address" text,
     "organization_id" bigint REFERENCES public.organizations(id) ON DELETE CASCADE,
     "created_at" timestamptz DEFAULT now() NOT NULL
 );

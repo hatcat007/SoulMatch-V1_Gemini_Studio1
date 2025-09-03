@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import type { User, Interest } from '../types';
-import { uploadFile } from '../services/s3Service';
+import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Trait {
@@ -66,7 +66,36 @@ const ProfileImageSlider: React.FC<{
     onAdd: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }> = ({ images, isEditing, onDelete, onAdd }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentImageUrl, setCurrentImageUrl] = useState('');
+    const [isLoadingImage, setIsLoadingImage] = useState(true);
     const imageInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        let isMounted = true;
+
+        const fetchUrl = async () => {
+            if (images.length > 0 && images[currentIndex]?.image_url) {
+                setIsLoadingImage(true);
+                const blobUrl = await fetchPrivateFile(images[currentIndex].image_url);
+                if (isMounted) {
+                    objectUrl = blobUrl;
+                    setCurrentImageUrl(blobUrl);
+                    setIsLoadingImage(false);
+                }
+            } else {
+                 if (isMounted) setIsLoadingImage(false);
+            }
+        };
+        fetchUrl();
+
+        return () => {
+            isMounted = false;
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [images, currentIndex]);
 
     const prevSlide = () => {
         const isFirstSlide = currentIndex === 0;
@@ -90,29 +119,32 @@ const ProfileImageSlider: React.FC<{
         }
     }, [images, currentIndex])
 
-    if (images.length === 0) {
+    if (images.length === 0 && !isEditing) {
         return (
             <div className="w-full aspect-square relative group bg-gray-100 dark:bg-dark-surface-light rounded-2xl flex items-center justify-center">
                 <div className="text-center text-gray-400 dark:text-dark-text-secondary">
                     <ImageIcon size={48} className="mx-auto mb-2"/>
                     <p>Ingen billeder</p>
                 </div>
-                 {isEditing && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                         <input type="file" ref={imageInputRef} onChange={onAdd} accept="image/*" className="hidden" />
-                         <button onClick={() => imageInputRef.current?.click()} className="bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary-dark transition flex items-center">
-                             <Plus size={24} className="mr-2"/> Tilføj billede
-                         </button>
-                    </div>
-                )}
+            </div>
+        );
+    }
+    
+    if (images.length === 0 && isEditing) {
+        return (
+             <div className="w-full aspect-square relative group bg-gray-100 dark:bg-dark-surface-light rounded-2xl flex items-center justify-center">
+                 <input type="file" ref={imageInputRef} onChange={onAdd} accept="image/*" className="hidden" />
+                 <button onClick={() => imageInputRef.current?.click()} className="bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary-dark transition flex items-center">
+                     <Plus size={24} className="mr-2"/> Tilføj billede
+                 </button>
             </div>
         );
     }
 
 
     return (
-        <div className="w-full aspect-square relative group">
-            <AnimatePresence>
+        <div className="w-full aspect-square relative group bg-gray-100 dark:bg-dark-surface-light rounded-2xl">
+             <AnimatePresence>
                 <motion.div
                     key={currentIndex}
                     initial={{ opacity: 0 }}
@@ -120,9 +152,14 @@ const ProfileImageSlider: React.FC<{
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.3 }}
                     className="w-full h-full rounded-2xl bg-cover bg-center"
-                    style={{ backgroundImage: `url(${images[currentIndex]?.image_url})` }}
+                    style={{ backgroundImage: `url(${currentImageUrl})` }}
                 >
-                     {isEditing && (
+                     {isLoadingImage && (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <Loader2 className="animate-spin text-gray-500" size={32}/>
+                        </div>
+                    )}
+                     {isEditing && !isLoadingImage && (
                         <button
                             onClick={() => onDelete(images[currentIndex].id)}
                             className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 z-10 hover:bg-red-700 transition"

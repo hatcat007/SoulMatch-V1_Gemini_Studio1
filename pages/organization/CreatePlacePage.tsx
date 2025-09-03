@@ -16,6 +16,8 @@ const CreatePlacePage: React.FC = () => {
     const [description, setDescription] = useState('');
     const [phone, setPhone] = useState('');
     const [openingHours, setOpeningHours] = useState('');
+    const [isSponsored, setIsSponsored] = useState(false);
+    const [userCount, setUserCount] = useState('');
     
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -43,7 +45,7 @@ const CreatePlacePage: React.FC = () => {
         
         const { error: insertError } = await supabase.from('places').insert({
             name,
-            offer,
+            offer: isSponsored ? offer : '',
             address,
             icon,
             category,
@@ -51,9 +53,9 @@ const CreatePlacePage: React.FC = () => {
             phone,
             opening_hours: openingHours,
             organization_id: organization.id,
-            user_count: 0,
+            user_count: parseInt(userCount, 10) || 0,
             user_images: [],
-            is_sponsored: false,
+            is_sponsored: isSponsored,
         });
 
         if (insertError) {
@@ -75,6 +77,7 @@ const CreatePlacePage: React.FC = () => {
         <div className="p-6 md:p-8 h-full overflow-y-auto">
             <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-1">Opret et nyt Mødested</h1>
             <p className="text-text-secondary dark:text-dark-text-secondary mb-6">Tilføj et nyt sted, hvor SoulMatch-brugere kan mødes og få rabat.</p>
+            <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
 
             <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl mx-auto bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm">
                  {error && <p className="text-red-500 text-center bg-red-100 p-3 rounded-lg text-sm">{error}</p>}
@@ -107,13 +110,26 @@ const CreatePlacePage: React.FC = () => {
                         </select>
                     </div>
                 </div>
-
-                <div>
-                    <label htmlFor="offer" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Tilbud / Rabat</label>
-                    <input type="text" id="offer" value={offer} onChange={e => setOffer(e.target.value)}
-                        placeholder="F.eks. '2 gratis kaffe'"
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
+                
+                <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+                     <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>
+                     <div className="flex items-center justify-between">
+                         <p className="text-sm text-gray-600 dark:text-dark-text-secondary flex-1 mr-4">Er det sponsoreret?</p>
+                         <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" id="toggle-sponsored" checked={isSponsored} onChange={() => setIsSponsored(!isSponsored)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label htmlFor="toggle-sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                        </div>
+                     </div>
+                     {isSponsored && (
+                        <div className="mt-4">
+                            <label htmlFor="offer" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Tilbud / Rabat</label>
+                            <input type="text" id="offer" value={offer} onChange={e => setOffer(e.target.value)}
+                                placeholder="F.eks. '2 gratis kaffe'"
+                                className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
+                        </div>
+                     )}
                 </div>
+
                  <div>
                     <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Adresse</label>
                     <input type="text" id="address" value={address} onChange={e => setAddress(e.target.value)}
@@ -141,6 +157,13 @@ const CreatePlacePage: React.FC = () => {
                         className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                  </div>
+
+                 <div>
+                    <label htmlFor="userCount" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Hvor mange der befinder sig der i gennemsnit</label>
+                    <input type="number" id="userCount" value={userCount} onChange={e => setUserCount(e.target.value)}
+                        placeholder="F.eks. 15"
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
                 
                 <div className="pt-2">
                      <button

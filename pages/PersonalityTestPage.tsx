@@ -33,6 +33,7 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
     const [user, setUser] = useState<User | null>(null);
     const [interests, setInterests] = useState<Interest[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSkipping, setIsSkipping] = useState(false);
     const [step, setStep] = useState<'selection' | 'testing' | 'analyzing' | 'complete'>('selection');
     const [questions, setQuestions] = useState<string[]>([]);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -137,6 +138,24 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
         }
     };
     
+    const handleSkipTest = async () => {
+        if (!user) return;
+        setIsSkipping(true);
+        setError(null);
+
+        const { error: userUpdateError } = await supabase
+            .from('users')
+            .update({ personality_test_completed: true })
+            .eq('id', user.id);
+
+        if (userUpdateError) {
+            setError(`Kunne ikke opdatere profil: ${userUpdateError.message}`);
+            setIsSkipping(false);
+        } else {
+            onTestComplete();
+        }
+    };
+
     if (isLoading) {
         return <div className="p-4 text-center">Indlæser profil...</div>;
     }
@@ -247,6 +266,13 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
                                 </button>
                                 <button onClick={() => handleStartTest('long')} className="w-full bg-primary-light dark:bg-dark-surface-light text-primary dark:text-dark-text-primary font-bold py-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition">
                                     Tag den lange og præcise
+                                </button>
+                                <button 
+                                    onClick={handleSkipTest} 
+                                    disabled={isSkipping}
+                                    className="w-full text-text-secondary dark:text-dark-text-secondary font-semibold py-3 rounded-full text-sm hover:bg-gray-200 dark:hover:bg-dark-surface-light transition disabled:opacity-50"
+                                >
+                                    {isSkipping ? <Loader className="animate-spin inline-block" /> : 'Spring test over (Anbefales IKKE)'}
                                 </button>
                             </div>
                         </div>

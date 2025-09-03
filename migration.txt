@@ -72,6 +72,10 @@ CREATE TABLE "public"."organizations" (
     "phone" character varying,
     "email" character varying,
     "website" character varying,
+    "host_name" character varying,
+    "organization_type" character varying,
+    "facebook_url" character varying,
+    "emojis" text[],
     "created_at" timestamptz DEFAULT now() NOT NULL,
     "auth_id" uuid UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL
 );
@@ -100,6 +104,7 @@ CREATE TABLE "public"."events" (
     "category" character varying,
     "description" text,
     "image_url" text,
+    "address" text,
     "organization_id" bigint REFERENCES public.organizations(id) ON DELETE CASCADE,
     "created_at" timestamptz DEFAULT now() NOT NULL
 );
@@ -229,10 +234,10 @@ INSERT INTO "public"."organizations" ("id", "name", "logo_url", "address", "desc
 (2, 'Studenterhuset Aalborg', 'https://i.imgur.com/fL5FfJ4.png', 'Gammeltorv 10', 'Aalborgs internationale studenterhus.'),
 (3, 'Ventilen Aalborg', 'https://i.imgur.com/h5r8uGk.png', 'Kirkegårdsgade 2', 'Et mødested for unge, der føler sig ensomme.');
 
-INSERT INTO "public"."events" ("id", "title", "time", "host_name", "organization_id", "description", "icon", "color", "category") VALUES
-(1, 'Musik koncert sammen', now() + interval '1 hour', 'Jesper', 2, 'Kom og hør live musik på Studenterhuset!', '🎸', 'bg-blue-100', 'Musik'),
-(2, 'Fælles spisning', now() + interval '2 hours', 'SIND Ungdom', 1, 'Hyggelig fællesspisning for alle medlemmer.', '🍔', 'bg-red-100', 'Mad'),
-(3, 'Fælles brætspil', now() + interval '1 day', 'Ventilen', 3, 'Vi finder brætspillene frem og hygger.', '🎲', 'bg-green-100', 'Brætspil');
+INSERT INTO "public"."events" ("id", "title", "time", "host_name", "host_avatar_url", "organization_id", "description", "icon", "color", "category", "image_url", "address") VALUES
+(1, 'Musik koncert sammen', now() + interval '1 hour', 'Jesper', 'https://i.pravatar.cc/80?u=jesper', 2, 'Kom og hør live musik på Studenterhuset!', '🎸', 'bg-blue-100', 'Musik', 'https://picsum.photos/seed/music/400/300', 'Gammeltorv 10, 9000 Aalborg'),
+(2, 'Fælles spisning', now() + interval '2 hours', 'SIND Ungdom', 'https://i.imgur.com/8S8V5c2.png', 1, 'Hyggelig fællesspisning for alle medlemmer.', '🍔', 'bg-red-100', 'Mad', null, 'Danmarksgade 52, 9000 Aalborg'),
+(3, 'Fælles brætspil', now() + interval '1 day', 'Ventilen', 'https://i.imgur.com/h5r8uGk.png', 3, 'Vi finder brætspillene frem og hygger.', '🎲', 'bg-green-100', 'Brætspil', null, 'Kirkegårdsgade 2, 9000 Aalborg');
 
 INSERT INTO "public"."places" ("id", "name", "offer", "address", "user_count", "icon", "category", "description", "phone", "opening_hours", "organization_id") VALUES
 (1, 'Aalborg Brætspilscafe', '2 gratis kaffe', 'Nørregade 27', 12, '🎲', 'Café', 'En hyggelig cafe for alle brætspilsentusiaster.', '+45 12345678', '14:00 - 23:00', 3);

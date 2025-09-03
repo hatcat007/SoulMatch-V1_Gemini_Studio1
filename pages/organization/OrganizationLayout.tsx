@@ -1,4 +1,5 @@
 import React from 'react';
+// FIX: Corrected import to align with the fixed OrganizationSidebar component that now has a default export.
 import OrganizationSidebar from '../../components/organization/OrganizationSidebar';
 
 const OrganizationLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {

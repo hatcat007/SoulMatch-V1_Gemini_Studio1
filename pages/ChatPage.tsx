@@ -6,7 +6,29 @@ import { supabase } from '../services/supabase';
 import { getAiClient } from '../services/geminiService';
 import type { Chat } from "@google/genai";
 import ReportUserModal from '../components/ReportUserModal';
+import { fetchPrivateFile } from '../services/s3Service';
 
+const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if (!imageUrl) return <div className={`${className} bg-gray-200 animate-pulse rounded-xl`} />;
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
 
 const formatMeetingTime = (matchTimestamp?: string): string | null => {
     if (!matchTimestamp) return null;
@@ -408,7 +430,7 @@ const ChatPage: React.FC = () => {
                                 }`}
                             >
                                 {msg.image_url && (
-                                    <img src={msg.image_url} alt="Chat content" className="rounded-xl m-1" />
+                                    <PrivateImage src={msg.image_url} alt="Chat content" className="rounded-xl m-1" />
                                 )}
                                 <div className="flex items-end space-x-2 px-3 py-2">
                                     {msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}

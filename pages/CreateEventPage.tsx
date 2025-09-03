@@ -1,9 +1,80 @@
-import React, { useState, useRef, ChangeEvent } from 'react';
-import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon } from 'lucide-react';
-import { uploadFile } from '../services/s3Service';
+import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
+import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 
 // Mock data for user's interests
 const userInterests = ['Gaming', 'Film', 'Kaffe', 'Brætspil', 'Musik', 'Gåtur'];
+
+// This component can display a local blob URL directly or fetch a private S3 URL.
+const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = ({ src, alt, className }) => {
+    const [displayUrl, setDisplayUrl] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        let objectUrlToRevoke: string | null = null;
+        let isMounted = true;
+
+        const processUrl = async () => {
+            if (!src) {
+                if (isMounted) {
+                    setIsLoading(false);
+                    setDisplayUrl('');
+                }
+                return;
+            }
+            
+            setIsLoading(true);
+
+            if (src.startsWith('blob:')) {
+                // It's a local preview blob URL, use it directly.
+                setDisplayUrl(src);
+                setIsLoading(false);
+            } else {
+                // It's a permanent S3 URL, fetch it securely to get a temporary blob URL.
+                try {
+                    const fetchedBlobUrl = await fetchPrivateFile(src);
+                    if (isMounted) {
+                        objectUrlToRevoke = fetchedBlobUrl;
+                        setDisplayUrl(fetchedBlobUrl);
+                    }
+                } catch(e) {
+                    console.error("Failed to fetch private image", e);
+                    if (isMounted) setDisplayUrl(''); // Clear on error
+                } finally {
+                    if (isMounted) setIsLoading(false);
+                }
+            }
+        };
+
+        processUrl();
+
+        return () => {
+            isMounted = false;
+            if (objectUrlToRevoke) {
+                URL.revokeObjectURL(objectUrlToRevoke);
+            }
+        };
+    }, [src]);
+
+    if (isLoading) {
+        return (
+             <div className={`${className} bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center`}>
+                <Loader2 className="animate-spin text-gray-400" size={24} />
+            </div>
+        );
+    }
+    
+    if (!displayUrl) {
+        return (
+             <div className={`${className} bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center`}>
+                <ImageIcon className="text-gray-400" size={24} />
+            </div>
+        );
+    }
+
+    return <img src={displayUrl} alt={alt} className={className} />;
+};
+
 
 const CreateEventPage: React.FC = () => {
     const [emoji, setEmoji] = useState('🎉');
@@ -40,29 +111,47 @@ const CreateEventPage: React.FC = () => {
         setTags(tags.filter(tag => tag !== tagToRemove));
     };
 
-    const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const filesToUpload = Array.from(e.target.files).slice(0, 3 - images.length);
-            if (filesToUpload.length === 0) return;
-
-            setIsUploading(true);
-            try {
-                const uploadPromises = filesToUpload.map(file => uploadFile(file));
-                const uploadedUrls = await Promise.all(uploadPromises);
-                setImages(prev => [...prev, ...uploadedUrls]);
-            } catch (error) {
-                console.error("Error uploading files:", error);
-                alert("Der skete en fejl under upload.");
-            } finally {
-                setIsUploading(false);
-            }
-        }
+    const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+    
+        const filesToUpload = Array.from(e.target.files).slice(0, 3 - images.length);
+        if (filesToUpload.length === 0) return;
+    
+        setIsUploading(true);
+    
+        const previews = filesToUpload.map(file => ({
+            blobUrl: URL.createObjectURL(file),
+            file: file,
+        }));
+    
+        setImages(prev => [...prev, ...previews.map(p => p.blobUrl)]);
+    
+        const uploadPromises = previews.map(p =>
+            uploadFile(p.file)
+                .then(finalUrl => {
+                    setImages(currentImages =>
+                        currentImages.map(img => (img === p.blobUrl ? finalUrl : img))
+                    );
+                    URL.revokeObjectURL(p.blobUrl);
+                })
+                .catch(error => {
+                    console.error("Error uploading files:", error);
+                    alert("Der skete en fejl under upload.");
+                    setImages(currentImages => currentImages.filter(img => img !== p.blobUrl));
+                    URL.revokeObjectURL(p.blobUrl);
+                    throw error;
+                })
+        );
+    
+        Promise.allSettled(uploadPromises).finally(() => {
+            setIsUploading(false);
+        });
     };
     
     const removeImage = (imageToRemove: string) => {
         setImages(images.filter(img => img !== imageToRemove));
         if (imageToRemove.startsWith('blob:')) {
-            URL.revokeObjectURL(imageToRemove); // Clean up memory for blob URLs
+            URL.revokeObjectURL(imageToRemove);
         }
     };
 
@@ -201,15 +290,20 @@ const CreateEventPage: React.FC = () => {
                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><ImageIcon size={20} className="mr-2 text-primary"/> Tilføj op til 3 billeder</label>
                     <div className="grid grid-cols-3 gap-4">
                         {images.map((img, index) => (
-                            <div key={index} className="relative aspect-square">
-                                <img src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
-                                <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"><X size={16}/></button>
+                             <div key={index} className="relative aspect-square">
+                                <SmartImage src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
+                                {img.startsWith('blob:') && (
+                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded-lg">
+                                        <Loader2 className="animate-spin text-white" size={24} />
+                                    </div>
+                                )}
+                                <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75 z-10"><X size={16}/></button>
                             </div>
                         ))}
                         {images.length < 3 && (
                             <div onClick={() => !isUploading && imageInputRef.current?.click()} className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg transition-colors ${isUploading ? 'cursor-wait bg-gray-100' : 'cursor-pointer hover:bg-gray-100'}`}>
                                 {isUploading ? (
-                                    <p className="text-sm text-gray-500">Uploader...</p>
+                                     <Loader2 className="animate-spin text-gray-400" size={32} />
                                 ) : (
                                     <>
                                         <UploadCloud size={32} className="text-gray-400 mb-2"/>

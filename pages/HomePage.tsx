@@ -1,11 +1,47 @@
 
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ImageIcon, Loader2 } from 'lucide-react';
 import type { Event, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            setLoading(true);
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+                setLoading(false);
+            });
+        } else {
+            setLoading(false);
+        }
+
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if(loading) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light rounded-full`}><Loader2 className="animate-spin text-gray-400" size={16}/></div>;
+    }
+    if(!imageUrl) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light rounded-full`}><ImageIcon className="text-gray-400" size={16}/></div>;
+    }
+
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => {
     const formattedTime = event.time ? new Date(event.time).toLocaleString('da-DK', {
@@ -15,19 +51,27 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
     }) : 'Tidspunkt ukendt';
 
     return (
-        <div className={`p-4 rounded-2xl ${event.color} dark:bg-dark-surface shadow-sm h-full flex flex-col`}>
-            <div className="flex justify-between items-start">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
+            {event.image_url ? (
+                <div className="aspect-video overflow-hidden">
+                    <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                </div>
+            ) : (
+                <div className={`w-full h-24 flex items-center justify-end p-4 ${event.color}`}>
+                    <div className="text-5xl">{event.icon}</div>
+                </div>
+            )}
+            <div className="p-4 flex flex-col flex-1">
                 <div>
                     <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{formattedTime}</p>
-                    <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1">{event.title}</h3>
+                    <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1 line-clamp-2">{event.title}</h3>
                 </div>
-                <div className="text-4xl">{event.icon}</div>
-            </div>
-            <div className="mt-auto pt-4 flex items-center">
-                <img src={event.host_avatar_url} alt={event.host_name} className="w-8 h-8 rounded-full mr-2 object-contain" />
-                <div>
-                    <p className="text-sm text-gray-700 dark:text-dark-text-secondary">{event.participantCount} deltagere</p>
-                    <p className="text-xs text-gray-500 dark:text-dark-text-secondary/70">Host: {event.host_name}</p>
+                <div className="mt-auto pt-4 flex items-center">
+                    <PrivateImage src={event.organization?.logo_url || event.host_avatar_url} alt={event.host_name} className="w-8 h-8 rounded-full mr-2 object-cover" />
+                    <div>
+                        <p className="text-sm text-gray-700 dark:text-dark-text-secondary">{event.participantCount} deltagere</p>
+                        <p className="text-xs text-gray-500 dark:text-dark-text-secondary/70">Host: {event.host_name}</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -42,13 +86,7 @@ const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
         {users.map(user => (
           <div key={user.id} className="flex flex-col items-center text-center w-20 flex-shrink-0">
             <div className="relative">
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold shadow-md">
-                  {user.name.charAt(0)}
-                </div>
-              )}
+              <PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
               <span className="absolute bottom-0.5 right-0.5 block h-4 w-4 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface animate-pulse-slow"></span>
             </div>
             <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
@@ -75,6 +113,7 @@ const HomePage: React.FC = () => {
             .from('events')
             .select(`
                 *,
+                organization:organizations(logo_url),
                 event_participants ( count )
             `);
 
@@ -178,7 +217,7 @@ const HomePage: React.FC = () => {
       {filteredEvents.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredEvents.map(event => (
-              <Link to={`/event/${event.id}`} key={event.id} className="block mb-4 md:mb-0">
+              <Link to={`/event/${event.id}`} key={event.id} className="block">
                 <EventCard event={event} />
               </Link>
             ))}
