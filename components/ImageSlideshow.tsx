@@ -42,6 +42,8 @@ const PrivateSlideImage: React.FC<{src: string, alt: string}> = ({ src, alt }) =
     return <img src={imageUrl} alt={alt} className="w-full h-full object-cover" />;
 };
 
+// FIX: Define a constant for the motion component to help TypeScript resolve types.
+const MotionDiv = motion.div;
 
 const ImageSlideshow: React.FC<{ images?: ImageRecord[], alt: string }> = ({ images, alt }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -60,7 +62,7 @@ const ImageSlideshow: React.FC<{ images?: ImageRecord[], alt: string }> = ({ ima
 
     if (validImages.length === 0) {
         return (
-            <div className="w-full aspect-video rounded-2xl bg-gray-100 dark:bg-dark-surface-light flex items-center justify-center text-gray-400">
+            <div className="w-full aspect-square rounded-2xl bg-gray-100 dark:bg-dark-surface-light flex items-center justify-center text-gray-400">
                 <ImageIcon size={48} />
             </div>
         );
@@ -68,7 +70,7 @@ const ImageSlideshow: React.FC<{ images?: ImageRecord[], alt: string }> = ({ ima
     
     if (validImages.length === 1) {
          return (
-            <div className="w-full aspect-video rounded-2xl overflow-hidden">
+            <div className="w-full aspect-square rounded-2xl overflow-hidden">
                 <PrivateSlideImage src={validImages[0].image_url} alt={alt} />
             </div>
         );
@@ -79,9 +81,9 @@ const ImageSlideshow: React.FC<{ images?: ImageRecord[], alt: string }> = ({ ima
     const goToSlide = (slideIndex: number) => setCurrentIndex(slideIndex);
 
     return (
-        <div className="w-full aspect-video relative group rounded-2xl overflow-hidden bg-gray-200 dark:bg-dark-surface-light">
+        <div className="w-full aspect-square relative group rounded-2xl overflow-hidden bg-gray-200 dark:bg-dark-surface-light">
             <AnimatePresence initial={false}>
-                <motion.div
+                <MotionDiv
                     key={currentIndex}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -90,7 +92,7 @@ const ImageSlideshow: React.FC<{ images?: ImageRecord[], alt: string }> = ({ ima
                     className="absolute inset-0"
                 >
                     <PrivateSlideImage src={validImages[currentIndex].image_url} alt={`${alt} ${currentIndex + 1}`} />
-                </motion.div>
+                </MotionDiv>
             </AnimatePresence>
             
             <button onClick={prevSlide} className="absolute top-1/2 -translate-y-1/2 left-2 bg-black/30 text-white p-2 rounded-full group-hover:opacity-100 opacity-0 transition-opacity z-10"><ChevronLeft size={24}/></button>

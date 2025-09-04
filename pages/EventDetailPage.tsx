@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Info } from 'lucide-react';
+import { ArrowLeft, Info, Ticket } from 'lucide-react';
 import type { Event, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import ImageSlideshow from '../components/ImageSlideshow';
@@ -94,14 +94,20 @@ const EventDetailPage: React.FC = () => {
     const [shareConfirmation, setShareConfirmation] = useState('');
     const [loading, setLoading] = useState(true);
 
-    const formattedTime = useMemo(() => {
+    const formattedTimeRange = useMemo(() => {
         if (!event?.time) return 'Tidspunkt ukendt';
-        return new Date(event.time).toLocaleString('da-DK', {
+        const options: Intl.DateTimeFormatOptions = {
             weekday: 'long',
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
-        });
+        };
+        const startTime = new Date(event.time).toLocaleString('da-DK', options);
+        if (!event.end_time) {
+            return startTime;
+        }
+        const endTime = new Date(event.end_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `${startTime} - ${endTime}`;
     }, [event]);
 
     useEffect(() => {
@@ -118,7 +124,7 @@ const EventDetailPage: React.FC = () => {
 
             const { data, error } = await supabase
                 .from('events')
-                .select('*, participants:event_participants(user:users(*)), images:event_images(id, image_url)')
+                .select('*, participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*)')
                 .eq('id', eventId)
                 .single();
             
@@ -205,16 +211,30 @@ const EventDetailPage: React.FC = () => {
 
                 <div className={`md:max-w-4xl mx-auto p-4 md:p-6 pt-4 md:pt-6`}>
                     <div className="relative p-6 rounded-3xl shadow-xl bg-gray-50 dark:bg-dark-surface mb-8">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-start">
                             <div>
                                 <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">{event.title}</h2>
+                                <p className="text-text-secondary dark:text-dark-text-secondary mt-1 font-semibold">{formattedTimeRange}</p>
                                 <p className="text-text-secondary dark:text-dark-text-secondary mt-1">Host: {event.host_name}</p>
+                                <p className="font-semibold text-primary mt-2">{event.category?.name || 'Ukendt'}</p>
                             </div>
                             <Link to={`/organization/${event.organization_id}`} className="p-3 bg-white dark:bg-dark-surface-light rounded-full border border-gray-200 dark:border-dark-border text-primary hover:bg-primary-light dark:hover:bg-primary/20">
                                 <Info size={24} />
                             </Link>
                         </div>
                     </div>
+
+                    {event.is_sponsored && event.offer && (
+                        <section className="mb-8">
+                            <div className="bg-green-100 dark:bg-green-900/30 border-l-4 border-green-500 text-green-800 dark:text-green-300 p-4 rounded-r-lg flex items-center">
+                                <Ticket className="h-8 w-8 mr-4" />
+                                <div>
+                                    <h3 className="font-bold">Sponsoreret Tilbud</h3>
+                                    <p>{event.offer}</p>
+                                </div>
+                            </div>
+                        </section>
+                    )}
 
                     <section className="mb-8">
                         <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Deltagere ({event.participants?.length || 0})</h3>

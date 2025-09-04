@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { User, Interest } from '../types';
 
@@ -26,6 +27,9 @@ export interface ImportedEventData {
     title: string;
     description: string;
     datetime: string | null;
+    end_time: string | null;
+    address: string | null;
+    datetime_options?: string[];
     category: string | null;
     emoji: string | null;
     error?: string;
@@ -176,154 +180,168 @@ export async function getAiMatches(currentUser: User, allUsers: User[]): Promise
   } catch (error) {
     console.error("Error fetching AI matches:", error);
     // Fallback to random matches on API error, as per error handling guidelines.
-    return allUsers.filter(u => u.id !== currentUser.id).map(u => u.id).sort(() => 0.5 - Math.random()).slice(0, 5);
+    return allUsers.map(u => u.id).sort(() => 0.5 - Math.random());
   }
 }
 
-/**
- * Extracts structured event data from a block of text using AI.
- * @param eventText - The raw text content copied from an event page.
- * @param categoryOptions - A list of valid categories for the AI to choose from.
- * @param emojiOptions - A list of valid emojis for the AI to choose from.
- * @param emojiLevel - The desired level of emoji usage in the description.
- * @returns A structured object with the event details.
- */
-export async function importEventFromText(
-    eventText: string,
+export async function generateEventImageFromText(
+    description: string,
+    style: 'realistic' | 'illustration',
+    title?: string,
+    includeTitle?: boolean,
+    numberOfImages: number = 1
+): Promise<string[]> {
+    const aiClient = getAiClient();
+    const prompt = `
+        Generate a compelling, high-quality image for a social event.
+        Event Title: "${title || 'Untitled Event'}"
+        Description: "${description}"
+        Style: ${style}.
+        ${includeTitle ? 'Subtly and artfully incorporate the event title text into the image.' : 'Do not include any text in the image.'}
+        The image should be visually appealing, relevant to the event, and inviting. It must be suitable for all audiences. Focus on themes of community, friendship, and positive social interaction.
+    `;
+
+    try {
+        const response = await aiClient.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt,
+            config: {
+                numberOfImages,
+                outputMimeType: 'image/jpeg',
+                aspectRatio: '1:1',
+            }
+        });
+
+        if (!response.generatedImages || response.generatedImages.length === 0) {
+            throw new Error("AI did not return any images.");
+        }
+        return response.generatedImages.map(img => img.image.imageBytes);
+
+    } catch (error) {
+        console.error("Error generating event image from AI:", error);
+        throw new Error(`AI image generation failed. The prompt might have been blocked for safety reasons. Please try a different description. Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+// FIX: Added the missing `generatePlaceImageFromText` function. This function is similar to `generateEventImageFromText` but with a prompt tailored for generating images of social meeting places.
+export async function generatePlaceImageFromText(
+    description: string,
+    placeName: string,
+    style: 'realistic' | 'illustration',
+    numberOfImages: number = 1
+): Promise<string[]> {
+    const aiClient = getAiClient();
+    const prompt = `
+        Generate a compelling, high-quality image for a social meeting place.
+        Place Name: "${placeName}"
+        Description: "${description}"
+        Style: ${style}.
+        Do not include any text in the image.
+        The image should be visually appealing, relevant to the place, and inviting. It must be suitable for all audiences. Focus on creating a welcoming and cozy atmosphere where people can connect. Think about themes of community, friendship, and positive social interaction.
+    `;
+
+    try {
+        const response = await aiClient.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt,
+            config: {
+                numberOfImages,
+                outputMimeType: 'image/jpeg',
+                aspectRatio: '1:1',
+            }
+        });
+
+        if (!response.generatedImages || response.generatedImages.length === 0) {
+            throw new Error("AI did not return any images.");
+        }
+        return response.generatedImages.map(img => img.image.imageBytes);
+
+    } catch (error) {
+        console.error("Error generating place image from AI:", error);
+        throw new Error(`AI image generation failed. The prompt might have been blocked for safety reasons. Please try a different description. Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+export async function importEventFromMultimodal(
+    text: string,
+    files: { mimeType: string; data: string }[],
     categoryOptions: string[],
     emojiOptions: string[],
     emojiLevel: 'ai' | 'none' | 'some' | 'many'
 ): Promise<ImportedEventData> {
-    let emojiInstruction = '';
-    switch (emojiLevel) {
-        case 'none':
-            emojiInstruction = 'Do not use any emojis in the description.';
-            break;
-        case 'some':
-            emojiInstruction = 'Use a few emojis where appropriate in the description to seem friendly.';
-            break;
-        case 'many':
-            emojiInstruction = 'Use emojis generously in the description to make the text lively and expressive.';
-            break;
-        case 'ai':
-        default:
-            emojiInstruction = 'You can use emojis in the description if you feel it enhances the message.';
-            break;
-    }
+    const aiClient = getAiClient();
 
-    const prompt = `
-        You are an intelligent assistant that extracts structured data from raw text.
-        Analyze the following text copied from an event page:
+    const textPart = {
+        text: `
+            Analyze the following event information from text and/or images/PDFs. Your task is to extract the event details into a structured JSON format.
 
-        --- START OF PASTED TEXT ---
-        ${eventText}
-        --- END OF PASTED TEXT ---
+            Event Text:
+            ---
+            ${text || '(No text provided)'}
+            ---
 
-        Your task is to extract the following information:
-        1.  **title**: The official title of the event.
-        2.  **description**: The full, detailed description of the event. Format this description using simple markdown (like **bold text** for emphasis, bullet points starting with a hyphen for lists, and natural paragraph breaks with double newlines). ${emojiInstruction} Try to find the event's location/address and include it.
-        3.  **datetime**: The specific starting date and time of the event. Format this as a valid string for an HTML datetime-local input (e.g., "2024-09-21T19:00"). If the text describes a recurring event without a specific date (e.g., "Every Thursday"), return null for this field. You may add a note about the recurring nature in the description.
-        4.  **category**: The most appropriate category for the event. Choose ONE from this list: [${categoryOptions.join(', ')}]. If no suitable category is found, return null.
-        5.  **emoji**: The most fitting emoji icon for the event. Choose ONE from this list: [${emojiOptions.join(', ')}]. If none fit well, return null.
+            Rules:
+            1.  **Extract Core Details**: Identify the event's title, a detailed description, the full start date and time (datetime), the end date and time (end_time) if specified, and the full address.
+            2.  **Categorize**: From the list of available categories, choose the SINGLE most appropriate one. Category List: [${categoryOptions.join(', ')}].
+            3.  **Select Emoji**: From the list of available emojis, choose ONE that best represents the event's mood or theme. Emoji List: [${emojiOptions.join(', ')}]. The level of emoji usage in the description should be: ${emojiLevel}.
+            4.  **Handle Ambiguity**: If you find multiple possible start dates/times, list them in the 'datetime_options' array. Otherwise, this should be null.
+            5.  **Format Output**: The output MUST be a single, valid JSON object matching the provided schema. Do not include any text, explanations, or markdown formatting before or after the JSON.
+            6.  **Timezone**: Assume the timezone is Europe/Copenhagen unless otherwise specified. Format datetime and end_time as ISO 8601 strings (e.g., 'YYYY-MM-DDTHH:mm'). If no year is specified, assume the current year.
+            7.  **Address**: The address should be a complete, single-line string including street, number, city, and postal code if available.
+        `
+    };
 
-        Return this information as a single, valid JSON object.
-        If you cannot find a title or description, return a JSON object with an "error" key explaining the problem.
-    `;
+    const fileParts = files.map(file => ({
+        inlineData: {
+            mimeType: file.mimeType,
+            data: file.data,
+        },
+    }));
 
     try {
-        const aiClient = getAiClient();
         const response = await aiClient.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: prompt,
+            contents: { parts: [textPart, ...fileParts] },
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        title: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        datetime: { type: Type.STRING, nullable: true },
-                        category: { type: Type.STRING, nullable: true },
-                        emoji: { type: Type.STRING, nullable: true },
-                        error: { type: Type.STRING, nullable: true },
+                        title: { type: Type.STRING, description: 'The official title of the event.' },
+                        description: { type: Type.STRING, description: 'A detailed description of the event.' },
+                        datetime: { type: Type.STRING, description: 'The start date and time in ISO 8601 format. Null if multiple options exist.', nullable: true },
+                        end_time: { type: Type.STRING, description: 'The end date and time in ISO 8601 format. Null if not specified.', nullable: true },
+                        address: { type: Type.STRING, description: 'The full street address of the event location.', nullable: true },
+                        datetime_options: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING },
+                            description: 'An array of possible start datetimes if the input is ambiguous.',
+                            nullable: true
+                        },
+                        category: { type: Type.STRING, description: `The most fitting category from the provided list: [${categoryOptions.join(', ')}]`, nullable: true },
+                        emoji: { type: Type.STRING, description: `The most fitting emoji from the provided list: [${emojiOptions.join(', ')}]`, nullable: true },
+                        error: { type: Type.STRING, description: 'If analysis fails, provide a brief error reason here.', nullable: true },
                     },
-                },
-            },
+                    required: ['title', 'description', 'datetime', 'end_time', 'address', 'category', 'emoji'],
+                }
+            }
         });
 
         const jsonString = response.text.trim();
         const result = JSON.parse(jsonString);
+        
+        if (result.datetime === "null") result.datetime = null;
+        if (result.end_time === "null") result.end_time = null;
+        if (result.address === "null") result.address = null;
+        if (result.category === "null") result.category = null;
+
         return result as ImportedEventData;
 
     } catch (error) {
-        console.error("Error importing event data from AI:", error);
-        throw new Error("AI analysis failed. Please check the provided text or try again later.");
-    }
-}
-
-
-/**
- * Generates an event image based on a description using AI.
- * @param description - The event description.
- * @param style - The desired image style: 'realistic' or 'illustration'.
- * @param title - The event title, to be optionally included on the image.
- * @param includeTitle - Boolean flag to determine if the title should be on the image.
- * @returns A base64 encoded string of the generated JPEG image.
- */
-export async function generateEventImageFromText(
-    description: string,
-    style: 'realistic' | 'illustration',
-    title: string | null,
-    includeTitle: boolean
-): Promise<string> {
-    let prompt = '';
-    const titleInstruction = includeTitle && title
-        ? `Elegantly and clearly overlay the following title on the image using a suitable font and placement: "${title}"`
-        : 'Do not add any text overlays to the image.';
-
-    if (style === 'realistic') {
-        prompt = `
-            Generate an ultra-realistic, high-quality, photorealistic image that visually represents the following event description. The image should be suitable for a social event promotion. Focus on capturing the mood and key elements described.
-
-            Event Description: "${description}"
-
-            Style guidelines:
-            - Aspect Ratio: 16:9
-            - Mood: Welcoming, friendly, and social.
-            - Text: ${titleInstruction}
-        `;
-    } else { // style === 'illustration'
-        prompt = `
-            Create a beautiful 2D illustration that captures the essence and emotion of the following event description. The style should be elegant, modern, and visually appealing, suitable for a social event promotion. The color palette and overall mood of the illustration must align perfectly with the feelings and theme conveyed in the text (e.g., joyful, calm, energetic, cozy).
-
-            Event Description: "${description}"
-
-            Style guidelines:
-            - Aspect Ratio: 16:9
-            - Style: High-quality, detailed 2D illustration.
-            - Emotion and Color: The colors and artistic style must match the event's described atmosphere.
-            - Text: ${titleInstruction}
-        `;
-    }
-
-    try {
-        const aiClient = getAiClient();
-        const response = await aiClient.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/jpeg',
-                aspectRatio: '16:9',
-            },
-        });
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            return response.generatedImages[0].image.imageBytes;
-        } else {
-            throw new Error("AI did not generate an image.");
-        }
-    } catch (error) {
-        console.error("Error generating event image:", error);
-        throw new Error("AI image generation failed.");
+        console.error("Error importing event from AI:", error);
+        return {
+            error: `AI analysis failed. The model might have had trouble interpreting the input. Details: ${error instanceof Error ? error.message : String(error)}`,
+            title: '', description: '', datetime: null, end_time: null, address: null, category: null, emoji: null
+        };
     }
 }

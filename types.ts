@@ -18,16 +18,23 @@ export interface ImageRecord {
   image_url: string;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  type: 'event' | 'place';
+}
+
 export interface Event {
   id: number;
   title: string;
   time: string;
+  end_time?: string;
   participantCount: number;
   host_name: string;
   host_avatar_url: string;
   icon: string;
   color: string;
-  category: string;
   description?: string;
   participants?: User[];
   organization_id: number;
@@ -37,6 +44,10 @@ export interface Event {
   image_url?: string;
   images?: ImageRecord[];
   address?: string;
+  is_sponsored?: boolean;
+  offer?: string;
+  category: Category;
+  category_id: number;
 }
 
 export interface Place {
@@ -47,7 +58,6 @@ export interface Place {
   user_count: number;
   user_images: string[];
   icon: string;
-  category: string;
   description: string;
   is_sponsored: boolean;
   phone: string;
@@ -59,6 +69,8 @@ export interface Place {
   };
   image_url?: string;
   images?: ImageRecord[];
+  category: Category;
+  category_id: number;
 }
 
 export interface MessageThread {

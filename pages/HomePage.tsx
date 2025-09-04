@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, ImageIcon, Loader2 } from 'lucide-react';
@@ -53,7 +51,7 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
     return (
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
             {event.image_url ? (
-                <div className="aspect-video overflow-hidden">
+                <div className="aspect-square overflow-hidden">
                     <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                 </div>
             ) : (
@@ -103,7 +101,7 @@ const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
 
 const HomePage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const selectedCategory = searchParams.get('category');
+    const selectedCategoryId = searchParams.get('category_id');
     const [events, setEvents] = useState<Event[]>([]);
     const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
@@ -114,7 +112,8 @@ const HomePage: React.FC = () => {
             .select(`
                 *,
                 organization:organizations(logo_url),
-                event_participants ( count )
+                event_participants ( count ),
+                category:categories(*)
             `);
 
         if (eventsError) {
@@ -124,7 +123,7 @@ const HomePage: React.FC = () => {
             return eventsData.map(e => ({
                 ...e,
                 participantCount: e.event_participants?.[0]?.count || 0
-            }));
+            })) as Event[];
         }
     };
 
@@ -159,11 +158,18 @@ const HomePage: React.FC = () => {
     }, []);
 
     const filteredEvents = useMemo(() => {
-        if (!selectedCategory) {
+        if (!selectedCategoryId) {
             return events;
         }
-        return events.filter(event => event.category === selectedCategory);
-    }, [selectedCategory, events]);
+        return events.filter(event => event.category?.id === parseInt(selectedCategoryId, 10));
+    }, [selectedCategoryId, events]);
+
+    const selectedCategoryName = useMemo(() => {
+        if (!selectedCategoryId) return null;
+        const event = events.find(e => e.category?.id === parseInt(selectedCategoryId, 10));
+        return event?.category?.name || null;
+    }, [selectedCategoryId, events]);
+
 
     if (loading) {
         return <div className="p-4 text-center">Loading...</div>;
@@ -205,9 +211,9 @@ const HomePage: React.FC = () => {
         </Link>
       </div>
       
-      {selectedCategory && (
+      {selectedCategoryId && selectedCategoryName && (
         <div className="inline-flex items-center bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
-          <span>Filter: {selectedCategory}</span>
+          <span>Filter: {selectedCategoryName}</span>
           <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 dark:hover:bg-primary/30 rounded-full">
             <X size={16} />
           </button>

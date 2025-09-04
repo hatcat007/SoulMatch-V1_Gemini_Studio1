@@ -1,6 +1,8 @@
 import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
-import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
+import { usePersistentState } from '../hooks/useNotifications';
+import CategorySelector from '../components/CategorySelector';
 
 // Mock data for user's interests
 const userInterests = ['Gaming', 'Film', 'Kaffe', 'Brætspil', 'Musik', 'Gåtur'];
@@ -75,46 +77,66 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = (
     return <img src={displayUrl} alt={alt} className={className} />;
 };
 
+const initialFormState = {
+    emoji: '🎉',
+    eventName: '',
+    description: '',
+    time: '',
+    end_time: '',
+    tags: [] as string[],
+    location: '',
+    isDiagnosisFriendly: false,
+    images: [] as string[],
+    is_sponsored: false,
+    offer: '',
+    category_id: null as number | null,
+};
 
 const CreateEventPage: React.FC = () => {
-    const [emoji, setEmoji] = useState('🎉');
-    const [eventName, setEventName] = useState('');
-    const [description, setDescription] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [tags, setTags] = useState<string[]>([]);
+    const [formData, setFormData] = usePersistentState('createUserEventForm', initialFormState);
     const [tagInput, setTagInput] = useState('');
-    const [location, setLocation] = useState('');
-    const [isDiagnosisFriendly, setIsDiagnosisFriendly] = useState(false);
-    const [images, setImages] = useState<string[]>([]);
     const [isUploading, setIsUploading] = useState(false);
 
     const imageInputRef = useRef<HTMLInputElement>(null);
 
+    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        if (type === 'checkbox') {
+            const { checked } = e.target as HTMLInputElement;
+            setFormData(prev => ({...prev, [name]: checked}));
+        } else {
+            setFormData(prev => ({...prev, [name]: value}));
+        }
+    };
+    
+    const handleSimpleStateChange = <K extends keyof typeof initialFormState>(key: K, value: (typeof initialFormState)[K]) => {
+        setFormData(p => ({...p, [key]: value}));
+    };
+
     const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && tagInput.trim() !== '') {
             e.preventDefault();
-            if (!tags.includes(tagInput.trim())) {
-                setTags([...tags, tagInput.trim()]);
+            if (!formData.tags.includes(tagInput.trim())) {
+                setFormData(p => ({...p, tags: [...p.tags, tagInput.trim()]}));
             }
             setTagInput('');
         }
     };
 
     const addTag = (tag: string) => {
-        if (!tags.includes(tag)) {
-            setTags([...tags, tag]);
+        if (!formData.tags.includes(tag)) {
+            setFormData(p => ({...p, tags: [...p.tags, tag]}));
         }
     };
 
     const removeTag = (tagToRemove: string) => {
-        setTags(tags.filter(tag => tag !== tagToRemove));
+        setFormData(p => ({...p, tags: p.tags.filter(tag => tag !== tagToRemove)}));
     };
 
     const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
     
-        const filesToUpload = Array.from(e.target.files).slice(0, 3 - images.length);
+        const filesToUpload = Array.from(e.target.files).slice(0, 3 - formData.images.length);
         if (filesToUpload.length === 0) return;
     
         setIsUploading(true);
@@ -124,20 +146,18 @@ const CreateEventPage: React.FC = () => {
             file: file,
         }));
     
-        setImages(prev => [...prev, ...previews.map(p => p.blobUrl)]);
+        setFormData(p => ({...p, images: [...p.images, ...previews.map(pr => pr.blobUrl)]}));
     
         const uploadPromises = previews.map(p =>
             uploadFile(p.file)
                 .then(finalUrl => {
-                    setImages(currentImages =>
-                        currentImages.map(img => (img === p.blobUrl ? finalUrl : img))
-                    );
+                    setFormData(current => ({...current, images: current.images.map(img => (img === p.blobUrl ? finalUrl : img))}));
                     URL.revokeObjectURL(p.blobUrl);
                 })
                 .catch(error => {
                     console.error("Error uploading files:", error);
                     alert("Der skete en fejl under upload.");
-                    setImages(currentImages => currentImages.filter(img => img !== p.blobUrl));
+                    setFormData(current => ({...current, images: current.images.filter(img => img !== p.blobUrl)}));
                     URL.revokeObjectURL(p.blobUrl);
                     throw error;
                 })
@@ -149,7 +169,7 @@ const CreateEventPage: React.FC = () => {
     };
     
     const removeImage = (imageToRemove: string) => {
-        setImages(images.filter(img => img !== imageToRemove));
+        setFormData(p => ({...p, images: p.images.filter(img => img !== imageToRemove)}));
         if (imageToRemove.startsWith('blob:')) {
             URL.revokeObjectURL(imageToRemove);
         }
@@ -157,18 +177,9 @@ const CreateEventPage: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log({
-            emoji,
-            eventName,
-            description,
-            startDate,
-            endDate,
-            tags,
-            location,
-            isDiagnosisFriendly,
-            images,
-        });
+        console.log(formData);
         alert('Event oprettet! (Se konsol for data)');
+        setFormData(initialFormState); // Clear form and sessionStorage on submit
     };
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
@@ -182,14 +193,15 @@ const CreateEventPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
+                <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
                 {/* Emoji */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                     <label className="block text-lg font-semibold text-gray-800 mb-3">Vælg dit emoji til event</label>
                     <div className="flex items-center space-x-4">
-                        <div className="text-5xl">{emoji}</div>
+                        <div className="text-5xl">{formData.emoji}</div>
                         <div className="grid grid-cols-6 gap-2 flex-1">
                             {emojiOptions.map(e => (
-                                <button key={e} type="button" onClick={() => setEmoji(e)} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${emoji === e ? 'bg-primary-light scale-110' : 'hover:bg-gray-100'}`}>
+                                <button key={e} type="button" onClick={() => handleSimpleStateChange('emoji', e)} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.emoji === e ? 'bg-primary-light scale-110' : 'hover:bg-gray-100'}`}>
                                     {e}
                                 </button>
                             ))}
@@ -202,33 +214,39 @@ const CreateEventPage: React.FC = () => {
                     <div>
                         <label htmlFor="eventName" className="block text-sm font-medium text-gray-700 mb-1">Navn på event</label>
                         <input
-                            type="text" id="eventName" value={eventName} onChange={e => setEventName(e.target.value)}
+                            type="text" id="eventName" name="eventName" value={formData.eventName} onChange={handleFormChange}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="F.eks. Tur i biffen" required
                         />
                     </div>
                     <div>
-                        <label htmlFor="eventDescription" className="block text-sm font-medium text-gray-700 mb-1">Beskrivelse</label>
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Beskrivelse</label>
                         <textarea
-                            id="eventDescription" rows={4} value={description} onChange={e => setDescription(e.target.value)}
+                            id="description" name="description" rows={4} value={formData.description} onChange={handleFormChange}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="Fortæl lidt om hvad I skal lave..." required
                         ></textarea>
                     </div>
                 </div>
                 
+                <CategorySelector 
+                    value={formData.category_id}
+                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
+                    type="event"
+                />
+
                 {/* Date/Time */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                      <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Calendar size={20} className="mr-2 text-primary"/> Hvornår?</label>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                           <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">Start tidspunkt</label>
-                           <input type="datetime-local" id="startDate" value={startDate} onChange={e => setStartDate(e.target.value)}
+                           <label htmlFor="time" className="block text-sm font-medium text-gray-700 mb-1">Start tidspunkt</label>
+                           <input type="datetime-local" id="time" name="time" value={formData.time} onChange={handleFormChange}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
                         </div>
                          <div>
-                           <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">Slut tidspunkt</label>
-                           <input type="datetime-local" id="endDate" value={endDate} onChange={e => setEndDate(e.target.value)}
+                           <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 mb-1">Slut tidspunkt</label>
+                           <input type="datetime-local" id="end_time" name="end_time" value={formData.end_time} onChange={handleFormChange}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
                         </div>
                      </div>
@@ -248,7 +266,7 @@ const CreateEventPage: React.FC = () => {
                          </div>
                      </div>
                      <div className="flex flex-wrap items-center gap-2 mb-3 min-h-[2rem]">
-                         {tags.map(tag => (
+                         {formData.tags.map(tag => (
                             <div key={tag} className="flex items-center bg-primary text-white px-3 py-1 rounded-full text-sm">
                                 <span>{tag}</span>
                                 <button type="button" onClick={() => removeTag(tag)} className="ml-2 -mr-1 text-white hover:bg-primary-dark rounded-full p-0.5"><X size={14}/></button>
@@ -266,22 +284,40 @@ const CreateEventPage: React.FC = () => {
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                      <label htmlFor="location" className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><MapPin size={20} className="mr-2 text-primary"/> Lokation</label>
                      <input
-                        type="text" id="location" value={location} onChange={e => setLocation(e.target.value)}
+                        type="text" id="location" name="location" value={formData.location} onChange={handleFormChange}
                         className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                         placeholder="Indtast fulde addresse" required
                      />
                 </div>
                 
+                {/* Sponsor */}
+                 <div className="bg-white p-4 rounded-lg shadow-sm">
+                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Ticket size={20} className="mr-2 text-primary"/> Sponsoreret?</label>
+                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-4">
+                         <p className="text-sm text-gray-600 flex-1 mr-4">Tilbyder dette event en speciel rabat eller et tilbud?</p>
+                         <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" id="toggle_sponsored" name="is_sponsored" checked={formData.is_sponsored} onChange={handleFormChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label htmlFor="toggle_sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                        </div>
+                     </div>
+                     {formData.is_sponsored && (
+                        <div>
+                           <label htmlFor="offer" className="block text-sm font-medium text-gray-700 mb-1">Tilbud / Rabat</label>
+                           <input type="text" id="offer" name="offer" value={formData.offer} onChange={handleFormChange}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="F.eks. 'Gratis kaffe til de første 10'"/>
+                        </div>
+                     )}
+                </div>
+
                 {/* Diagnosis Friendly */}
                  <div className="bg-white p-4 rounded-lg shadow-sm">
                      <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Smile size={20} className="mr-2 text-primary"/> Diagnose venligt?</label>
                      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                          <p className="text-sm text-gray-600 flex-1 mr-4">Er dette event designet til at være hensynsfuldt over for deltagere med diagnoser?</p>
                          <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
-                            <input type="checkbox" id="toggle" checked={isDiagnosisFriendly} onChange={() => setIsDiagnosisFriendly(!isDiagnosisFriendly)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <input type="checkbox" id="toggle" name="isDiagnosisFriendly" checked={formData.isDiagnosisFriendly} onChange={handleFormChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
                             <label htmlFor="toggle" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
                         </div>
-                        <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
                      </div>
                 </div>
                 
@@ -289,7 +325,7 @@ const CreateEventPage: React.FC = () => {
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><ImageIcon size={20} className="mr-2 text-primary"/> Tilføj op til 3 billeder</label>
                     <div className="grid grid-cols-3 gap-4">
-                        {images.map((img, index) => (
+                        {formData.images.map((img, index) => (
                              <div key={index} className="relative aspect-square">
                                 <SmartImage src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
                                 {img.startsWith('blob:') && (
@@ -300,7 +336,7 @@ const CreateEventPage: React.FC = () => {
                                 <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75 z-10"><X size={16}/></button>
                             </div>
                         ))}
-                        {images.length < 3 && (
+                        {formData.images.length < 3 && (
                             <div onClick={() => !isUploading && imageInputRef.current?.click()} className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg transition-colors ${isUploading ? 'cursor-wait bg-gray-100' : 'cursor-pointer hover:bg-gray-100'}`}>
                                 {isUploading ? (
                                      <Loader2 className="animate-spin text-gray-400" size={32} />

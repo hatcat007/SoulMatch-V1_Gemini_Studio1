@@ -4,6 +4,7 @@ import { supabase } from '../../services/supabase';
 import type { Place, ImageRecord } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { Loader2, Plus, X } from 'lucide-react';
+import CategorySelector from '../../components/CategorySelector';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -52,7 +53,7 @@ const EditPlacePage: React.FC = () => {
 
     // Form state
     const [formData, setFormData] = useState({
-        name: '', offer: '', address: '', icon: '☕', category: '', description: '',
+        name: '', offer: '', address: '', icon: '☕', category_id: null as number | null, description: '',
         phone: '', opening_hours: '', is_sponsored: false, user_count: '0'
     });
     const [images, setImages] = useState<ImageRecord[]>([]);
@@ -72,7 +73,7 @@ const EditPlacePage: React.FC = () => {
                     offer: data.offer || '',
                     address: data.address || '',
                     icon: data.icon || '☕',
-                    category: data.category || '',
+                    category_id: data.category_id,
                     description: data.description || '',
                     phone: data.phone || '',
                     opening_hours: data.opening_hours || '',
@@ -116,14 +117,25 @@ const EditPlacePage: React.FC = () => {
     
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!formData.category_id) {
+            setError("Vælg venligst en kategori.");
+            return;
+        }
         setIsSubmitting(true);
         setError(null);
         
         const { error: updateError } = await supabase
             .from('places')
             .update({
-                ...formData,
+                name: formData.name,
                 offer: formData.is_sponsored ? formData.offer : '',
+                address: formData.address,
+                icon: formData.icon,
+                category_id: formData.category_id,
+                description: formData.description,
+                phone: formData.phone,
+                opening_hours: formData.opening_hours,
+                is_sponsored: formData.is_sponsored,
                 user_count: parseInt(formData.user_count, 10) || 0,
                 image_url: images.length > 0 ? images[0].image_url : null,
             })
@@ -149,7 +161,6 @@ const EditPlacePage: React.FC = () => {
     };
 
     const emojiOptions = ['☕', '🍻', '🍔', '🌳', '🎨', '💪', '🛍️', '✨', '🛋️'];
-    const categoryOptions = ['Café', 'Bar', 'Restaurant', 'Park', 'Kultur', 'Sport', 'Shopping', 'Gratis', 'Hygge'];
 
     if (loading) return <div className="p-8 text-center">Indlæser mødested...</div>
     if (error && !formData.name) return <div className="p-8 text-center text-red-500">{error}</div>
@@ -180,12 +191,6 @@ const EditPlacePage: React.FC = () => {
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Navn på sted</label>
                         <input type="text" id="name" name="name" value={formData.name} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
                     </div>
-                     <div>
-                       <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Kategori</label>
-                        <select id="category" name="category" value={formData.category} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required>
-                           {categoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
-                    </div>
                 </div>
 
                 <div>
@@ -202,6 +207,12 @@ const EditPlacePage: React.FC = () => {
                     </div>
                     <input type="file" ref={imageInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                 </div>
+                
+                <CategorySelector 
+                    value={formData.category_id}
+                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
+                    type="place"
+                />
                 
                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
                      <div className="flex items-center justify-between">

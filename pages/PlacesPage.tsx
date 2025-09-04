@@ -49,7 +49,7 @@ const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
             <h3 className="text-lg font-bold text-text-primary dark:text-dark-text-primary line-clamp-2">{place.name}</h3>
             <p className="text-xs text-gray-500 dark:text-dark-text-secondary mt-1">{place.address}</p>
             <div className="flex items-center text-xs text-text-secondary dark:text-dark-text-secondary mt-2 space-x-3">
-                <p className="font-semibold">{place.category}</p>
+                <p className="font-semibold">{place.category?.name || 'Ukendt'}</p>
                 {place.user_count > 0 && (
                     <div className="flex items-center text-gray-500 dark:text-dark-text-secondary/80">
                         <Users size={14} className="mr-1" />
@@ -133,7 +133,7 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
 
 const PlacesPage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const selectedCategory = searchParams.get('category');
+    const selectedCategoryId = searchParams.get('category_id');
     const [places, setPlaces] = useState<Place[]>([]);
     const [soulmates, setSoulmates] = useState<MessageThread[]>([]);
     const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
@@ -142,12 +142,12 @@ const PlacesPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchPlaces = async () => {
-        const { data, error } = await supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name)');
+        const { data, error } = await supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*)');
         if (error) {
             console.error('Error fetching places:', error);
             return [];
         }
-        return data || [];
+        return (data || []) as Place[];
     };
 
     useEffect(() => {
@@ -199,11 +199,18 @@ const PlacesPage: React.FC = () => {
     }, []);
 
     const filteredPlaces = useMemo(() => {
-        if (!selectedCategory) {
+        if (!selectedCategoryId) {
             return places;
         }
-        return places.filter(place => place.category === selectedCategory);
-    }, [selectedCategory, places]);
+        return places.filter(place => place.category?.id === parseInt(selectedCategoryId, 10));
+    }, [selectedCategoryId, places]);
+    
+    const selectedCategoryName = useMemo(() => {
+        if (!selectedCategoryId) return null;
+        const place = places.find(p => p.category?.id === parseInt(selectedCategoryId, 10));
+        return place?.category?.name || null;
+    }, [selectedCategoryId, places]);
+
 
     const handleShare = (user: User) => {
         setShowShareModal(false);
@@ -237,9 +244,9 @@ const PlacesPage: React.FC = () => {
                 </Link>
             </div>
 
-            {selectedCategory && (
+            {selectedCategoryId && selectedCategoryName && (
                 <div className="inline-flex items-center bg-primary-light text-primary-dark font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
-                    <span>Filter: {selectedCategory}</span>
+                    <span>Filter: {selectedCategoryName}</span>
                     <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 rounded-full">
                         <X size={16} />
                     </button>

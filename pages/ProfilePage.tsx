@@ -59,6 +59,9 @@ const TraitSlider: React.FC<{ trait: Trait }> = ({ trait }) => {
   );
 };
 
+// FIX: Define a constant for the motion component to help TypeScript resolve types.
+const MotionDiv = motion.div;
+
 const ProfileImageSlider: React.FC<{
     images: ProfileImage[];
     isEditing: boolean;
@@ -145,7 +148,7 @@ const ProfileImageSlider: React.FC<{
     return (
         <div className="w-full aspect-square relative group bg-gray-100 dark:bg-dark-surface-light rounded-2xl">
              <AnimatePresence>
-                <motion.div
+                <MotionDiv
                     key={currentIndex}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -168,7 +171,7 @@ const ProfileImageSlider: React.FC<{
                             <X size={18} />
                         </button>
                     )}
-                </motion.div>
+                </MotionDiv>
             </AnimatePresence>
             
             {images.length > 1 && (

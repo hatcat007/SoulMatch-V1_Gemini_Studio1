@@ -49,8 +49,8 @@ export async function uploadFile(file: File): Promise<string> {
     const sanitizedFileName = file.name.replace(/\s+/g, '_');
     const fileName = `${Date.now()}-${sanitizedFileName}`;
     
-    // Construct the URL for the object. `forcePathStyle: true` means the path is /bucket/key.
-    const url = new URL(`${endpointUrl.protocol}//${endpointUrl.host}/${BUCKET_NAME}/${fileName}`);
+    // Construct the URL for the object. The endpoint is virtual-hosted style and contains the bucket name.
+    const url = new URL(`${endpointUrl.protocol}//${endpointUrl.host}/${fileName}`);
 
     try {
         const signedRequest = await awsClient.sign(url, {
@@ -76,7 +76,7 @@ export async function uploadFile(file: File): Promise<string> {
         }
         
         // Return the permanent, non-signed URL to be stored in the database.
-        return `${s3Config.endpoint}/${BUCKET_NAME}/${fileName}`;
+        return `${s3Config.endpoint}/${fileName}`;
     } catch (error) {
         console.error("Error uploading file with aws4fetch:", error);
         throw new Error("File upload failed. Please check your S3 configuration and network connection.");
@@ -120,8 +120,8 @@ export async function uploadBase64File(base64Data: string, fileNamePrefix: strin
     const blob = base64ToBlob(base64Data, contentType);
     const fileName = `${Date.now()}-${fileNamePrefix.replace(/\s+/g, '_')}.jpg`;
     
-    // Construct the URL for the object. `forcePathStyle: true` means the path is /bucket/key.
-    const url = new URL(`${endpointUrl.protocol}//${endpointUrl.host}/${BUCKET_NAME}/${fileName}`);
+    // Construct the URL for the object. The endpoint is virtual-hosted style and contains the bucket name.
+    const url = new URL(`${endpointUrl.protocol}//${endpointUrl.host}/${fileName}`);
 
     try {
         const signedRequest = await awsClient.sign(url, {
@@ -145,7 +145,7 @@ export async function uploadBase64File(base64Data: string, fileNamePrefix: strin
             throw new Error(`S3 upload failed with status ${response.status}: ${errorText}`);
         }
 
-        return `${s3Config.endpoint}/${BUCKET_NAME}/${fileName}`;
+        return `${s3Config.endpoint}/${fileName}`;
     } catch (error) {
         console.error("Error uploading base64 file with aws4fetch:", error);
         throw new Error(`File upload from base64 failed: ${error instanceof Error ? error.message : String(error)}`);

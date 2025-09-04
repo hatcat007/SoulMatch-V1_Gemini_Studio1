@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import type { Event, ImageRecord } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Loader2, Plus, X, Ticket } from 'lucide-react';
+import CategorySelector from '../../components/CategorySelector';
 
 // This component can display a local blob URL directly or fetch a private S3 URL.
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
@@ -61,7 +62,7 @@ const EditOrgEventPage: React.FC = () => {
 
     // Form state
     const [formData, setFormData] = useState({
-        title: '', description: '', time: '', category: '', address: '', icon: '🎉', color: 'bg-blue-100'
+        title: '', description: '', time: '', end_time: '', is_sponsored: false, offer: '', category_id: null as number | null, address: '', icon: '🎉', color: 'bg-blue-100'
     });
     const [images, setImages] = useState<ImageRecord[]>([]);
 
@@ -80,7 +81,10 @@ const EditOrgEventPage: React.FC = () => {
                     title: data.title || '',
                     description: data.description || '',
                     time: data.time ? new Date(data.time).toISOString().slice(0, 16) : '',
-                    category: data.category || '',
+                    end_time: data.end_time ? new Date(data.end_time).toISOString().slice(0, 16) : '',
+                    is_sponsored: data.is_sponsored || false,
+                    offer: data.offer || '',
+                    category_id: data.category_id,
                     address: data.address || '',
                     icon: data.icon || '🎉',
                     color: data.color || 'bg-blue-100',
@@ -112,12 +116,21 @@ const EditOrgEventPage: React.FC = () => {
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type } = e.target;
+        if (type === 'checkbox') {
+            const { checked } = e.target as HTMLInputElement;
+            setFormData(prev => ({ ...prev, [name]: checked }));
+        } else {
+            setFormData(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!formData.category_id) {
+            setError("Vælg venligst en kategori.");
+            return;
+        }
         setIsSubmitting(true);
         setError(null);
         
@@ -125,7 +138,16 @@ const EditOrgEventPage: React.FC = () => {
         const { error: updateError } = await supabase
             .from('events')
             .update({
-                ...formData,
+                title: formData.title,
+                description: formData.description,
+                time: formData.time,
+                end_time: formData.end_time,
+                is_sponsored: formData.is_sponsored,
+                offer: formData.is_sponsored ? formData.offer : '',
+                category_id: formData.category_id,
+                address: formData.address,
+                icon: formData.icon,
+                color: formData.color,
                 image_url: images.length > 0 ? images[0].image_url : null,
             })
             .eq('id', eventId);
@@ -137,9 +159,7 @@ const EditOrgEventPage: React.FC = () => {
         }
 
         // 2. Sync images
-        const { error: deleteError } = await supabase.from('event_images').delete().eq('event_id', eventId);
-        if (deleteError) { /* Handle error, maybe revert */ }
-
+        await supabase.from('event_images').delete().eq('event_id', eventId);
         if (images.length > 0) {
             const imageRecords = images.map(({ image_url }) => ({
                 event_id: Number(eventId),
@@ -157,7 +177,6 @@ const EditOrgEventPage: React.FC = () => {
     };
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
-    const categoryOptions = ['Mad', 'Events', 'Kultur', 'Brætspil', 'Biograf', 'Gåtur', 'Gaming', 'Træning', 'Fest', 'Musik'];
     const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100'];
 
     if (loading) return <div className="p-8 text-center">Indlæser event...</div>
@@ -169,6 +188,7 @@ const EditOrgEventPage: React.FC = () => {
             <p className="text-text-secondary dark:text-dark-text-secondary mb-6">Opdater detaljerne for dit event.</p>
 
             <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm">
+                 <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
                  {error && <p className="text-red-500 text-center bg-red-100 p-3 rounded-lg text-sm">{error}</p>}
                 
                 <div className="space-y-2">
@@ -208,21 +228,42 @@ const EditOrgEventPage: React.FC = () => {
                 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                       <label htmlFor="time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Tidspunkt</label>
+                       <label htmlFor="time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Start tidspunkt</label>
                        <input type="datetime-local" id="time" name="time" value={formData.time} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
                     </div>
                      <div>
-                       <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Kategori</label>
-                        <select id="category" name="category" value={formData.category} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required>
-                           <option value="" disabled>Vælg en kategori</option>
-                           {categoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
+                       <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Slut tidspunkt</label>
+                       <input type="datetime-local" id="end_time" name="end_time" value={formData.end_time} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"/>
+                    </div>
+                     <div>
+                        <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Adresse</label>
+                        <input type="text" id="address" name="address" value={formData.address} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
                     </div>
                  </div>
 
-                 <div>
-                    <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Adresse</label>
-                    <input type="text" id="address" name="address" value={formData.address} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
+                 <CategorySelector 
+                    value={formData.category_id}
+                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
+                    type="event"
+                />
+
+                <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+                     <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>
+                     <div className="flex items-center justify-between">
+                         <p className="text-sm text-gray-600 dark:text-dark-text-secondary flex-1 mr-4">Er dette event sponsoreret med et tilbud?</p>
+                         <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" id="toggle-sponsored" name="is_sponsored" checked={formData.is_sponsored} onChange={handleInputChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label htmlFor="toggle-sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                        </div>
+                     </div>
+                     {formData.is_sponsored && (
+                        <div className="mt-4">
+                            <label htmlFor="offer" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Tilbud / Rabat</label>
+                            <input type="text" id="offer" name="offer" value={formData.offer} onChange={handleInputChange}
+                                placeholder="F.eks. 'Gratis kaffe'"
+                                className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
+                        </div>
+                     )}
                 </div>
 
                 <div>
