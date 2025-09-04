@@ -192,19 +192,45 @@ export async function generateEventImageFromText(
     numberOfImages: number = 1
 ): Promise<string[]> {
     const aiClient = getAiClient();
-    const prompt = `
-        Generate a compelling, high-quality image for a social event.
-        Event Title: "${title || 'Untitled Event'}"
-        Description: "${description}"
-        Style: ${style}.
-        ${includeTitle ? 'Subtly and artfully incorporate the event title text into the image.' : 'Do not include any text in the image.'}
-        The image should be visually appealing, relevant to the event, and inviting. It must be suitable for all audiences. Focus on themes of community, friendship, and positive social interaction.
+
+    // Step 1: Generate a clean, English, visually descriptive prompt using Gemini Flash.
+    const imagePromptGeneratorPrompt = `
+        You are an AI assistant that creates effective image generation prompts. Based on the Danish event details below, create a concise, visually descriptive prompt in English. The prompt should be safe for all audiences and focus on themes of community, friendship, and positive social interaction.
+
+        Event Details:
+        - Title: "${title || 'Untitled Event'}"
+        - Description: "${description}"
+        - Desired Style: ${style}
+        - ${includeTitle ? 'The user wants the event title text to be subtly included in the image.' : 'The user does not want any text in the image.'}
+
+        Your output must be ONLY the English prompt, ready to be sent to an image generation model like Imagen. Do not add any explanations or markdown.
+        Example: "A vibrant, realistic photo of a cozy board game cafe filled with diverse young people laughing and playing together."
+        Another Example: "A colorful, friendly illustration of a group of friends having a picnic in a sunny park."
     `;
 
+    let imageGenPrompt = '';
+    try {
+        const promptResponse = await aiClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: imagePromptGeneratorPrompt,
+        });
+        imageGenPrompt = promptResponse.text.trim();
+
+        if (!imageGenPrompt) {
+            throw new Error("Text model failed to generate an image prompt.");
+        }
+
+    } catch (textGenError) {
+        console.error("Error generating image prompt from text model:", textGenError);
+        // Fallback to a generic prompt if the text model fails
+        imageGenPrompt = `A ${style} image showing friends enjoying a social activity together, in a friendly atmosphere.`;
+    }
+
+    // Step 2: Use the generated prompt to create the image with Imagen.
     try {
         const response = await aiClient.models.generateImages({
             model: 'imagen-4.0-generate-001',
-            prompt,
+            prompt: imageGenPrompt, // Use the new, clean prompt
             config: {
                 numberOfImages,
                 outputMimeType: 'image/jpeg',
@@ -218,12 +244,11 @@ export async function generateEventImageFromText(
         return response.generatedImages.map(img => img.image.imageBytes);
 
     } catch (error) {
-        console.error("Error generating event image from AI:", error);
+        console.error("Error generating event image from AI (Imagen step):", error);
         throw new Error(`AI image generation failed. The prompt might have been blocked for safety reasons. Please try a different description. Error: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
-// FIX: Added the missing `generatePlaceImageFromText` function. This function is similar to `generateEventImageFromText` but with a prompt tailored for generating images of social meeting places.
 export async function generatePlaceImageFromText(
     description: string,
     placeName: string,
@@ -231,19 +256,40 @@ export async function generatePlaceImageFromText(
     numberOfImages: number = 1
 ): Promise<string[]> {
     const aiClient = getAiClient();
-    const prompt = `
-        Generate a compelling, high-quality image for a social meeting place.
-        Place Name: "${placeName}"
-        Description: "${description}"
-        Style: ${style}.
-        Do not include any text in the image.
-        The image should be visually appealing, relevant to the place, and inviting. It must be suitable for all audiences. Focus on creating a welcoming and cozy atmosphere where people can connect. Think about themes of community, friendship, and positive social interaction.
-    `;
 
+    // Step 1: Generate a clean, English, visually descriptive prompt.
+    const imagePromptGeneratorPrompt = `
+        You are an AI assistant that creates effective image generation prompts. Based on the Danish details of a social venue below, create a concise, visually descriptive prompt in English. The prompt must be safe for all audiences and focus on a welcoming, cozy atmosphere where people can connect. Do not include any text in the final image.
+
+        Venue Details:
+        - Name: "${placeName}"
+        - Description: "${description}"
+        - Desired Style: ${style}
+
+        Your output must be ONLY the English prompt, ready to be sent to an image generation model like Imagen. Do not add any explanations or markdown.
+        Example: "A realistic, warm-toned photo of the interior of a cozy, bustling coffee shop with people chatting at small tables."
+    `;
+    
+    let imageGenPrompt = '';
+    try {
+        const promptResponse = await aiClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: imagePromptGeneratorPrompt,
+        });
+        imageGenPrompt = promptResponse.text.trim();
+        if (!imageGenPrompt) {
+            throw new Error("Text model failed to generate an image prompt for the place.");
+        }
+    } catch (textGenError) {
+        console.error("Error generating image prompt for place:", textGenError);
+        imageGenPrompt = `A ${style} image of a welcoming social place, like a cafe or community center, with a cozy atmosphere.`;
+    }
+
+    // Step 2: Use the generated prompt to create the image.
     try {
         const response = await aiClient.models.generateImages({
             model: 'imagen-4.0-generate-001',
-            prompt,
+            prompt: imageGenPrompt,
             config: {
                 numberOfImages,
                 outputMimeType: 'image/jpeg',
@@ -257,7 +303,7 @@ export async function generatePlaceImageFromText(
         return response.generatedImages.map(img => img.image.imageBytes);
 
     } catch (error) {
-        console.error("Error generating place image from AI:", error);
+        console.error("Error generating place image from AI (Imagen step):", error);
         throw new Error(`AI image generation failed. The prompt might have been blocked for safety reasons. Please try a different description. Error: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
@@ -273,21 +319,25 @@ export async function importEventFromMultimodal(
 
     const textPart = {
         text: `
-            Analyze the following event information from text and/or images/PDFs. Your task is to extract the event details into a structured JSON format.
+            You are an expert event data extractor for an app called SoulMatch. Your goal is to analyze the provided event information (from text and/or images) and return a structured JSON object.
 
-            Event Text:
+            **CRITICAL INSTRUCTIONS:**
+            1.  **Extract & Refine:**
+                *   **title:** Extract the event title.
+                *   **description:** IMPORTANT! Rewrite the provided description to be clean, engaging, and welcoming for app users. The tone should be friendly. Based on the emoji level '${emojiLevel}', incorporate emojis naturally into this new description. ('none' = no emojis, 'some' = a few, 'many' = use generously, 'ai' = use your judgment).
+                *   **datetime:** Find the start date and time. Format as a single ISO 8601 string ('YYYY-MM-DDTHH:mm'). Assume Europe/Copenhagen timezone. If you find multiple possibilities, put them in 'datetime_options' and set this to null.
+                *   **end_time:** Find the end date and time if available. Format as ISO 8601. If not found, set to null.
+                *   **address:** Extract the full, single-line address (street, number, city, zip).
+            2.  **Categorize & Decorate:**
+                *   **category:** From this EXACT list, pick the ONE most relevant category: [${categoryOptions.join(', ')}].
+                *   **emoji:** From this EXACT list, pick the ONE best emoji for the event icon: [${emojiOptions.join(', ')}].
+            3.  **Output Format:**
+                *   Your entire response MUST be ONLY the JSON object. Do not include any other text, explanations, or markdown.
+
+            **Event Information to Analyze:**
             ---
             ${text || '(No text provided)'}
             ---
-
-            Rules:
-            1.  **Extract Core Details**: Identify the event's title, a detailed description, the full start date and time (datetime), the end date and time (end_time) if specified, and the full address.
-            2.  **Categorize**: From the list of available categories, choose the SINGLE most appropriate one. Category List: [${categoryOptions.join(', ')}].
-            3.  **Select Emoji**: From the list of available emojis, choose ONE that best represents the event's mood or theme. Emoji List: [${emojiOptions.join(', ')}]. The level of emoji usage in the description should be: ${emojiLevel}.
-            4.  **Handle Ambiguity**: If you find multiple possible start dates/times, list them in the 'datetime_options' array. Otherwise, this should be null.
-            5.  **Format Output**: The output MUST be a single, valid JSON object matching the provided schema. Do not include any text, explanations, or markdown formatting before or after the JSON.
-            6.  **Timezone**: Assume the timezone is Europe/Copenhagen unless otherwise specified. Format datetime and end_time as ISO 8601 strings (e.g., 'YYYY-MM-DDTHH:mm'). If no year is specified, assume the current year.
-            7.  **Address**: The address should be a complete, single-line string including street, number, city, and postal code if available.
         `
     };
 

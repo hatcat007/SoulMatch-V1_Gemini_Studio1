@@ -1,8 +1,5 @@
-// Fix: Import ObjectCannedACL to use its type-safe values.
-// The primary S3 client is no longer used for uploads, but ObjectCannedACL is retained for type safety.
-import { ObjectCannedACL } from '@aws-sdk/client-s3';
-// aws4fetch is used to sign and send requests, avoiding potential environment
-// detection issues with the full AWS SDK.
+// This service uses aws4fetch to sign and send requests, avoiding potential environment
+// detection issues that can occur with the full AWS SDK in some bundlerless environments.
 import { AwsClient } from 'aws4fetch';
 
 // ===================================================================================
@@ -14,60 +11,54 @@ import { AwsClient } from 'aws4fetch';
 // This configuration is ONLY for the AI Studio sandbox. DO NOT use this in production.
 // ===================================================================================
 
-
-// --- Configuration for iDrive E2 using AWS SDK v3 ---
-// This configuration correctly sets up the S3 client for a custom S3-compatible
-// endpoint like iDrive E2, ensuring compatibility and proper authentication.
-const s3Config = {
-    endpoint: "https://soulmatch-uploads-private.u7v1.fra.idrivee2-55.com",
-    region: "us-east-1",
-    credentials: {
-        accessKeyId: "HNsDuYcm7wnCxyxQF3Un",
-        secretAccessKey: "yoLnrzFojZkgGYVY0kQVSjbtK8m6z8M6Pgi06DFY",
-    },
-    // 'forcePathStyle' is crucial for S3-compatible services that don't use
-    // the bucket name as a subdomain (like iDrive E2).
-    forcePathStyle: true,
-    signatureVersion: 'v4',
-};
-
+// --- Configuration for iDrive E2 using AWS SDK v3 style ---
+// By separating the endpoint from the bucket, we enforce a "path-style" URL
+// structure (e.g., https://endpoint/bucket/key), which is more reliable for many
+// S3-compatible services than the "virtual-hosted style" (e.g., https://bucket.endpoint/key).
+const S3_ENDPOINT = "https://u7v1.fra.idrivee2-55.com";
 const BUCKET_NAME = 'soulmatch-uploads-private';
-// When using aws4fetch, we need a URL object for signing.
-const endpointUrl = new URL(s3Config.endpoint);
+const S3_REGION = "us-east-1"; // Although iDrive E2 is in FRA, 'us-east-1' is often used as a default region for signing with S3-compatible services.
 
 // Create a single AwsClient instance for signing requests.
 const awsClient = new AwsClient({
-    accessKeyId: s3Config.credentials.accessKeyId,
-    secretAccessKey: s3Config.credentials.secretAccessKey,
-    region: s3Config.region,
+    accessKeyId: "HNsDuYcm7wnCxyxQF3Un",
+    secretAccessKey: "yoLnrzFojZkgGYVY0kQVSjbtK8m6z8M6Pgi06DFY",
+    region: S3_REGION,
     service: 's3',
 });
 
-
+/**
+ * Uploads a File object to the S3-compatible storage.
+ * @param file The File object to upload.
+ * @returns The permanent, non-signed URL to be stored in the database.
+ */
 export async function uploadFile(file: File): Promise<string> {
     // Use a unique file name to avoid overwrites, sanitizing the original name.
     const sanitizedFileName = file.name.replace(/\s+/g, '_');
     const fileName = `${Date.now()}-${sanitizedFileName}`;
     
-    // Construct the URL for the object. The endpoint is virtual-hosted style and contains the bucket name.
-    const url = new URL(`${endpointUrl.protocol}//${endpointUrl.host}/${fileName}`);
+    // Construct the full path-style URL for the object.
+    const objectUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
 
     try {
-        const signedRequest = await awsClient.sign(url, {
+        // Sign the request. The aws4fetch library needs the body here to calculate the
+        // content hash, which is part of the signature. However, this process consumes
+        // the readable stream of the 'file' object.
+        const signedRequest = await awsClient.sign(objectUrl, {
             method: 'PUT',
-            body: file,
             headers: {
-                'Content-Type': file.type,
+                'Content-Type': file.type || 'application/octet-stream',
             }
         });
 
-        // FIX: Reconstruct the fetch request to prevent "body already used" errors.
-        // The `signedRequest` object's body stream can be consumed during signing or by redirects.
-        // By providing the original, re-readable File object as the body, we ensure robustness.
+        // CRITICAL FIX: The `signedRequest` object's body stream might have been consumed during signing.
+        // To avoid "TypeError: Failed to fetch" or "Request has already been used" errors,
+        // we manually construct a new fetch call using the signed URL and headers, but provide the
+        // original, unconsumed 'file' object as the body again.
         const response = await fetch(signedRequest.url, {
             method: signedRequest.method,
             headers: signedRequest.headers,
-            body: file,
+            body: file, // Provide the original file object again.
         });
 
         if (!response.ok) {
@@ -75,18 +66,16 @@ export async function uploadFile(file: File): Promise<string> {
             throw new Error(`S3 upload failed with status ${response.status}: ${errorText}`);
         }
         
-        // Return the permanent, non-signed URL to be stored in the database.
-        return `${s3Config.endpoint}/${fileName}`;
+        // Return the permanent, path-style URL to be stored in the database.
+        return objectUrl;
     } catch (error) {
         console.error("Error uploading file with aws4fetch:", error);
         throw new Error("File upload failed. Please check your S3 configuration and network connection.");
     }
 }
 
-
 /**
- * Converts a base64 string to a Blob, which is the standard format for file uploads in the browser.
- * This function is robust and handles the conversion in chunks for performance.
+ * Converts a base64 string to a Blob for uploading.
  * @param base64 The base64 encoded string (without the "data:..." prefix).
  * @param contentType The MIME type of the file.
  * @returns A Blob object.
@@ -106,46 +95,40 @@ function base64ToBlob(base64: string, contentType: string): Blob {
     return new Blob(byteArrays, { type: contentType });
 }
 
-
 /**
- * Uploads a file from a base64 string to S3.
- * This is used for AI-generated images. It converts the base64 to a Blob to ensure
- * compatibility with the browser-based S3 client and avoid environment detection issues.
+ * Uploads a file from a base64 string, typically for AI-generated images.
  * @param base64Data The raw base64 data of the image.
  * @param fileNamePrefix A prefix for the generated file name.
  * @param contentType The MIME type of the image.
- * @returns The public URL of the uploaded file.
+ * @returns The permanent URL of the uploaded file.
  */
 export async function uploadBase64File(base64Data: string, fileNamePrefix: string, contentType: string = 'image/jpeg'): Promise<string> {
     const blob = base64ToBlob(base64Data, contentType);
     const fileName = `${Date.now()}-${fileNamePrefix.replace(/\s+/g, '_')}.jpg`;
     
-    // Construct the URL for the object. The endpoint is virtual-hosted style and contains the bucket name.
-    const url = new URL(`${endpointUrl.protocol}//${endpointUrl.host}/${fileName}`);
+    const objectUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
 
     try {
-        const signedRequest = await awsClient.sign(url, {
+        const signedRequest = await awsClient.sign(objectUrl, {
             method: 'PUT',
-            body: blob,
             headers: {
                 'Content-Type': contentType,
             }
         });
         
-        // FIX: Reconstruct the fetch request to prevent "body already used" errors,
-        // same as in the `uploadFile` function.
+        // CRITICAL FIX: Reconstruct the fetch call with the original blob to avoid body consumption issues.
         const response = await fetch(signedRequest.url, {
             method: signedRequest.method,
             headers: signedRequest.headers,
-            body: blob,
+            body: blob, // Provide the original blob object again.
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`S3 upload failed with status ${response.status}: ${errorText}`);
+            throw new Error(`S3 base64 upload failed with status ${response.status}: ${errorText}`);
         }
 
-        return `${s3Config.endpoint}/${fileName}`;
+        return objectUrl;
     } catch (error) {
         console.error("Error uploading base64 file with aws4fetch:", error);
         throw new Error(`File upload from base64 failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -153,32 +136,30 @@ export async function uploadBase64File(base64Data: string, fileNamePrefix: strin
 }
 
 /**
- * Processes an image URL. If the URL is for a private S3 bucket, it fetches the file
- * using signed credentials and returns a temporary, local blob URL for safe display.
- * If the URL is a public, external URL (e.g., from picsum.photos), it returns it directly,
- * allowing the browser's <img> tag to handle it efficiently.
+ * Fetches a private file from S3-compatible storage and returns a local blob URL for safe display.
+ * If the URL is not a private S3 URL, it's returned directly.
  * @param objectUrl The full URL of the object to display.
- * @returns A promise that resolves to either a local blob URL or the original public URL.
+ * @returns A promise that resolves to a local blob URL or the original public URL.
  */
 export async function fetchPrivateFile(objectUrl: string): Promise<string> {
     if (!objectUrl) {
         return '';
     }
 
-    // If it's not a private S3 URL, return it directly. The <img> tag can handle public URLs.
-    if (!objectUrl.startsWith(s3Config.endpoint)) {
+    // If it's not a private URL from our storage, return it directly.
+    if (!objectUrl.startsWith(S3_ENDPOINT)) {
         return objectUrl;
     }
 
-    // It's a private URL, so fetch it and create a temporary blob URL for display.
     try {
-        const url = new URL(objectUrl);
-        const signedRequest = await awsClient.sign(url, { method: 'GET' });
-
+        // For GET requests, the body is not an issue, so signing the request directly is fine.
+        const signedRequest = await awsClient.sign(objectUrl, { method: 'GET' });
+        
         const response = await fetch(signedRequest);
+
         if (!response.ok) {
-            console.error(`Failed to fetch private file: ${response.statusText}`, await response.text());
-            return ''; // Return empty on failure
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch private file: ${response.status} ${response.statusText}. Response: ${errorText}`);
         }
         const blob = await response.blob();
         return URL.createObjectURL(blob);

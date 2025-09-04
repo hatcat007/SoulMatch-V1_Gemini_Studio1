@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
@@ -57,6 +58,7 @@ const PrivateImage: React.FC<{src: string, onRemove?: () => void, className?: st
 
 const initialFormData = { title: '', description: '', time: '', end_time: '', address: '', category_id: null as number | null, emoji: '🎉', color: 'bg-blue-100', image_urls: [] as string[] };
 type FileObject = { name: string; type: string; data: string; preview: string };
+type BatchResult = { success: boolean; data?: ImportedEventData & { image_urls?: string[] }; error?: string; sourceFileName: string; }
 
 const ImportEventPage: React.FC = () => {
     const navigate = useNavigate();
@@ -70,7 +72,7 @@ const ImportEventPage: React.FC = () => {
         eventText: '',
         files: [] as FileObject[],
         formData: initialFormData,
-        batchResults: [] as (ImportedEventData & { image_urls?: string[] })[],
+        batchResults: [] as BatchResult[],
         dateTimeOptions: [] as string[],
         pendingImportData: null as ImportedEventData | null,
     });
@@ -93,7 +95,7 @@ const ImportEventPage: React.FC = () => {
                 const { data: orgData } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
                 setOrganization(orgData);
             }
-            const { data: categoryData } = await supabase.from('categories').select('id, name').eq('type', 'event').neq('parent_id', null);
+            const { data: categoryData } = await supabase.from('categories').select('id, name').eq('type', 'event').not('parent_id', 'is', null);
             if (categoryData) setCategoryOptions(categoryData.map(c => c.name));
             setPageLoading(false);
         };
@@ -126,7 +128,7 @@ const ImportEventPage: React.FC = () => {
             if (importedData.error) throw new Error(importedData.error);
             
             if (importedData.datetime_options && importedData.datetime_options.length > 1) {
-                updateState({ dateTimeOptions: importedData.datetime_options, pendingImportData: importedData });
+                updateState({ dateTimeOptions: importedData.datetime_options, pendingImportData: importedData, step: 'input' });
             } else {
                 await processImportedData(importedData);
             }
@@ -174,13 +176,15 @@ const ImportEventPage: React.FC = () => {
         updateState({ step: 'loading' });
         setError(null);
 
-        const results: (ImportedEventData & { image_urls?: string[] })[] = [];
+        const results: BatchResult[] = [];
         for (let i = 0; i < state.files.length; i++) {
             const file = state.files[i];
             try {
                 setImportStatus(`Behandler fil ${i + 1} af ${state.files.length}: ${file.name}`);
                 const importedData = await importEventFromMultimodal('', [{ mimeType: file.type, data: file.data }], categoryOptions, emojiOptions, emojiLevel);
-                if (importedData.error) continue;
+                if (importedData.error) {
+                    throw new Error(importedData.error);
+                }
 
                 let imageUrls: string[] = [];
                 if (imageGenerationStyle !== 'none') {
@@ -189,49 +193,51 @@ const ImportEventPage: React.FC = () => {
                     setImportStatus(`Uploader billede(r)...`);
                     imageUrls = await Promise.all(base64Images.map(base64 => uploadBase64File(base64, importedData.title)));
                 }
-                results.push({ ...importedData, image_urls: imageUrls });
+                results.push({ success: true, data: { ...importedData, image_urls: imageUrls }, sourceFileName: file.name });
             } catch (err: any) {
                 console.error(`Fejl ved behandling af fil ${file.name}:`, err.message);
+                results.push({ success: false, error: err.message, sourceFileName: file.name });
             }
         }
         updateState({ batchResults: results, step: 'review' });
     };
 
     const handleConfirmBatch = async () => {
-        if (!organization || state.batchResults.length === 0) return;
+        const successfulResults = state.batchResults.filter(r => r.success && r.data);
+        if (!organization || successfulResults.length === 0) return;
+
         updateState({ step: 'loading' });
-        setImportStatus(`Opretter ${state.batchResults.length} events...`);
+        setImportStatus(`Opretter ${successfulResults.length} events...`);
 
         try {
-            const eventsToInsert = await Promise.all(state.batchResults.map(async (data) => {
+            const eventsToInsertPromises = successfulResults.map(async (result) => {
+                const data = result.data!;
                 let categoryId: number | null = null;
                 if (data.category) {
                     const { data: cat } = await supabase.from('categories').select('id').eq('name', data.category).eq('type', 'event').single();
                     if (cat) categoryId = cat.id;
                 }
                 return {
-                    title: data.title,
-                    description: data.description,
-                    time: data.datetime,
-                    end_time: data.end_time,
-                    address: data.address,
-                    category_id: categoryId,
-                    icon: data.emoji || '🎉',
+                    title: data.title, description: data.description, time: data.datetime, end_time: data.end_time,
+                    address: data.address, category_id: categoryId, icon: data.emoji || '🎉',
                     color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
                     image_url: data.image_urls?.[0] || null,
-                    organization_id: organization.id,
-                    host_name: organization.name,
-                    host_avatar_url: organization.logo_url,
+                    organization_id: organization.id, host_name: organization.name, host_avatar_url: organization.logo_url,
                 };
-            }));
+            });
+            const eventsToInsert = await Promise.all(eventsToInsertPromises);
             
-            const { data: newEvents, error: insertError } = await supabase.from('events').insert(eventsToInsert.filter(e => e.category_id)).select();
+            const validEventsToInsert = eventsToInsert.filter(e => e.category_id);
+            const successfulResultsWithCategory = successfulResults.filter((_, i) => eventsToInsert[i].category_id);
+            
+            const { data: newEvents, error: insertError } = await supabase.from('events').insert(validEventsToInsert).select();
             if (insertError) throw insertError;
 
             const imageRecords = newEvents.flatMap((event, i) => {
-                const result = state.batchResults[i];
-                return result.image_urls?.map(url => ({ event_id: event.id, image_url: url })) || [];
+                const resultData = successfulResultsWithCategory[i].data;
+                return resultData?.image_urls?.map(url => ({ event_id: event.id, image_url: url })) || [];
             });
+
             if (imageRecords.length > 0) await supabase.from('event_images').insert(imageRecords);
 
             handleReset();
@@ -373,26 +379,55 @@ const ImportEventPage: React.FC = () => {
         </div>
     );
     
-    const renderReview = () => (
-        <div className="space-y-4">
-            <h2 className="text-xl font-bold">Gennemse Importerede Events ({state.batchResults.length})</h2>
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                {state.batchResults.map((result, index) => (
-                    <div key={index} className="bg-gray-50 dark:bg-dark-surface-light p-3 rounded-lg">
-                        <h3 className="font-bold">{result.title}</h3>
-                        <p className="text-sm text-gray-500">{result.datetime ? new Date(result.datetime).toLocaleString('da-DK') : 'Tidspunkt mangler'}</p>
-                        <p className="text-sm text-gray-500 mt-1">{result.address || 'Adresse mangler'}</p>
-                        <p className="text-sm line-clamp-2 mt-1">{result.description}</p>
-                        <div className="grid grid-cols-2 gap-2 mt-2">{result.image_urls?.map(url => <PrivateImage key={url} src={url} className="aspect-square"/>)}</div>
+    const renderReview = () => {
+        const successfulImports = state.batchResults.filter(r => r.success);
+        const failedImports = state.batchResults.filter(r => !r.success);
+
+        return (
+            <div className="space-y-6">
+                <h2 className="text-2xl font-bold">Gennemse Importerede Events</h2>
+                
+                {/* Successful Section */}
+                <div>
+                    <h3 className="text-lg font-semibold text-green-600">Succesfulde Imports ({successfulImports.length})</h3>
+                    {successfulImports.length > 0 ? (
+                        <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2 mt-2">
+                            {successfulImports.map((result, index) => (
+                                <div key={index} className="bg-gray-50 dark:bg-dark-surface-light p-3 rounded-lg">
+                                    <h4 className="font-bold">{result.data?.title}</h4>
+                                    <p className="text-sm text-gray-500">{result.data?.datetime ? new Date(result.data.datetime).toLocaleString('da-DK') : 'Tidspunkt mangler'}</p>
+                                    <div className="grid grid-cols-4 gap-2 mt-2">{result.data?.image_urls?.map(url => <PrivateImage key={url} src={url} className="aspect-square"/>)}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : <p className="text-sm text-gray-500 mt-2">Ingen events blev importeret succesfuldt.</p>}
+                </div>
+
+                {/* Failed Section */}
+                {failedImports.length > 0 && (
+                    <div>
+                        <h3 className="text-lg font-semibold text-red-500">Fejlede Imports ({failedImports.length})</h3>
+                        <div className="space-y-2 max-h-[20vh] overflow-y-auto pr-2 mt-2">
+                            {failedImports.map((result, index) => (
+                                <div key={index} className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+                                    <p className="font-semibold text-sm text-red-800 dark:text-red-300">{result.sourceFileName}</p>
+                                    <p className="text-xs text-red-700 dark:text-red-400 mt-1">{result.error}</p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                ))}
+                )}
+
+                <div className="flex gap-4">
+                    <button onClick={() => updateState({ step: 'input', files: [], batchResults: [] })} className="w-full bg-gray-200 dark:bg-dark-surface-light font-bold py-3 rounded-full">Prøv Igen</button>
+                    <button onClick={handleConfirmBatch} disabled={successfulImports.length === 0} className="w-full bg-primary text-white font-bold py-3 rounded-full flex items-center justify-center disabled:opacity-50">
+                        <CheckCircle size={20} className="mr-2" />
+                        Opret {successfulImports.length} Event(s)
+                    </button>
+                </div>
             </div>
-            <div className="flex gap-4">
-                <button onClick={() => updateState({ step: 'input', files: [] })} className="w-full bg-gray-200 font-bold py-3 rounded-full">Annuller</button>
-                <button onClick={handleConfirmBatch} className="w-full bg-primary text-white font-bold py-3 rounded-full flex items-center justify-center"><CheckCircle size={20} className="mr-2" />Opret Alle</button>
-            </div>
-        </div>
-    );
+        );
+    };
 
     const renderForm = () => (
         <form onSubmit={handleSubmit} className="space-y-4">
