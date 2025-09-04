@@ -1,9 +1,20 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
-import { Info, X, Calendar, Tag, MapPin, Smile, Image as ImageIcon } from 'lucide-react';
-import { uploadFile } from '../../services/s3Service';
+import { Info, X, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, UploadCloud, Plus } from 'lucide-react';
+import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import type { Organization } from '../../types';
+
+// This component can display a local blob URL directly.
+const ImagePreview: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
+    return (
+        <div className="relative group aspect-square">
+            <img src={src} alt={alt} className={className} />
+            <button type="button" onClick={onRemove} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"><X size={16}/></button>
+        </div>
+    );
+};
+
 
 const CreateOrgEventPage: React.FC = () => {
     const navigate = useNavigate();
@@ -17,6 +28,12 @@ const CreateOrgEventPage: React.FC = () => {
     const [category, setCategory] = useState('');
     const [color, setColor] = useState('bg-blue-100');
     const [address, setAddress] = useState('');
+    const [imageFiles, setImageFiles] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+
+
+    const [isUploading, setIsUploading] = useState(false);
+    const imageInputRef = useRef<HTMLInputElement>(null);
     
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -32,6 +49,28 @@ const CreateOrgEventPage: React.FC = () => {
         };
         fetchOrg();
     }, []);
+    
+    // Cleanup blob URLs on unmount
+    useEffect(() => {
+        return () => {
+            imagePreviews.forEach(url => URL.revokeObjectURL(url));
+        }
+    }, [imagePreviews]);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files) return;
+        const files = Array.from(e.target.files);
+        setImageFiles(prev => [...prev, ...files]);
+        const newPreviews = files.map(file => URL.createObjectURL(file));
+        setImagePreviews(prev => [...prev, ...newPreviews]);
+    };
+
+    const removeImage = (index: number) => {
+        setImageFiles(prev => prev.filter((_, i) => i !== index));
+        const urlToRevoke = imagePreviews[index];
+        URL.revokeObjectURL(urlToRevoke);
+        setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -41,26 +80,54 @@ const CreateOrgEventPage: React.FC = () => {
         }
         setIsSubmitting(true);
         setError(null);
-        
-        const { error: insertError } = await supabase.from('events').insert({
-            title,
-            description,
-            time,
-            category,
-            address,
-            icon: emoji,
-            color,
+
+        // 1. Upload images to S3
+        const uploadedImageUrls: string[] = [];
+        try {
+            setIsUploading(true);
+            for (const file of imageFiles) {
+                const url = await uploadFile(file);
+                uploadedImageUrls.push(url);
+            }
+        } catch(uploadError) {
+             setError("Fejl ved upload af billeder. Prøv igen.");
+             setIsSubmitting(false);
+             setIsUploading(false);
+             return;
+        } finally {
+            setIsUploading(false);
+        }
+
+        // 2. Insert event into DB
+        const { data: newEvent, error: insertError } = await supabase.from('events').insert({
+            title, description, time, category, address,
+            image_url: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null,
+            icon: emoji, color,
             organization_id: organization.id,
             host_name: organization.name,
             host_avatar_url: organization.logo_url,
-        });
+        }).select().single();
 
-        if (insertError) {
-            setError(insertError.message);
+        if (insertError || !newEvent) {
+            setError(insertError?.message || "Kunne ikke oprette event.");
             setIsSubmitting(false);
-        } else {
-            navigate('/dashboard');
+            return;
         }
+        
+        // 3. Insert images into event_images table
+        if (uploadedImageUrls.length > 0) {
+            const imageRecords = uploadedImageUrls.map(url => ({
+                event_id: newEvent.id,
+                image_url: url,
+            }));
+            const { error: imageInsertError } = await supabase.from('event_images').insert(imageRecords);
+            if (imageInsertError) {
+                setError(`Event oprettet, men billeder kunne ikke gemmes: ${imageInsertError.message}`);
+                // Don't stop submission, the event is already created.
+            }
+        }
+
+        navigate('/dashboard');
     };
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
@@ -100,6 +167,20 @@ const CreateOrgEventPage: React.FC = () => {
                         className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                         placeholder="F.eks. Hyggelig Brætspilsaften" required
                     />
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Event Billeder</label>
+                    <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                         {imagePreviews.map((preview, index) => (
+                            <ImagePreview key={index} src={preview} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg" onRemove={() => removeImage(index)} />
+                        ))}
+                        {imageFiles.length < 6 && (
+                            <div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
+                                <Plus size={32} className="text-gray-400"/>
+                            </div>
+                        )}
+                    </div>
+                    <input type="file" ref={imageInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" multiple />
                 </div>
                 <div>
                     <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Beskrivelse</label>
@@ -146,7 +227,7 @@ const CreateOrgEventPage: React.FC = () => {
                 <div>
                      <button
                         type="submit"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isUploading}
                         className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
                     >
                         {isSubmitting ? 'Opretter...' : 'Opret Event'}

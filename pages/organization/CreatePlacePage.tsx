@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import type { Organization } from '../../types';
+import { uploadFile } from '../../services/s3Service';
+import { Loader2, Plus, X } from 'lucide-react';
+
+// This component can display a local blob URL directly.
+const ImagePreview: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
+    return (
+        <div className="relative group aspect-square">
+            <img src={src} alt={alt} className={className} />
+            <button type="button" onClick={onRemove} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"><X size={16}/></button>
+        </div>
+    );
+};
+
 
 const CreatePlacePage: React.FC = () => {
     const navigate = useNavigate();
@@ -19,10 +32,16 @@ const CreatePlacePage: React.FC = () => {
     const [isSponsored, setIsSponsored] = useState(false);
     const [userCount, setUserCount] = useState('');
     
+    const [imageFiles, setImageFiles] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+
+    const [isUploading, setIsUploading] = useState(false);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const fetchOrg = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
@@ -33,6 +52,29 @@ const CreatePlacePage: React.FC = () => {
         };
         fetchOrg();
     }, []);
+    
+     // Cleanup blob URLs on unmount
+    useEffect(() => {
+        return () => {
+            imagePreviews.forEach(url => URL.revokeObjectURL(url));
+        }
+    }, [imagePreviews]);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files) return;
+        const files = Array.from(e.target.files);
+        setImageFiles(prev => [...prev, ...files]);
+        const newPreviews = files.map(file => URL.createObjectURL(file));
+        setImagePreviews(prev => [...prev, ...newPreviews]);
+    };
+
+    const removeImage = (index: number) => {
+        setImageFiles(prev => prev.filter((_, i) => i !== index));
+        const urlToRevoke = imagePreviews[index];
+        URL.revokeObjectURL(urlToRevoke);
+        setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    };
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,27 +85,53 @@ const CreatePlacePage: React.FC = () => {
         setIsSubmitting(true);
         setError(null);
         
-        const { error: insertError } = await supabase.from('places').insert({
-            name,
-            offer: isSponsored ? offer : '',
-            address,
-            icon,
-            category,
-            description,
-            phone,
+        // 1. Upload images
+        const uploadedImageUrls: string[] = [];
+        try {
+            setIsUploading(true);
+            for (const file of imageFiles) {
+                const url = await uploadFile(file);
+                uploadedImageUrls.push(url);
+            }
+        } catch(uploadError) {
+             setError("Fejl ved upload af billeder. Prøv igen.");
+             setIsSubmitting(false);
+             setIsUploading(false);
+             return;
+        } finally {
+            setIsUploading(false);
+        }
+
+        // 2. Insert place
+        const { data: newPlace, error: insertError } = await supabase.from('places').insert({
+            name, offer: isSponsored ? offer : '', address, icon, category, description, phone,
             opening_hours: openingHours,
             organization_id: organization.id,
             user_count: parseInt(userCount, 10) || 0,
             user_images: [],
             is_sponsored: isSponsored,
-        });
+            image_url: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null,
+        }).select().single();
 
-        if (insertError) {
-            setError(insertError.message);
+        if (insertError || !newPlace) {
+            setError(insertError?.message || "Kunne ikke oprette mødested.");
             setIsSubmitting(false);
-        } else {
-            navigate('/dashboard');
+            return;
         }
+
+        // 3. Insert images
+        if (uploadedImageUrls.length > 0) {
+            const imageRecords = uploadedImageUrls.map(url => ({
+                place_id: newPlace.id,
+                image_url: url,
+            }));
+            const { error: imageInsertError } = await supabase.from('place_images').insert(imageRecords);
+            if (imageInsertError) {
+                setError(`Mødested oprettet, men billeder kunne ikke gemmes: ${imageInsertError.message}`);
+            }
+        }
+
+        navigate('/dashboard');
     };
 
     const emojiOptions = ['☕', '🍻', '🍔', '🌳', '🎨', '💪', '🛍️', '✨', '🛋️'];
@@ -111,6 +179,21 @@ const CreatePlacePage: React.FC = () => {
                     </div>
                 </div>
                 
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Billeder af Mødested</label>
+                    <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                         {imagePreviews.map((preview, index) => (
+                            <ImagePreview key={index} src={preview} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg" onRemove={() => removeImage(index)} />
+                        ))}
+                        {imageFiles.length < 6 && (
+                            <div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
+                                <Plus size={32} className="text-gray-400"/>
+                            </div>
+                        )}
+                    </div>
+                    <input type="file" ref={imageInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" multiple />
+                </div>
+
                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
                      <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>
                      <div className="flex items-center justify-between">
@@ -168,7 +251,7 @@ const CreatePlacePage: React.FC = () => {
                 <div className="pt-2">
                      <button
                         type="submit"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isUploading}
                         className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
                     >
                         {isSubmitting ? 'Opretter...' : 'Opret Mødested'}

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabase';
 import type { Organization, Event, Place } from '../../types';
 import BarChart from '../../components/BarChart';
-import { Calendar, MapPin, Users, CheckCircle } from 'lucide-react';
+import { Calendar, MapPin, Users, CheckCircle, Edit, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface EventWithParticipants extends Event {
   participant_count: number;
@@ -45,10 +46,6 @@ const OrganizationDashboardPage: React.FC = () => {
             setEvents(eventsData.map(e => ({ ...e, participant_count: e.event_participants[0]?.count || 0 })));
         }
 
-        // FIX: Replaced an inefficient and buggy multi-step process for fetching check-in counts
-        // with a single, performant query using Supabase's relationship count feature.
-        // This resolves the original TypeScript error and aligns with best practices shown
-        // elsewhere in this file for fetching event participant counts.
         const { data: placesData } = await supabase
             .from('places')
             .select('*, checkins(count)')
@@ -62,6 +59,28 @@ const OrganizationDashboardPage: React.FC = () => {
     };
     fetchDashboardData();
   }, []);
+
+  const handleDeleteEvent = async (eventId: number) => {
+    if (window.confirm('Er du sikker på, du vil slette dette event? Handlingen kan ikke fortrydes.')) {
+      const { error } = await supabase.from('events').delete().eq('id', eventId);
+      if (error) {
+        alert(`Fejl ved sletning af event: ${error.message}`);
+      } else {
+        setEvents(prev => prev.filter(e => e.id !== eventId));
+      }
+    }
+  };
+
+  const handleDeletePlace = async (placeId: number) => {
+    if (window.confirm('Er du sikker på, du vil slette dette mødested? Handlingen kan ikke fortrydes.')) {
+      const { error } = await supabase.from('places').delete().eq('id', placeId);
+      if (error) {
+        alert(`Fejl ved sletning af mødested: ${error.message}`);
+      } else {
+        setPlaces(prev => prev.filter(p => p.id !== placeId));
+      }
+    }
+  };
   
   if (loading) {
     return <div className="p-8 text-center">Loading Dashboard...</div>;
@@ -87,7 +106,7 @@ const OrganizationDashboardPage: React.FC = () => {
 
       <section className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
-            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Dine Events</h2>
+            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Mine Events</h2>
             <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-4 space-y-3 max-h-96 overflow-y-auto">
                 {events.length > 0 ? events.map(event => (
                     <div key={event.id} className="flex items-center p-2 rounded-md hover:bg-gray-50 dark:hover:bg-dark-surface-light">
@@ -96,16 +115,24 @@ const OrganizationDashboardPage: React.FC = () => {
                             <p className="font-semibold">{event.title}</p>
                             <p className="text-sm text-text-secondary dark:text-dark-text-secondary">{new Date(event.time).toLocaleDateString('da-DK')}</p>
                         </div>
-                        <div className="flex items-center text-sm font-semibold">
+                        <div className="flex items-center text-sm font-semibold mr-4">
                             <Users size={16} className="mr-1.5" />
                             {event.participant_count}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Link to={`/edit-event/${event.id}`} className="p-2 text-gray-500 hover:text-primary dark:hover:text-dark-text-primary rounded-full hover:bg-gray-100 dark:hover:bg-dark-surface-light">
+                                <Edit size={18} />
+                            </Link>
+                            <button onClick={() => handleDeleteEvent(event.id)} className="p-2 text-gray-500 hover:text-red-600 dark:hover:text-red-500 rounded-full hover:bg-gray-100 dark:hover:bg-dark-surface-light">
+                                <Trash2 size={18} />
+                            </button>
                         </div>
                     </div>
                 )) : <p className="text-center text-text-secondary dark:text-dark-text-secondary p-4">Ingen events oprettet.</p>}
             </div>
         </div>
         <div>
-            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Dine Mødesteder</h2>
+            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Mine Mødesteder</h2>
              <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-4 space-y-3 max-h-96 overflow-y-auto">
                 {places.length > 0 ? places.map(place => (
                     <div key={place.id} className="flex items-center p-2 rounded-md hover:bg-gray-50 dark:hover:bg-dark-surface-light">
@@ -114,9 +141,17 @@ const OrganizationDashboardPage: React.FC = () => {
                             <p className="font-semibold">{place.name}</p>
                             <p className="text-sm text-text-secondary dark:text-dark-text-secondary">{place.address}</p>
                         </div>
-                         <div className="flex items-center text-sm font-semibold">
+                         <div className="flex items-center text-sm font-semibold mr-4">
                             <CheckCircle size={16} className="mr-1.5" />
                             {place.checkin_count}
+                        </div>
+                         <div className="flex items-center space-x-2">
+                            <Link to={`/edit-place/${place.id}`} className="p-2 text-gray-500 hover:text-primary dark:hover:text-dark-text-primary rounded-full hover:bg-gray-100 dark:hover:bg-dark-surface-light">
+                                <Edit size={18} />
+                            </Link>
+                            <button onClick={() => handleDeletePlace(place.id)} className="p-2 text-gray-500 hover:text-red-600 dark:hover:text-red-500 rounded-full hover:bg-gray-100 dark:hover:bg-dark-surface-light">
+                                <Trash2 size={18} />
+                            </button>
                         </div>
                     </div>
                 )) : <p className="text-center text-text-secondary dark:text-dark-text-secondary p-4">Ingen mødesteder oprettet.</p>}

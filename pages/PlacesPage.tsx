@@ -1,22 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare, ImageIcon } from 'lucide-react';
 import type { Place, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
+import ImageSlideshow from '../components/ImageSlideshow';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let objectUrl: string | null = null;
         if (src) {
+            setLoading(true);
             fetchPrivateFile(src).then(url => {
                 objectUrl = url;
                 setImageUrl(url);
+                setLoading(false);
             });
+        } else {
+            setLoading(false);
         }
 
         return () => {
@@ -26,33 +32,22 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
         };
     }, [src]);
 
-    if(!imageUrl) {
-        return <div className={`${className} bg-gray-200`} />;
-    }
+    if(loading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse`} />;
+    if(!imageUrl) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light flex items-center justify-center`}><ImageIcon className="text-gray-400" /></div>;
 
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
 
 const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
-    <div className="bg-teal-100 p-4 rounded-2xl shadow-sm h-full cursor-pointer hover:shadow-lg transition-shadow">
-        <div className="flex justify-between items-start">
-            <div>
-                <p className="font-semibold text-teal-800">{place.offer}</p>
-                <h3 className="text-2xl font-bold text-text-primary">{place.name}</h3>
-            </div>
-            <div className="text-4xl bg-white p-2 rounded-full">{place.icon}</div>
+    <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl shadow-sm h-full cursor-pointer hover:shadow-lg transition-shadow flex items-center">
+        <div className="w-20 h-20 flex-shrink-0 mr-4">
+             <PrivateImage src={place.image_url} alt={place.name} className="w-full h-full object-cover rounded-lg" />
         </div>
-        <div className="mt-4">
-            <div className="flex items-center">
-                <div className="flex -space-x-2 mr-2">
-                    {(place.user_images || []).map((src, index) => (
-                        <PrivateImage key={index} src={src} alt="user" className="w-8 h-8 rounded-full border-2 border-white object-cover"/>
-                    ))}
-                </div>
-                <p className="text-sm text-teal-700">{place.user_count || 0} har mødes her</p>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">{place.address}</p>
+        <div className="flex-1">
+            <p className="font-semibold text-primary">{place.offer}</p>
+            <h3 className="text-lg font-bold text-text-primary dark:text-dark-text-primary line-clamp-2">{place.name}</h3>
+            <p className="text-xs text-gray-500 dark:text-dark-text-secondary mt-1">{place.address}</p>
         </div>
     </div>
 );
@@ -80,6 +75,10 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
         </header>
 
         <main className="overflow-y-auto pb-4">
+            <div className="mb-4">
+                <ImageSlideshow images={place.images} alt={place.name} />
+            </div>
+
             <div className="mb-6 space-y-3">
               <h3 className="text-lg font-bold text-text-primary border-b pb-2 mb-2">Detaljer om mødetilbuddet</h3>
               <p className="font-bold text-lg text-primary">{place.offer}</p>
@@ -134,7 +133,7 @@ const PlacesPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchPlaces = async () => {
-        const { data, error } = await supabase.from('places').select('*, organization:organizations(id, name)');
+        const { data, error } = await supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name)');
         if (error) {
             console.error('Error fetching places:', error);
             return [];
@@ -179,8 +178,9 @@ const PlacesPage: React.FC = () => {
         fetchInitialData();
 
         const channel = supabase.channel('realtime places')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'places' }, (payload) => {
-                setPlaces(currentPlaces => [payload.new as Place, ...currentPlaces]);
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, async (payload) => {
+                const updatedPlaces = await fetchPlaces();
+                setPlaces(updatedPlaces);
             })
             .subscribe();
 
@@ -241,7 +241,7 @@ const PlacesPage: React.FC = () => {
                 {loading ? (
                     <div className="text-center p-8">Loading places...</div>
                 ) : filteredPlaces.length > 0 ? (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid md:grid-cols-2 gap-4">
                         {filteredPlaces.map(place => (
                             <div key={place.id} onClick={() => setSelectedPlace(place)}>
                                 <PlaceCard place={place} />

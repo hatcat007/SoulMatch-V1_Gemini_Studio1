@@ -41,6 +41,8 @@ import CreateOrgEventPage from './pages/organization/CreateOrgEventPage';
 import CreatePlacePage from './pages/organization/CreatePlacePage';
 import ImportEventPage from './pages/organization/ImportEventPage';
 import OrganizationSettingsPage from './pages/organization/OrganizationSettingsPage';
+import EditOrgEventPage from './pages/organization/EditOrgEventPage';
+import EditPlacePage from './pages/organization/EditPlacePage';
 
 const MockNotificationGenerator: React.FC = () => {
   const { addNotification } = useNotifications();
@@ -126,6 +128,8 @@ const OrganizationRoutes: React.FC = () => (
             <Route path="/import-event" element={<ImportEventPage />} />
             <Route path="/create-place" element={<CreatePlacePage />} />
             <Route path="/settings" element={<OrganizationSettingsPage />} />
+            <Route path="/edit-event/:eventId" element={<EditOrgEventPage />} />
+            <Route path="/edit-place/:placeId" element={<EditPlacePage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
     </OrganizationLayout>

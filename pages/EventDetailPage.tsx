@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Info } from 'lucide-react';
 import type { Event, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
+import ImageSlideshow from '../components/ImageSlideshow';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 
@@ -117,7 +118,7 @@ const EventDetailPage: React.FC = () => {
 
             const { data, error } = await supabase
                 .from('events')
-                .select('*, participants:event_participants(user:users(*))')
+                .select('*, participants:event_participants(user:users(*)), images:event_images(id, image_url)')
                 .eq('id', eventId)
                 .single();
             
@@ -198,13 +199,11 @@ const EventDetailPage: React.FC = () => {
             </header>
 
             <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
-                {event.image_url && (
-                    <div className="w-full aspect-video">
-                        <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover" />
-                    </div>
-                )}
+                <div className="md:max-w-4xl mx-auto p-4 md:p-6">
+                    <ImageSlideshow images={event.images} alt={event.title} />
+                </div>
 
-                <div className={`md:max-w-4xl mx-auto p-4 md:p-6 ${!event.image_url && 'md:pt-4'}`}>
+                <div className={`md:max-w-4xl mx-auto p-4 md:p-6 pt-4 md:pt-6`}>
                     <div className="relative p-6 rounded-3xl shadow-xl bg-gray-50 dark:bg-dark-surface mb-8">
                         <div className="flex justify-between items-center">
                             <div>

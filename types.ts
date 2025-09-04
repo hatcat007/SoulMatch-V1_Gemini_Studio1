@@ -13,6 +13,11 @@ export interface User {
   auth_id?: string;
 }
 
+export interface ImageRecord {
+  id: number;
+  image_url: string;
+}
+
 export interface Event {
   id: number;
   title: string;
@@ -30,6 +35,7 @@ export interface Event {
     logo_url: string;
   };
   image_url?: string;
+  images?: ImageRecord[];
   address?: string;
 }
 
@@ -51,6 +57,8 @@ export interface Place {
     id: number;
     name: string;
   };
+  image_url?: string;
+  images?: ImageRecord[];
 }
 
 export interface MessageThread {
