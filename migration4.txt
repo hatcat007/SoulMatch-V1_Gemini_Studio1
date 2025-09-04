@@ -1,0 +1,27 @@
+-- SoulMatch Migration
+-- version: 9.0
+-- Fixes issue where organizations could not delete events/places due to RLS policies.
+-- This script adds DELETE policies for event_participants and checkins, allowing
+-- organization owners to perform cascading deletes on their own content.
+
+-- Enable RLS if not already enabled (should be, but safe to include)
+ALTER TABLE public.event_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.checkins ENABLE ROW LEVEL SECURITY;
+
+-- Drop policies if they exist to make the script re-runnable
+DROP POLICY IF EXISTS "Allow org owner to remove participants from their events" ON public.event_participants;
+DROP POLICY IF EXISTS "Allow org owner to delete checkins for their places" ON public.checkins;
+
+-- Create DELETE policy for event_participants
+-- This allows an organization owner to delete participant records associated with their events.
+CREATE POLICY "Allow org owner to remove participants from their events" ON public.event_participants
+FOR DELETE USING (
+    (SELECT auth_id FROM public.organizations WHERE id IN (SELECT organization_id FROM public.events WHERE id = event_id)) = auth.uid()
+);
+
+-- Create DELETE policy for checkins
+-- This allows an organization owner to delete checkin records associated with their places.
+CREATE POLICY "Allow org owner to delete checkins for their places" ON public.checkins
+FOR DELETE USING (
+    (SELECT auth_id FROM public.organizations WHERE id IN (SELECT organization_id FROM public.places WHERE id = place_id)) = auth.uid()
+);

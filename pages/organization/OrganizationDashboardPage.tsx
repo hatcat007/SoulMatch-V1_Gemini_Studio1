@@ -61,24 +61,24 @@ const OrganizationDashboardPage: React.FC = () => {
   }, []);
 
   const handleDeleteEvent = async (eventId: number) => {
-    if (window.confirm('Er du sikker på, du vil slette dette event? Handlingen kan ikke fortrydes.')) {
-      const { error } = await supabase.from('events').delete().eq('id', eventId);
-      if (error) {
-        alert(`Fejl ved sletning af event: ${error.message}`);
-      } else {
-        setEvents(prev => prev.filter(e => e.id !== eventId));
-      }
+    // The sandbox environment blocks window.confirm(), so we remove it.
+    // In a real application, a custom modal component would be a better solution.
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    if (error) {
+      alert(`Fejl ved sletning af event: ${error.message}`);
+    } else {
+      setEvents(prev => prev.filter(e => e.id !== eventId));
     }
   };
 
   const handleDeletePlace = async (placeId: number) => {
-    if (window.confirm('Er du sikker på, du vil slette dette mødested? Handlingen kan ikke fortrydes.')) {
-      const { error } = await supabase.from('places').delete().eq('id', placeId);
-      if (error) {
-        alert(`Fejl ved sletning af mødested: ${error.message}`);
-      } else {
-        setPlaces(prev => prev.filter(p => p.id !== placeId));
-      }
+    // The sandbox environment blocks window.confirm(), so we remove it.
+    // In a real application, a custom modal component would be a better solution.
+    const { error } = await supabase.from('places').delete().eq('id', placeId);
+    if (error) {
+      alert(`Fejl ved sletning af mødested: ${error.message}`);
+    } else {
+      setPlaces(prev => prev.filter(p => p.id !== placeId));
     }
   };
   

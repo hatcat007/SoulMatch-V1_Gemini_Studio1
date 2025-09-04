@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare, ImageIcon } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare, ImageIcon, Users } from 'lucide-react';
 import type { Place, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import ImageSlideshow from '../components/ImageSlideshow';
@@ -48,6 +48,15 @@ const PlaceCard: React.FC<{ place: Place }> = ({ place }) => (
             <p className="font-semibold text-primary">{place.offer}</p>
             <h3 className="text-lg font-bold text-text-primary dark:text-dark-text-primary line-clamp-2">{place.name}</h3>
             <p className="text-xs text-gray-500 dark:text-dark-text-secondary mt-1">{place.address}</p>
+            <div className="flex items-center text-xs text-text-secondary dark:text-dark-text-secondary mt-2 space-x-3">
+                <p className="font-semibold">{place.category}</p>
+                {place.user_count > 0 && (
+                    <div className="flex items-center text-gray-500 dark:text-dark-text-secondary/80">
+                        <Users size={14} className="mr-1" />
+                        <span className="font-medium">Ca. {place.user_count}</span>
+                    </div>
+                )}
+            </div>
         </div>
     </div>
 );
