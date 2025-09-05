@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users } from 'lucide-react';
@@ -6,6 +7,13 @@ import type { Event, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
+import { AnimatePresence } from 'framer-motion';
+import EventFilterModal from '../components/EventFilterModal';
+
+interface HomePageProps {
+    events: Event[];
+    onlineUsers: User[];
+}
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -99,63 +107,10 @@ const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
   </div>
 );
 
-const HomePage: React.FC = () => {
+const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
     const [searchParams, setSearchParams] = useSearchParams();
+    const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
     const selectedCategoryId = searchParams.get('category_id');
-    const [events, setEvents] = useState<Event[]>([]);
-    const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    const fetchEvents = async () => {
-        const { data: eventsData, error: eventsError } = await supabase
-            .from('events')
-            .select(`
-                *,
-                organization:organizations(logo_url),
-                event_participants ( count ),
-                category:categories(*)
-            `);
-
-        if (eventsError) {
-            console.error('Error fetching events:', eventsError);
-            return [];
-        } else {
-            return eventsData.map(e => ({
-                ...e,
-                participantCount: e.event_participants?.[0]?.count || 0
-            })) as Event[];
-        }
-    };
-
-    useEffect(() => {
-        const fetchInitialData = async () => {
-            setLoading(true);
-            const eventsData = await fetchEvents();
-            setEvents(eventsData);
-
-            const { data: usersData, error: usersError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('online', true)
-                .limit(4);
-
-            if (usersError) console.error('Error fetching online users:', usersError);
-            else setOnlineUsers(usersData);
-            setLoading(false);
-        };
-        fetchInitialData();
-
-        const channel = supabase.channel('realtime events')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, async () => {
-                const updatedEvents = await fetchEvents();
-                setEvents(updatedEvents);
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, []);
 
     const filteredEvents = useMemo(() => {
         if (!selectedCategoryId) {
@@ -169,11 +124,15 @@ const HomePage: React.FC = () => {
         const event = events.find(e => e.category?.id === parseInt(selectedCategoryId, 10));
         return event?.category?.name || null;
     }, [selectedCategoryId, events]);
-
-
-    if (loading) {
-        return <div className="p-4 text-center">Loading...</div>;
-    }
+    
+    const handleApplyFilter = (categoryId: number | null) => {
+        if (categoryId) {
+            setSearchParams({ category_id: categoryId.toString() });
+        } else {
+            setSearchParams({});
+        }
+        setIsFilterModalOpen(false);
+    };
 
     return (
         <div className="p-4 md:p-6">
@@ -211,9 +170,9 @@ const HomePage: React.FC = () => {
             <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Undersøg nye muligheder</h2>
             <p className="text-text-secondary dark:text-dark-text-secondary text-sm">Valgt baseret på dine interesser</p>
         </div>
-        <Link to="/home/filter" className="p-2 bg-gray-100 dark:bg-dark-surface-light rounded-md">
+        <button onClick={() => setIsFilterModalOpen(true)} className="p-2 bg-gray-100 dark:bg-dark-surface-light rounded-md">
             <SlidersHorizontal className="text-gray-600 dark:text-dark-text-secondary" />
-        </Link>
+        </button>
       </div>
       
       {selectedCategoryId && selectedCategoryName && (
@@ -236,6 +195,15 @@ const HomePage: React.FC = () => {
       ) : (
         <p className="text-center text-text-secondary dark:text-dark-text-secondary mt-8">Ingen events fundet for den valgte kategori.</p>
       )}
+
+      <AnimatePresence>
+        {isFilterModalOpen && (
+            <EventFilterModal
+                onClose={() => setIsFilterModalOpen(false)}
+                onApplyFilter={handleApplyFilter}
+            />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

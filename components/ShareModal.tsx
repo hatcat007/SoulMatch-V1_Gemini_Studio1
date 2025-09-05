@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect } from 'react';
 import type { MessageThread, User } from '../types';
 import { fetchPrivateFile } from '../services/s3Service';
@@ -34,7 +32,7 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 const ShareModal: React.FC<{
   title: string;
   soulmates: MessageThread[];
-  onShare: (user: User) => void;
+  onShare: (thread: MessageThread) => void;
   onClose: () => void;
 }> = ({ title, soulmates, onShare, onClose }) => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
@@ -52,7 +50,7 @@ const ShareModal: React.FC<{
                                 <PrivateImage src={user.avatar_url} alt={user.name} className="w-12 h-12 rounded-full mr-3 object-cover"/>
                                 <span className="font-semibold text-text-primary">{user.name}</span>
                             </div>
-                            <button onClick={() => onShare(user)} className="bg-primary text-white px-4 py-1.5 rounded-full text-sm font-semibold hover:bg-primary-dark transition-colors">
+                            <button onClick={() => onShare(thread)} className="bg-primary text-white px-4 py-1.5 rounded-full text-sm font-semibold hover:bg-primary-dark transition-colors">
                                 Send
                             </button>
                         </li>

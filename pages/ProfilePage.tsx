@@ -8,6 +8,7 @@ import type { User, Interest } from '../types';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import LoadingScreen from '../components/LoadingScreen';
 
 interface Trait {
   label: string;
@@ -322,7 +323,7 @@ const ProfilePage: React.FC = () => {
     };
 
 
-    if (authLoading || dataLoading) return <div className="p-4 text-center">Loading profile...</div>;
+    if (authLoading || dataLoading) return <LoadingScreen message="Loading profile..." />;
     if (!user) return <div className="p-4 text-center">Could not load profile.</div>;
 
     const displayTraits: Trait[] = [

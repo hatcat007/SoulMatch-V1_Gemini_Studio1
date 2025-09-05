@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin } from 'lucide-react';
 import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
 import { getAiClient } from '../services/geminiService';
@@ -8,17 +8,23 @@ import type { Chat } from "@google/genai";
 import ReportUserModal from '../components/ReportUserModal';
 import { fetchPrivateFile } from '../services/s3Service';
 import { useAuth } from '../contexts/AuthContext';
+import LoadingScreen from '../components/LoadingScreen';
 
 const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let objectUrl: string | null = null;
         if (src) {
+            setLoading(true);
             fetchPrivateFile(src).then(url => {
                 objectUrl = url;
                 setImageUrl(url);
+                setLoading(false);
             });
+        } else {
+            setLoading(false);
         }
         return () => {
             if (objectUrl && objectUrl.startsWith('blob:')) {
@@ -27,7 +33,8 @@ const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({
         };
     }, [src]);
 
-    if (!imageUrl) return <div className={`${className} bg-gray-200 animate-pulse rounded-xl`} />;
+    if (loading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded-xl`} />;
+    if (!imageUrl) return <div className={`${className} bg-gray-100 dark:bg-dark-surface-light rounded-xl`} />;
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
@@ -70,6 +77,42 @@ const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
     return <div dangerouslySetInnerHTML={{ __html: formatText(text) }} className="break-words whitespace-pre-wrap leading-relaxed" />;
 };
 
+const CardMessage: React.FC<{ card: Message['card_data'], isCurrentUser: boolean }> = ({ card, isCurrentUser }) => {
+    if (!card) return null;
+    
+    const linkTo = card.type === 'event' ? `/event/${card.id}` : `/places?open=${card.id}`;
+    const cardBg = isCurrentUser ? 'bg-primary-dark' : 'bg-white dark:bg-dark-surface';
+    const textColor = isCurrentUser ? 'text-white' : 'text-text-primary dark:text-dark-text-primary';
+    const secondaryTextColor = isCurrentUser ? 'text-gray-200' : 'text-text-secondary dark:text-dark-text-secondary';
+    const offerTextColor = isCurrentUser ? 'text-yellow-300' : 'text-primary';
+    const linkTextColor = isCurrentUser ? 'text-blue-300' : 'text-blue-500';
+
+    return (
+        <Link to={linkTo} className={`block mt-2 rounded-lg overflow-hidden border border-transparent hover:shadow-md transition-shadow ${cardBg}`}>
+            {card.image_url && (
+                <div className="h-32 bg-gray-100 dark:bg-dark-surface-light">
+                    <PrivateImage src={card.image_url} alt={card.title} className="w-full h-full object-cover" />
+                </div>
+            )}
+            <div className="p-3">
+                <h4 className={`font-bold ${textColor}`}>{card.title}</h4>
+                {card.address && (
+                    <p className={`text-xs ${secondaryTextColor} flex items-center mt-1`}>
+                        <MapPin size={12} className="mr-1.5 flex-shrink-0" />
+                        {card.address}
+                    </p>
+                )}
+                {card.offer && (
+                     <p className={`text-xs font-semibold ${offerTextColor} flex items-center mt-1`}>
+                        <Ticket size={12} className="mr-1.5 flex-shrink-0" />
+                        {card.offer}
+                    </p>
+                )}
+                <p className={`text-xs font-semibold ${linkTextColor} mt-2`}>Se detaljer →</p>
+            </div>
+        </Link>
+    );
+};
 
 const ChatPage: React.FC = () => {
     const { chatId } = useParams<{ chatId: string }>();
@@ -392,7 +435,7 @@ const ChatPage: React.FC = () => {
     };
 
     if (authLoading || loading) {
-        return <div className="p-4 text-center">Loading chat...</div>;
+        return <LoadingScreen message="Loading chat..." />;
     }
     
     if (!currentUser || !otherUser) {
@@ -453,9 +496,14 @@ const ChatPage: React.FC = () => {
                                 {msg.image_url && (
                                     <PrivateImage src={msg.image_url} alt="Chat content" className="rounded-xl m-1" />
                                 )}
-                                <div className="flex items-end space-x-2 px-3 py-2">
-                                    {msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}
-                                    <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{getMessageTimestamp(msg)}</p>
+                                <div className="px-3 py-2">
+                                    <div className="flex items-end space-x-2">
+                                        <div className="flex-1">
+                                            {msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}
+                                        </div>
+                                        <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{getMessageTimestamp(msg)}</p>
+                                    </div>
+                                    {msg.card_data && <CardMessage card={msg.card_data} isCurrentUser={isCurrentUser} />}
                                 </div>
                             </div>
                         </div>

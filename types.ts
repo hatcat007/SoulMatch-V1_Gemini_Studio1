@@ -1,3 +1,5 @@
+import { Session } from '@supabase/supabase-js';
+
 export interface User {
   id: number;
   name: string;
@@ -97,6 +99,14 @@ export interface Message {
   sender_id: number;
   image_url?: string;
   thread_id: number | string;
+  card_data?: {
+    type: 'event' | 'place';
+    id: number;
+    title: string;
+    image_url?: string;
+    offer?: string;
+    address?: string;
+  };
 }
 
 export interface OrganizationOpportunity {
@@ -190,4 +200,10 @@ export interface Checkin {
   user_id_1: number;
   user_id_2: number;
   created_at: string;
+}
+
+export interface Activity {
+    id: number;
+    name: string;
+    icon: string;
 }

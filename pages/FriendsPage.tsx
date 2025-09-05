@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, UserX, UserMinus, Loader2, UserPlus, BrainCircuit } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import type { User, Friendship } from '../types';
+import LoadingScreen from '../components/LoadingScreen';
 
 interface FriendshipWithUser extends Friendship {
     friend: User;
@@ -162,7 +163,7 @@ const FriendsPage: React.FC = () => {
     };
     
     const renderList = (list: FriendshipWithUser[]) => {
-        if (loading) return <div className="text-center p-4">Indlæser...</div>;
+        if (loading) return <LoadingScreen message="Indlæser..." />;
         if (list.length === 0) {
             return (
                 <div className="text-center p-8 text-text-secondary">

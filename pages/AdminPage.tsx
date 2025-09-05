@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import type { User } from '../types';
 import { ArrowLeft, Users, MessageSquare, BarChart2, AlertTriangle, UserCog, Ghost } from 'lucide-react';
+import LoadingScreen from '../components/LoadingScreen';
 
 const AdminPage: React.FC = () => {
     const navigate = useNavigate();
@@ -78,7 +79,7 @@ const AdminPage: React.FC = () => {
     };
     
     if (loading || !isAdmin) {
-        return <div className="p-4 text-center">Verifying access...</div>;
+        return <LoadingScreen message="Verifying access..." />;
     }
 
     return (

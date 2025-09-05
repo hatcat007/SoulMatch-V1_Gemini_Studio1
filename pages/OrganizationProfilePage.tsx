@@ -5,6 +5,7 @@ import type { Organization, MessageThread, User, OrganizationOpportunity, Organi
 import ShareModal from '../components/ShareModal';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
+import LoadingScreen from '../components/LoadingScreen';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -80,12 +81,12 @@ const OrganizationProfilePage: React.FC = () => {
             const { data: soulmateData, error: soulmateError } = await supabase.from('users').select('*').limit(2);
             if (soulmateError) console.error('Error fetching soulmates:', soulmateError);
             else {
-                 const threads: any[] = (soulmateData || []).map(u => ({
+                 const threads: MessageThread[] = (soulmateData || []).map((u: User) => ({
                     id: u.id,
-                    user: u,
-                    lastMessage: '',
+                    participants: [{ user: u }],
+                    last_message: '',
                     timestamp: '',
-                    unreadCount: 0
+                    unread_count: 0,
                 }));
                 setSoulmates(threads);
             }
@@ -96,14 +97,17 @@ const OrganizationProfilePage: React.FC = () => {
         fetchOrganizationData();
     }, [organizationId]);
 
-    const handleShare = (user: User) => {
+    // FIX: The handleShare function now accepts a MessageThread object to match the ShareModal's onShare prop.
+    const handleShare = (thread: MessageThread) => {
         setShowShareModal(false);
+        const user = thread.participants[0]?.user;
+        if (!user) return;
         setShareConfirmation(`Profil delt med ${user.name}!`);
         setTimeout(() => setShareConfirmation(''), 3000);
     };
     
     if (loading) {
-        return <div className="p-4 text-center">Loading organization...</div>;
+        return <LoadingScreen message="Loading organization..." />;
     }
 
     if (!organization) {

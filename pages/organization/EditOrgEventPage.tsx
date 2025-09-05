@@ -5,6 +5,7 @@ import type { Event, ImageRecord } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { Loader2, Plus, X, Ticket } from 'lucide-react';
 import CategorySelector from '../../components/CategorySelector';
+import LoadingScreen from '../../components/LoadingScreen';
 
 // This component can display a local blob URL directly or fetch a private S3 URL.
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
@@ -179,7 +180,7 @@ const EditOrgEventPage: React.FC = () => {
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
     const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100'];
 
-    if (loading) return <div className="p-8 text-center">Indlæser event...</div>
+    if (loading) return <LoadingScreen message="Indlæser event..." />
     if (error && !formData.title) return <div className="p-8 text-center text-red-500">{error}</div>
 
     return (

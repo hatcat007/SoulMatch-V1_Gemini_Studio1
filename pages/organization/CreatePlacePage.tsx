@@ -7,6 +7,7 @@ import { generatePlaceImageFromText } from '../../services/geminiService';
 import { Loader2, Plus, X, Sparkles } from 'lucide-react';
 import { usePersistentState } from '../../hooks/useNotifications';
 import CategorySelector from '../../components/CategorySelector';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -221,7 +222,7 @@ const CreatePlacePage: React.FC = () => {
     const emojiOptions = ['☕', '🍻', '🍔', '🌳', '🎨', '💪', '🛍️', '✨', '🛋️'];
 
     if (loading) {
-        return <div className="p-8 text-center">Loading...</div>
+        return <LoadingScreen />;
     }
 
     return (

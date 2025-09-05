@@ -6,6 +6,7 @@ import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import { useAuth } from '../contexts/AuthContext';
+import LoadingScreen from '../components/LoadingScreen';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -107,7 +108,7 @@ const ChatListPage: React.FC = () => {
     }, [currentUser, authLoading]);
 
     if (authLoading || loading) {
-        return <div className="p-4 text-center">Indlæser chats...</div>;
+        return <LoadingScreen message="Indlæser chats..." />;
     }
     
     const getOtherParticipant = (thread: MessageThread): User | null => {

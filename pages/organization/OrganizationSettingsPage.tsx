@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../services/supabase';
-import type { Organization } from '../../types';
+import type { Organization, Activity } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
-import { Save, Loader2, Camera, Building, Users, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints } from 'lucide-react';
+// FIX: Replaced non-existent lucide-react icons with valid alternatives and added missing FileText import.
+// FIX: Import LucideIcon type to correctly type the icon map and resolve prop errors.
+import { Save, Loader2, Camera, Building, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, Search, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, PenTool, Heart, MoveVertical, FileText, Flag, Flower2, PawPrint, Construction } from 'lucide-react';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; fallback: React.ReactNode; }> = ({ src, alt, className, fallback }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -38,10 +41,11 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; fallba
     return <img src={displayUrl} alt={alt} className={className} />;
 };
 
-const emojiChoices = [
-    { name: 'Fællesspisning', icon: Utensils }, { name: 'Brætspil', icon: Dice5 }, { name: 'Fælles snak', icon: MessagesSquare },
-    { name: 'Musik', icon: Music }, { name: 'Kreativt', icon: Paintbrush }, { name: 'Gåtur', icon: Footprints },
-];
+// FIX: Updated icon map to match the corrected icon imports.
+// FIX: Use LucideIcon type for the icon map to ensure props like `size` are recognized.
+const iconMap: { [key: string]: LucideIcon } = {
+    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, PenTool, Camera, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical
+};
 
 const OrganizationSettingsPage: React.FC = () => {
     const [organization, setOrganization] = useState<Organization | null>(null);
@@ -51,26 +55,41 @@ const OrganizationSettingsPage: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     
     const [formData, setFormData] = useState<Partial<Organization>>({});
-    const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
+    const [allActivities, setAllActivities] = useState<Activity[]>([]);
+    const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
     
     const logoInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        const fetchOrganization = async () => {
+        const fetchOrganizationData = async () => {
+            setLoading(true);
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data, error } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
-                if (error) {
-                    setError('Failed to fetch organization data.');
-                } else if (data) {
-                    setOrganization(data);
-                    setFormData(data);
-                    setSelectedEmojis(data.emojis || []);
-                }
+            if (!user) {
+                setLoading(false);
+                setError('Bruger ikke fundet.');
+                return;
             }
+
+            const { data: orgData, error: orgError } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
+            if (orgError || !orgData) {
+                setError('Kunne ikke hente organisationsdata.');
+                setLoading(false);
+                return;
+            }
+            
+            setOrganization(orgData);
+            setFormData(orgData);
+
+            const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
+            setAllActivities(activitiesData || []);
+
+            const { data: selectedLinks } = await supabase.from('organization_activities').select('activity_id').eq('organization_id', orgData.id);
+            setSelectedActivityIds(selectedLinks?.map(link => link.activity_id) || []);
+            
             setLoading(false);
         };
-        fetchOrganization();
+        fetchOrganizationData();
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -88,7 +107,7 @@ const OrganizationSettingsPage: React.FC = () => {
                 const finalUrl = await uploadFile(file);
                 setFormData(prev => ({ ...prev, [field]: finalUrl }));
             } catch (err) {
-                setError('Image upload failed. Please try again.');
+                setError('Billedupload fejlede. Prøv igen.');
                 setFormData(prev => ({ ...prev, [field]: organization?.[field] || '' }));
             } finally {
                 if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -96,9 +115,11 @@ const OrganizationSettingsPage: React.FC = () => {
         }
     };
     
-    const handleEmojiSelect = (emojiName: string) => {
-        setSelectedEmojis(prev => 
-            prev.includes(emojiName) ? prev.filter(name => name !== emojiName) : (prev.length < 3 ? [...prev, emojiName] : prev)
+    const handleActivitySelect = (activityId: number) => {
+        setSelectedActivityIds(prev => 
+            prev.includes(activityId) 
+                ? prev.filter(id => id !== activityId) 
+                : [...prev, activityId]
         );
     };
 
@@ -108,22 +129,49 @@ const OrganizationSettingsPage: React.FC = () => {
         setError(null);
         setSuccessMessage(null);
 
+        const { emojis, ...profileData } = formData;
         const { error: updateError } = await supabase
             .from('organizations')
-            .update({ ...formData, emojis: selectedEmojis })
+            .update(profileData)
             .eq('id', organization.id);
 
         if (updateError) {
             setError(updateError.message);
-        } else {
-            setSuccessMessage('Profil opdateret!');
-            setTimeout(() => setSuccessMessage(null), 3000);
+            setSaving(false);
+            return;
         }
+
+        const { error: deleteError } = await supabase.from('organization_activities').delete().eq('organization_id', organization.id);
+        if (deleteError) {
+             setError(`Profil opdateret, men kunne ikke opdatere aktiviteter: ${deleteError.message}`);
+             setSaving(false);
+             return;
+        }
+
+        if (selectedActivityIds.length > 0) {
+            const linksToInsert = selectedActivityIds.map(id => ({
+                organization_id: organization.id,
+                activity_id: id
+            }));
+            const { error: insertError } = await supabase.from('organization_activities').insert(linksToInsert);
+            if (insertError) {
+                setError(`Profil opdateret, men kunne ikke gemme nye aktiviteter: ${insertError.message}`);
+                setSaving(false);
+                return;
+            }
+        }
+        
+        setSuccessMessage('Profil opdateret!');
+        setTimeout(() => setSuccessMessage(null), 3000);
         setSaving(false);
     };
 
-    if (loading) return <div className="p-8 text-center">Indlæser indstillinger...</div>;
+    if (loading) return <LoadingScreen message="Indlæser indstillinger..." />;
     if (!organization) return <div className="p-8 text-center text-red-500">Kunne ikke finde organisationsdata.</div>;
+    
+    const filteredActivities = allActivities.filter(activity =>
+        activity.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
         <div className="p-6 md:p-8 h-full overflow-y-auto">
@@ -134,7 +182,6 @@ const OrganizationSettingsPage: React.FC = () => {
                 {error && <p className="text-red-500 text-center bg-red-100 dark:bg-red-900/20 dark:text-red-400 p-3 rounded-lg text-sm">{error}</p>}
                 {successMessage && <p className="text-green-600 text-center bg-green-100 dark:bg-green-900/20 dark:text-green-400 p-3 rounded-lg text-sm">{successMessage}</p>}
 
-                {/* Images */}
                 <div className="flex flex-col items-center border-b pb-6 dark:border-dark-border">
                     <label className="font-semibold mb-2">Logo</label>
                     <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-2 overflow-hidden border">
@@ -144,7 +191,6 @@ const OrganizationSettingsPage: React.FC = () => {
                     <button type="button" onClick={() => logoInputRef.current?.click()} className="text-sm font-semibold text-primary hover:underline"><Camera size={16} className="inline mr-1"/> Skift logo</button>
                 </div>
 
-                {/* Form Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label>Navn</label><input name="name" value={formData.name || ''} onChange={handleInputChange} className="input-style" /></div>
                     <div><label>Type</label><input name="organization_type" value={formData.organization_type || ''} onChange={handleInputChange} className="input-style" /></div>
@@ -157,16 +203,34 @@ const OrganizationSettingsPage: React.FC = () => {
                 </div>
                 <div><label>Beskrivelse</label><textarea name="description" rows={4} value={formData.description || ''} onChange={handleInputChange} className="input-style w-full"></textarea></div>
 
-                {/* Emojis */}
                 <div>
-                    <h3 className="text-lg font-semibold mb-2">Vælg 3 aktiviteter</h3>
-                    <div className="flex flex-wrap gap-2">
-                         {emojiChoices.map(emoji => (
-                            <button type="button" key={emoji.name} onClick={() => handleEmojiSelect(emoji.name)}
-                                className={`flex items-center px-3 py-2 rounded-full text-sm border-2 transition ${selectedEmojis.includes(emoji.name) ? 'bg-primary-light dark:bg-primary/20 border-primary' : 'bg-gray-100 dark:bg-dark-surface-light border-transparent'}`}>
-                                <emoji.icon size={16} className="mr-2" />{emoji.name}
-                            </button>
-                        ))}
+                    <h3 className="text-lg font-semibold mb-2">Vælg jeres primære aktiviteter</h3>
+                     <div className="relative mb-4">
+                        <input
+                            type="text"
+                            placeholder="Søg i aktiviteter..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="input-style w-full pl-10"
+                        />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-surface-light rounded-md">
+                         {filteredActivities.map(activity => {
+                            const IconComponent = iconMap[activity.icon] || Building;
+                            const isSelected = selectedActivityIds.includes(activity.id);
+                            return (
+                                <button
+                                    type="button"
+                                    key={activity.id}
+                                    onClick={() => handleActivitySelect(activity.id)}
+                                    className={`flex items-center px-3 py-2 rounded-full text-sm border-2 transition ${isSelected ? 'bg-primary-light dark:bg-primary/20 border-primary font-semibold' : 'bg-gray-100 dark:bg-dark-surface-light border-transparent hover:border-gray-300'}`}
+                                >
+                                    {IconComponent && <IconComponent size={16} className="mr-2 flex-shrink-0" />}
+                                    {activity.name}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 

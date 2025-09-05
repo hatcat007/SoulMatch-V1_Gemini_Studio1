@@ -7,6 +7,11 @@ import ImageSlideshow from '../components/ImageSlideshow';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
+import { useAuth } from '../contexts/AuthContext';
+
+interface PlacesPageProps {
+    places: Place[];
+}
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -131,72 +136,60 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
 };
 
 
-const PlacesPage: React.FC = () => {
+const PlacesPage: React.FC<PlacesPageProps> = ({ places }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCategoryId = searchParams.get('category_id');
-    const [places, setPlaces] = useState<Place[]>([]);
     const [soulmates, setSoulmates] = useState<MessageThread[]>([]);
     const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
     const [showShareModal, setShowShareModal] = useState(false);
     const [shareConfirmation, setShareConfirmation] = useState('');
-    const [loading, setLoading] = useState(true);
-
-    const fetchPlaces = async () => {
-        const { data, error } = await supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*)');
-        if (error) {
-            console.error('Error fetching places:', error);
-            return [];
-        }
-        return (data || []) as Place[];
-    };
+    const { user: currentUser } = useAuth();
 
     useEffect(() => {
-        const fetchInitialData = async () => {
-            setLoading(true);
-            const placesData = await fetchPlaces();
-            setPlaces(placesData);
-
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (authUser) {
-                const { data: userProfile } = await supabase.from('users').select('id').eq('auth_id', authUser.id).single();
-                if (userProfile) {
-                    const { data: threadParticipants } = await supabase.from('message_thread_participants').select('thread_id').eq('user_id', userProfile.id);
-                    if (threadParticipants && threadParticipants.length > 0) {
-                        const threadIds = threadParticipants.map(tp => tp.thread_id);
-                        const { data: soulmateParticipants } = await supabase.from('message_thread_participants').select('user:users(*)').in('thread_id', threadIds).neq('user_id', userProfile.id);
-                        
-                        if (soulmateParticipants) {
-                            const uniqueSoulmates = new Map<number, User>();
-                            soulmateParticipants.forEach(p => {
-                                const userObject = Array.isArray(p.user) ? p.user[0] : p.user;
-                                if (userObject) {
-                                    uniqueSoulmates.set(userObject.id, userObject);
-                                }
-                            });
-                            
-                            const threads: MessageThread[] = Array.from(uniqueSoulmates.values()).map((u: User) => ({
-                                id: u.id, participants: [{ user: u }], last_message: '', timestamp: '', unread_count: 0
-                            }));
-                            setSoulmates(threads);
-                        }
-                    }
-                }
+        const placeIdToOpen = searchParams.get('open');
+        if (placeIdToOpen && places.length > 0) {
+            const place = places.find(p => p.id === parseInt(placeIdToOpen, 10));
+            if (place) {
+                setSelectedPlace(place);
+                // Optional: remove the query param after opening
+                searchParams.delete('open');
+                setSearchParams(searchParams, { replace: true });
             }
-            setLoading(false);
-        };
-        fetchInitialData();
+        }
+    }, [searchParams, places, setSearchParams]);
 
-        const channel = supabase.channel('realtime places')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, async (payload) => {
-                const updatedPlaces = await fetchPlaces();
-                setPlaces(updatedPlaces);
-            })
-            .subscribe();
+    useEffect(() => {
+        const fetchSoulmates = async () => {
+            if (!currentUser) return;
+            const currentUserId = currentUser.id;
 
-        return () => {
-            supabase.removeChannel(channel);
+            const { data: threadParticipants, error: tpError } = await supabase.from('message_thread_participants').select('thread_id').eq('user_id', currentUserId);
+            if (tpError || !threadParticipants || threadParticipants.length === 0) return;
+            const threadIds = threadParticipants.map(tp => tp.thread_id);
+
+            const { data: threadsData, error: threadsError } = await supabase.from('message_threads').select('id, participants:message_thread_participants(user:users(*))').in('id', threadIds);
+            if (threadsError) { console.error("Error fetching soulmate threads:", threadsError); return; }
+
+            const soulmateThreads: MessageThread[] = threadsData.map(thread => {
+                const otherParticipant = thread.participants.find(p => {
+                    if (!p.user) return false;
+                    const user = Array.isArray(p.user) ? p.user[0] : p.user;
+                    return user && user.id !== currentUserId;
+                });
+                if (!otherParticipant) return null;
+                const user = Array.isArray(otherParticipant.user) ? otherParticipant.user[0] : otherParticipant.user;
+                if (!user) return null;
+
+                return {
+                    id: thread.id, participants: [{ user: user }], last_message: '', timestamp: '', unread_count: 0
+                };
+            }).filter((t): t is MessageThread => t !== null);
+            
+            const uniqueThreads = Array.from(new Map(soulmateThreads.map(t => [t.participants[0].user.id, t])).values());
+            setSoulmates(uniqueThreads);
         };
-    }, []);
+        fetchSoulmates();
+    }, [currentUser]);
 
     const filteredPlaces = useMemo(() => {
         if (!selectedCategoryId) {
@@ -212,9 +205,35 @@ const PlacesPage: React.FC = () => {
     }, [selectedCategoryId, places]);
 
 
-    const handleShare = (user: User) => {
+    const handleShare = async (thread: MessageThread) => {
         setShowShareModal(false);
-        setShareConfirmation(`Sted delt med ${user.name}!`);
+        if (!selectedPlace || !currentUser) return;
+
+        const user = thread.participants[0].user;
+        const threadId = thread.id;
+        const messageText = `Jeg har tænkt på ${selectedPlace.name}. Kunne det være et hyggeligt sted for os at mødes? 😊`;
+        
+        const card_data = {
+            type: 'place' as const,
+            id: selectedPlace.id,
+            title: selectedPlace.name,
+            image_url: selectedPlace.image_url || selectedPlace.images?.[0]?.image_url,
+            offer: selectedPlace.offer,
+            address: selectedPlace.address,
+        };
+
+        const { error } = await supabase.from('messages').insert({
+            thread_id: threadId,
+            sender_id: currentUser.id,
+            text: messageText,
+            card_data: card_data
+        });
+
+        if (error) {
+            setShareConfirmation(`Fejl: Kunne ikke dele med ${user.name}.`);
+        } else {
+            setShareConfirmation(`Sted delt med ${user.name}!`);
+        }
         setTimeout(() => setShareConfirmation(''), 3000);
     };
 
@@ -254,9 +273,7 @@ const PlacesPage: React.FC = () => {
             )}
 
             <div>
-                {loading ? (
-                    <div className="text-center p-8">Loading places...</div>
-                ) : filteredPlaces.length > 0 ? (
+                {filteredPlaces.length > 0 ? (
                     <div className="grid md:grid-cols-2 gap-4">
                         {filteredPlaces.map(place => (
                             <div key={place.id} onClick={() => setSelectedPlace(place)}>

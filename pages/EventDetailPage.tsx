@@ -6,6 +6,8 @@ import ShareModal from '../components/ShareModal';
 import ImageSlideshow from '../components/ImageSlideshow';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
+import LoadingScreen from '../components/LoadingScreen';
+import { useAuth } from '../contexts/AuthContext';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -30,41 +32,6 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 };
 
 
-const fetchSoulmates = async (currentUserId: number): Promise<MessageThread[]> => {
-    const { data: threadParticipants, error: tpError } = await supabase
-        .from('message_thread_participants')
-        .select('thread_id')
-        .eq('user_id', currentUserId);
-
-    if (tpError || !threadParticipants) return [];
-    const threadIds = threadParticipants.map(tp => tp.thread_id);
-    if (threadIds.length === 0) return [];
-
-    const { data: soulmateParticipants, error: spError } = await supabase
-        .from('message_thread_participants')
-        .select('user:users(*)')
-        .in('thread_id', threadIds)
-        .neq('user_id', currentUserId);
-
-    if (spError || !soulmateParticipants) return [];
-
-    const uniqueSoulmates = new Map<number, User>();
-    // FIX: The Supabase query for a relationship (user:users(*)) can return an array even for a to-one relation.
-    // We handle this by checking if p.user is an array and taking the first element.
-    soulmateParticipants.forEach(p => {
-        const user = Array.isArray(p.user) ? p.user[0] : p.user;
-        if (user) {
-            uniqueSoulmates.set(user.id, user);
-        }
-    });
-
-    return Array.from(uniqueSoulmates.values()).map((user: User) => ({
-        id: user.id,
-        participants: [{ user }],
-        last_message: '', timestamp: '', unread_count: 0
-    }));
-};
-
 const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
     const formatText = (inputText: string) => {
         // Replace **text** with <strong>text</strong>
@@ -87,7 +54,7 @@ const EventDetailPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const [event, setEvent] = useState<Event | null>(null);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const { user: currentUser, loading: authLoading } = useAuth();
     const [soulmates, setSoulmates] = useState<MessageThread[]>([]);
     const [isJoined, setIsJoined] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
@@ -113,14 +80,11 @@ const EventDetailPage: React.FC = () => {
     useEffect(() => {
         const fetchInitialData = async () => {
             if (!eventId) return;
+            if (!currentUser) {
+                if (!authLoading) navigate('/login');
+                return;
+            }
             setLoading(true);
-
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (!authUser) { setLoading(false); navigate('/login'); return; }
-
-            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
-            if (!userProfile) { setLoading(false); return; }
-            setCurrentUser(userProfile);
 
             const { data, error } = await supabase
                 .from('events')
@@ -134,16 +98,43 @@ const EventDetailPage: React.FC = () => {
             } else {
                 const transformedEvent = { ...data, participants: data.participants.map((p: any) => p.user).filter(Boolean) };
                 setEvent(transformedEvent as Event);
-                setIsJoined(transformedEvent.participants.some((p: User) => p.id === userProfile.id));
+                setIsJoined(transformedEvent.participants.some((p: User) => p.id === currentUser.id));
             }
             
-            const soulmatesData = await fetchSoulmates(userProfile.id);
+            const fetchSoulmates = async (currentUserId: number): Promise<MessageThread[]> => {
+                const { data: threadParticipants, error: tpError } = await supabase.from('message_thread_participants').select('thread_id').eq('user_id', currentUserId);
+                if (tpError || !threadParticipants || threadParticipants.length === 0) return [];
+                const threadIds = threadParticipants.map(tp => tp.thread_id);
+
+                const { data: threadsData, error: threadsError } = await supabase.from('message_threads').select('id, participants:message_thread_participants(user:users(*))').in('id', threadIds);
+                if (threadsError) { console.error("Error fetching soulmate threads:", threadsError); return []; }
+
+                const soulmateThreads: MessageThread[] = threadsData.map(thread => {
+                    const otherParticipant = thread.participants.find(p => {
+                        if (!p.user) return false;
+                        const user = Array.isArray(p.user) ? p.user[0] : p.user;
+                        return user && user.id !== currentUserId;
+                    });
+                    if (!otherParticipant) return null;
+                    const user = Array.isArray(otherParticipant.user) ? otherParticipant.user[0] : otherParticipant.user;
+                    if (!user) return null;
+
+                    return {
+                        id: thread.id, participants: [{ user: user }], last_message: '', timestamp: '', unread_count: 0
+                    };
+                }).filter((t): t is MessageThread => t !== null);
+                
+                const uniqueThreads = Array.from(new Map(soulmateThreads.map(t => [t.participants[0].user.id, t])).values());
+                return uniqueThreads;
+            };
+            
+            const soulmatesData = await fetchSoulmates(currentUser.id);
             setSoulmates(soulmatesData);
 
             setLoading(false);
         };
         fetchInitialData();
-    }, [eventId, navigate]);
+    }, [eventId, navigate, currentUser, authLoading]);
     
     const handleToggleJoin = async () => {
         if (!event || !currentUser) return;
@@ -170,14 +161,40 @@ const EventDetailPage: React.FC = () => {
         }
     };
 
-    const handleShare = (user: User) => {
+    const handleShare = async (thread: MessageThread) => {
         setShowShareModal(false);
-        setShareConfirmation(`Event delt med ${user.name}!`);
+        if (!event || !currentUser) return;
+
+        const user = thread.participants[0].user;
+        const threadId = thread.id;
+        const messageText = `Jeg har set eventet "${event.title}". Skal vi tage afsted sammen? 😊`;
+        
+        const card_data = {
+            type: 'event' as const,
+            id: event.id,
+            title: event.title,
+            image_url: event.image_url || event.images?.[0]?.image_url,
+            address: event.address,
+            offer: event.is_sponsored ? event.offer : undefined,
+        };
+
+        const { error } = await supabase.from('messages').insert({
+            thread_id: threadId,
+            sender_id: currentUser.id,
+            text: messageText,
+            card_data: card_data
+        });
+        
+        if (error) {
+            setShareConfirmation(`Fejl: Kunne ikke dele med ${user.name}.`);
+        } else {
+            setShareConfirmation(`Event delt med ${user.name}!`);
+        }
         setTimeout(() => setShareConfirmation(''), 3000);
     };
     
-    if (loading) {
-        return <div className="p-4 text-center">Loading event...</div>;
+    if (authLoading || loading) {
+        return <LoadingScreen message="Loading event..." />;
     }
 
     if (!event) {

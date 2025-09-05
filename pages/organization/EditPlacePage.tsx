@@ -5,6 +5,7 @@ import type { Place, ImageRecord } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { Loader2, Plus, X } from 'lucide-react';
 import CategorySelector from '../../components/CategorySelector';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -162,7 +163,7 @@ const EditPlacePage: React.FC = () => {
 
     const emojiOptions = ['☕', '🍻', '🍔', '🌳', '🎨', '💪', '🛍️', '✨', '🛋️'];
 
-    if (loading) return <div className="p-8 text-center">Indlæser mødested...</div>
+    if (loading) return <LoadingScreen message="Indlæser mødested..." />
     if (error && !formData.name) return <div className="p-8 text-center text-red-500">{error}</div>
 
     return (

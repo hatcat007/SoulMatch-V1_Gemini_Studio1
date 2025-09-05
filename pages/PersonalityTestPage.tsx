@@ -4,6 +4,7 @@ import { supabase } from '../services/supabase';
 import { analyzePersonality } from '../services/geminiService';
 import type { User, Interest, PersonalityTag } from '../types';
 import { BrainCircuit, Loader, CheckCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import LoadingScreen from '../components/LoadingScreen';
 
 interface PersonalityTestPageProps {
     onTestComplete: () => void;
@@ -181,7 +182,7 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
     };
 
     if (isLoading) {
-        return <div className="p-4 text-center">Indlæser profil...</div>;
+        return <LoadingScreen message="Indlæser profil..." />;
     }
     
     const renderContent = () => {

@@ -7,6 +7,7 @@ import { generateEventImageFromText } from '../../services/geminiService';
 import type { Organization } from '../../types';
 import { usePersistentState } from '../../hooks/useNotifications';
 import CategorySelector from '../../components/CategorySelector';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -223,7 +224,7 @@ const CreateOrgEventPage: React.FC = () => {
     const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100'];
 
     if (loading) {
-        return <div className="p-8 text-center">Loading...</div>
+        return <LoadingScreen />;
     }
 
     return (

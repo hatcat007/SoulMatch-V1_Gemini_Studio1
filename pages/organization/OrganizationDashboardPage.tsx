@@ -4,6 +4,7 @@ import type { Organization, Event, Place } from '../../types';
 import BarChart from '../../components/BarChart';
 import { Calendar, MapPin, Users, CheckCircle, Edit, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import LoadingScreen from '../../components/LoadingScreen';
 
 interface EventWithParticipants extends Event {
   participant_count: number;
@@ -120,7 +121,7 @@ const OrganizationDashboardPage: React.FC = () => {
   };
   
   if (loading) {
-    return <div className="p-8 text-center">Loading Dashboard...</div>;
+    return <LoadingScreen message="Loading Dashboard..." />;
   }
   if (!organization) {
     return <div className="p-8 text-center">Could not find organization data.</div>;
