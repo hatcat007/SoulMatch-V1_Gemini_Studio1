@@ -13,106 +13,91 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper to check for a specific Supabase auth error.
 const isInvalidRefreshTokenError = (error: any): error is AuthError => {
-  return error && typeof error.message === 'string' && error.message.includes('Invalid Refresh Token');
+    return error && typeof error.message === 'string' && (error.message.includes('Invalid Refresh Token') || error.message.includes('Token is expired'));
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [organization, setOrganization] = useState<Organization | null>(null);
-  const [loading, setLoading] = useState(true); // Start true for initial load
+    const [session, setSession] = useState<Session | null>(null);
+    const [user, setUser] = useState<User | null>(null);
+    const [organization, setOrganization] = useState<Organization | null>(null);
+    const [loading, setLoading] = useState(true);
 
-  const fetchProfileData = useCallback(async (currentSession: Session | null) => {
-    if (!currentSession?.user) {
-      setUser(null);
-      setOrganization(null);
-      return;
-    }
+    const checkSessionAndProfile = useCallback(async () => {
+        setLoading(true);
+        try {
+            const { data: { session: currentSession }, error } = await supabase.auth.getSession();
 
-    try {
-      const isOrganization = currentSession.user.user_metadata?.is_organization;
-      
-      if (isOrganization) {
-        const { data, error } = await supabase.from('organizations').select('*').eq('auth_id', currentSession.user.id).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        setOrganization(data || null);
-        setUser(null);
-      } else {
-        const { data, error } = await supabase.from('users').select('*').eq('auth_id', currentSession.user.id).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        setUser(data || null);
-        setOrganization(null);
-      }
-    } catch (error) {
-      console.error("AuthContext: Error fetching profile data:", error);
-      setUser(null);
-      setOrganization(null);
-    }
-  }, []);
+            if (isInvalidRefreshTokenError(error)) {
+                // If token is invalid, the only way to recover is to sign out completely.
+                await supabase.auth.signOut();
+                // After signOut, onAuthStateChange will fire, but we'll also clear state here for immediate feedback.
+                setSession(null);
+                setUser(null);
+                setOrganization(null);
+                return;
+            } else if (error) {
+                // For other network errors etc., just log it and proceed as if logged out.
+                console.error("Error getting session:", error);
+                setSession(null);
+                setUser(null);
+                setOrganization(null);
+                return;
+            }
+            
+            setSession(currentSession);
+            
+            if (!currentSession?.user) {
+                // No user session, we are done.
+                setUser(null);
+                setOrganization(null);
+                return;
+            }
 
-  const refetchUserProfile = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-      if (error) {
-        if (isInvalidRefreshTokenError(error)) {
-          // This signOut will trigger the onAuthStateChange listener, which will handle all state updates.
-          await supabase.auth.signOut();
-          return; // The listener takes over responsibility for loading state.
+            const isOrg = currentSession.user.user_metadata?.is_organization;
+            if (isOrg) {
+                const { data } = await supabase.from('organizations').select('*').eq('auth_id', currentSession.user.id).single();
+                setOrganization(data || null);
+                setUser(null);
+            } else {
+                const { data } = await supabase.from('users').select('*').eq('auth_id', currentSession.user.id).single();
+                setUser(data || null);
+                setOrganization(null);
+            }
+
+        } catch (e) {
+            console.error("Critical error in checkSessionAndProfile:", e);
+            // Fallback for any other unexpected errors
+            setSession(null);
+            setUser(null);
+            setOrganization(null);
+        } finally {
+            setLoading(false);
         }
-        throw error;
-      }
-      
-      // Manually update session and profile, as getSession doesn't trigger the listener if the session is unchanged.
-      setSession(currentSession);
-      await fetchProfileData(currentSession);
-    } catch (e) {
-      console.error("AuthContext: Error during manual refetch:", e);
-      setSession(null);
-      setUser(null);
-      setOrganization(null);
-    } finally {
-      // This manual refetch function is responsible for its own loading state.
-      setLoading(false);
-    }
-  }, [fetchProfileData]);
+    }, []);
 
-  useEffect(() => {
-    let mounted = true;
+    useEffect(() => {
+        // This function is the single source of truth for auth state.
+        // It's called on initial mount and whenever the auth state changes.
+        checkSessionAndProfile();
 
-    // Set up the listener which is the single source of truth for auth changes.
-    // It fires on init, login, and logout.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        if (mounted) {
-          setLoading(true);
-          setSession(newSession);
-          await fetchProfileData(newSession);
-          setLoading(false);
-        }
-      }
-    );
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            // When auth state changes (login, logout, token refresh), re-run our master check.
+            checkSessionAndProfile();
+        });
 
-    // Set up a listener to refresh data when the user returns to the tab.
-    const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible' && mounted) {
-            refetchUserProfile();
-        }
+        return () => subscription.unsubscribe();
+    }, [checkSessionAndProfile]);
+    
+    const value = { 
+        session, 
+        user, 
+        organization, 
+        loading, 
+        refetchUserProfile: checkSessionAndProfile
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [fetchProfileData, refetchUserProfile]);
-
-  const value = { session, user, organization, loading, refetchUserProfile };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextType => {
