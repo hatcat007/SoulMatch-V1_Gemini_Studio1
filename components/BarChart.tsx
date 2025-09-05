@@ -1,4 +1,6 @@
 import React from 'react';
+// FIX: Import Variants type from framer-motion to correctly type the variants object.
+import { motion, Variants } from 'framer-motion';
 
 interface ChartData {
   label: string;
@@ -12,31 +14,78 @@ interface BarChartProps {
 
 const BarChart: React.FC<BarChartProps> = ({ data, title }) => {
   const maxValue = React.useMemo(() => {
-    if (data.length === 0) return 1; // Avoid division by zero
-    return Math.max(...data.map(d => d.value), 1);
+    if (data.length === 0) return 10;
+    return Math.max(...data.map(d => d.value), 10);
   }, [data]);
 
+  const containerVariants: Variants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+      },
+    },
+  };
+
+  const barVariants: Variants = {
+    hidden: { height: 0, opacity: 0 },
+    visible: (custom: { height: number; delay: number }) => ({
+      height: `${custom.height}%`,
+      opacity: 1,
+      transition: { type: 'spring', stiffness: 100, damping: 12, delay: custom.delay },
+    }),
+  };
+
   return (
-    <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm w-full">
-      <h3 className="text-md font-bold text-text-primary dark:text-dark-text-primary mb-4">{title}</h3>
-      {data.length > 0 ? (
-        <div className="flex justify-around items-end h-48 space-x-2">
-          {data.map(item => (
-            <div key={item.label} className="flex-1 flex flex-col items-center justify-end">
-              <div
-                className="w-full bg-primary-light dark:bg-primary/20 rounded-t-md hover:bg-primary/40 transition-colors"
-                style={{ height: `${(item.value / maxValue) * 100}%` }}
-                title={`${item.label}: ${item.value}`}
-              >
-                 <div className="text-center text-xs font-bold text-primary-dark dark:text-primary-light pt-1">{item.value}</div>
-              </div>
-              <p className="text-xs text-text-secondary dark:text-dark-text-secondary mt-2 text-center truncate w-full">{item.label}</p>
-            </div>
-          ))}
+    <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm w-full h-80 flex flex-col">
+      <div className="flex items-center mb-4">
+        <h3 className="text-lg font-bold text-text-primary dark:text-dark-text-primary">{title}</h3>
+        <div className="flex items-center ml-2">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+          </span>
+          <span className="ml-2 text-xs font-semibold text-red-500 uppercase">LIVE</span>
         </div>
+      </div>
+
+      {data.length > 0 ? (
+        <motion.div
+          key={JSON.stringify(data)} // Re-trigger animation when data changes
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="flex-1 flex justify-around items-end space-x-4"
+        >
+          {data.map((item, index) => {
+            const heightPercentage = (item.value / maxValue) * 100;
+            return (
+              <div key={item.label} className="h-full flex-1 flex flex-col items-center justify-end group">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 + 0.3, duration: 0.4 }}
+                  className="text-sm font-bold text-text-primary dark:text-dark-text-primary mb-1"
+                >
+                  {item.value}
+                </motion.div>
+                <motion.div
+                  custom={{ height: heightPercentage, delay: index * 0.1 }}
+                  variants={barVariants}
+                  className="w-full bg-gradient-to-t from-primary to-primary/70 dark:from-primary-light dark:to-primary-light/70 rounded-t-lg group-hover:opacity-80 transition-opacity"
+                  title={`${item.label}: ${item.value}`}
+                />
+                <p className="text-xs text-text-secondary dark:text-dark-text-secondary mt-2 text-center h-8 leading-tight line-clamp-2">
+                  {item.label}
+                </p>
+              </div>
+            );
+          })}
+        </motion.div>
       ) : (
-        <div className="flex items-center justify-center h-48 text-text-secondary dark:text-dark-text-secondary">
-          <p>Ingen data at vise.</p>
+        <div className="flex-1 flex items-center justify-center text-text-secondary dark:text-dark-text-secondary">
+          <p>Venter på data...</p>
         </div>
       )}
     </div>

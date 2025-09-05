@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+// FIX: Added 'useCallback' to the import statement from 'react' to resolve the undefined error.
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
 import NotificationIcon from '../components/NotificationIcon';
@@ -6,6 +7,7 @@ import { supabase } from '../services/supabase';
 import type { User, Interest } from '../types';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Trait {
   label: string;
@@ -200,45 +202,44 @@ const ProfileImageSlider: React.FC<{
 };
 
 const ProfilePage: React.FC = () => {
-    const [user, setUser] = useState<User | null>(null);
+    const { user, loading: authLoading } = useAuth();
     const [profileImages, setProfileImages] = useState<ProfileImage[]>([]);
     const [traits, setTraits] = useState<UserTrait[]>([]);
     const [interests, setInterests] = useState<Interest[]>([]);
     const [isEditing, setIsEditing] = useState(false);
-    const [loading, setLoading] = useState(true);
+    const [dataLoading, setDataLoading] = useState(true);
     const [formState, setFormState] = useState({ name: '', location: '', bio: '', emojis: [] as string[] });
     const navigate = useNavigate();
 
-    const fetchProfile = async () => {
-        setLoading(true);
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) { setLoading(false); return; }
-
-        const { data: profileData } = await supabase.from('users').select('*').eq('auth_id', session.user.id).single();
-        if (profileData) {
-            setUser(profileData);
-            setFormState({
-                name: profileData.name || '',
-                location: profileData.location || '',
-                bio: profileData.bio || '',
-                emojis: profileData.emojis || []
-            });
-
-            const { data: imagesData } = await supabase.from('user_profile_images').select('*').eq('user_id', profileData.id);
-            if (imagesData) setProfileImages(imagesData);
-
-            const { data: traitsData } = await supabase.from('user_traits').select('*').eq('user_id', profileData.id);
-            if (traitsData) setTraits(traitsData);
-            
-            const { data: interestData } = await supabase.from('user_interests').select('interest:interests(id, name)').eq('user_id', profileData.id);
-            if (interestData) setInterests(interestData.map((i: any) => i.interest));
+    const fetchProfileData = useCallback(async () => {
+        if (!user) {
+            if (!authLoading) navigate('/login');
+            return;
         }
-        setLoading(false);
-    };
+        setDataLoading(true);
+
+        setFormState({
+            name: user.name || '',
+            location: user.location || '',
+            bio: user.bio || '',
+            emojis: user.emojis || []
+        });
+
+        const { data: imagesData } = await supabase.from('user_profile_images').select('*').eq('user_id', user.id);
+        setProfileImages(imagesData || []);
+
+        const { data: traitsData } = await supabase.from('user_traits').select('*').eq('user_id', user.id);
+        setTraits(traitsData || []);
+        
+        const { data: interestData } = await supabase.from('user_interests').select('interest:interests(id, name)').eq('user_id', user.id);
+        setInterests(interestData?.map((i: any) => i.interest) || []);
+
+        setDataLoading(false);
+    }, [user, authLoading, navigate]);
 
     useEffect(() => {
-        fetchProfile();
-    }, []);
+        fetchProfileData();
+    }, [fetchProfileData]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -266,9 +267,13 @@ const ProfilePage: React.FC = () => {
             bio: formState.bio,
             emojis: formState.emojis,
         }).eq('id', user.id);
-        if (userError) console.error('Error updating user:', userError);
 
-        await fetchProfile(); // Re-fetch to show saved data
+        if (userError) {
+            console.error('Error updating user:', userError);
+        } else {
+            // Data will refresh via context eventually, or we can force it.
+            fetchProfileData();
+        }
     };
     
     const updateMainAvatar = async (images: ProfileImage[]) => {
@@ -277,9 +282,7 @@ const ProfilePage: React.FC = () => {
 
         if (user.avatar_url !== newAvatar) {
             const { error } = await supabase.from('users').update({ avatar_url: newAvatar }).eq('id', user.id);
-            if (!error) {
-                setUser(prev => prev ? { ...prev, avatar_url: newAvatar } : null);
-            } else {
+            if (error) {
                 console.error("Failed to update main avatar:", error);
             }
         }
@@ -319,7 +322,7 @@ const ProfilePage: React.FC = () => {
     };
 
 
-    if (loading) return <div className="p-4 text-center">Loading profile...</div>;
+    if (authLoading || dataLoading) return <div className="p-4 text-center">Loading profile...</div>;
     if (!user) return <div className="p-4 text-center">Could not load profile.</div>;
 
     const displayTraits: Trait[] = [

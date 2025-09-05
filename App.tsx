@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
@@ -30,10 +29,9 @@ import FriendsPage from './pages/FriendsPage';
 import AdminPage from './pages/AdminPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { useNotifications } from './hooks/useNotifications';
-import type { NotificationType, User, Organization } from './types';
+import type { NotificationType, User } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { supabase } from './services/supabase';
-import type { Session } from '@supabase/supabase-js';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 import OrganizationLayout from './pages/organization/OrganizationLayout';
 import OrganizationDashboardPage from './pages/organization/OrganizationDashboardPage';
@@ -61,217 +59,117 @@ const MockNotificationGenerator: React.FC = () => {
       { message: '👀 på din profil', type: 'profile_view', actor: mockUsers[1], timestamp: Date.now() - (2 * 60 * 1000) },
       { message: 'sendte dig en besked', type: 'message', actor: mockUsers[2], timestamp: Date.now() - (15 * 60 * 1000) },
       { message: 'sendte en venneanmodning', type: 'friend_request', actor: mockUsers[3], timestamp: Date.now() - (1 * 60 * 60 * 1000) },
-      { message: 'sendte en venneanmodning', type: 'friend_request', actor: { id: 105, name: 'Maria', age: 27, avatar_url: 'https://i.pravatar.cc/80?u=105', online: true }, timestamp: new Date('2023-01-12T10:30:00').getTime() },
-    ];
-    
-    mockNotifs.forEach(notif => addNotification(notif));
-
-    const newNotifTemplates = [
-        { message: 'Nyt event: "Brætspil aften"!', type: 'event' as const, icon: '🎲' },
-        { message: 'vil gerne være din ven.', type: 'friend_request' as const, actor: { id: 110, name: 'Alex', age: 29, avatar_url: 'https://i.pravatar.cc/80?u=110', online: true }},
     ];
 
-    let i = 0;
     const interval = setInterval(() => {
-        const notif = newNotifTemplates[i % newNotifTemplates.length];
-        addNotification(notif);
-        i++;
-    }, 25000);
+      const randomNotif = mockNotifs[Math.floor(Math.random() * mockNotifs.length)];
+      addNotification({ ...randomNotif, timestamp: Date.now() });
+    }, 30000); // Add a new notification every 30 seconds
 
     return () => clearInterval(interval);
-  }, []); // Eslint-disable-line react-hooks/exhaustive-deps - only run once on mount
+  }, [addNotification]);
 
   return null;
 };
 
-const MainAppRoutes: React.FC<{ onTestComplete: () => void }> = ({ onTestComplete }) => (
-    <NotificationProvider>
-      <div className="relative md:flex max-w-7xl mx-auto">
-        <BottomNav />
-        <main className="flex-1 min-w-0">
-          <div className="h-screen overflow-y-auto bg-white dark:bg-dark-surface md:shadow-lg pb-16 md:pb-0">
-              <Routes>
-                <Route path="/" element={<Navigate to="/home" />} />
-                <Route path="/home" element={<HomePage />} />
-                <Route path="/home/filter" element={<EventFilterPage />} />
-                <Route path="/places" element={<PlacesPage />} />
-                <Route path="/places/filter" element={<PlacesFilterPage />} />
-                <Route path="/create" element={<CreateEventPage />} />
-                <Route path="/chat" element={<ChatListPage />} />
-                <Route path="/chat/:chatId" element={<ChatPage />} />
-                <Route path="/notifications" element={<NotificationsPage />} />
-                <Route path="/event/:eventId" element={<EventDetailPage />} />
-                <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
-                <Route path="/checkin" element={<CheckinPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/friends" element={<FriendsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/faq" element={<FAQPage />} />
-                <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                <Route path="/terms" element={<TermsOfServicePage />} />
-                <Route path="/personality-test" element={<PersonalityTestPage onTestComplete={onTestComplete} />} />
-                <Route path="/admin" element={<AdminPage />} />
-                <Route path="*" element={<Navigate to="/home" />} />
-              </Routes>
-          </div>
-        </main>
-      </div>
-      <MockNotificationGenerator />
-    </NotificationProvider>
-);
-
-const OrganizationRoutes: React.FC = () => (
-    <OrganizationLayout>
-        <Routes>
-            <Route path="/dashboard" element={<OrganizationDashboardPage />} />
-            <Route path="/create-event" element={<CreateOrgEventPage />} />
-            <Route path="/import-event" element={<ImportEventPage />} />
-            <Route path="/create-place" element={<CreatePlacePage />} />
-            <Route path="/settings" element={<OrganizationSettingsPage />} />
-            <Route path="/edit-event/:eventId" element={<EditOrgEventPage />} />
-            <Route path="/edit-place/:placeId" element={<EditPlacePage />} />
-            <Route path="*" element={<Navigate to="/dashboard" />} />
-        </Routes>
-    </OrganizationLayout>
-);
-
 
 const AppContent: React.FC = () => {
-  const [session, setSession] = React.useState<Session | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [profile, setProfile] = React.useState<User | null>(null);
-  const [organization, setOrganization] = React.useState<Organization | null>(null);
-  const [checkingProfile, setCheckingProfile] = React.useState(true);
-  const [refreshProfileToggle, setRefreshProfileToggle] = React.useState(false);
-  const [testJustCompleted, setTestJustCompleted] = React.useState(false);
-  const navigate = useNavigate();
+  const { session, user, organization, loading } = useAuth();
 
-  const handleStateRefresh = () => {
-    setCheckingProfile(true);
-    setRefreshProfileToggle(prev => !prev);
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
+
+  const isUser = session && user;
+  const isOrganization = session && organization;
+  const needsUserProfile = session && !user && !organization && !session.user.user_metadata?.is_organization;
+  const needsPersonalityTest = isUser && !user.personality_test_completed;
+
+  const handleActionComplete = () => {
+    // A simple reload is the most robust way to ensure the context picks up all changes.
+    window.location.hash = '/';
+    window.location.reload();
   };
 
-  const handleTestComplete = () => {
-    setTestJustCompleted(true);
-    handleStateRefresh();
-  };
-
-  React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  React.useEffect(() => {
-    if (loading) return;
-
-    const checkUserProfile = async () => {
-      if (session) {
-        setCheckingProfile(true);
-
-        // The metadata check can be unreliable immediately after signup.
-        // Querying the database directly is more robust.
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('auth_id', session.user.id)
-          .single();
-
-        if (orgData) {
-          // Found an organization profile, so this is an org user.
-          setOrganization(orgData as Organization);
-          setProfile(null);
-          setCheckingProfile(false);
-        } else {
-          // No org profile, check for a regular user profile.
-          const { data: userData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('auth_id', session.user.id)
-            .single();
-
-          setProfile(userData ? (userData as User) : null);
-          setOrganization(null);
-          setCheckingProfile(false);
-        }
-      } else {
-        setProfile(null);
-        setOrganization(null);
-        setCheckingProfile(false);
-      }
-    };
-
-    checkUserProfile();
-  }, [session, loading, refreshProfileToggle]);
-
-
-  React.useEffect(() => {
-    if (testJustCompleted && profile?.personality_test_completed) {
-      navigate('/profile');
-      setTestJustCompleted(false);
-    }
-  }, [testJustCompleted, profile, navigate]);
-
-  if (loading || (session && checkingProfile)) {
+  if (isOrganization) {
     return (
-      <div className="w-full h-screen flex items-center justify-center bg-background dark:bg-dark-background">
-        <div className="text-primary font-bold text-xl">SoulMatch</div>
+      <OrganizationLayout>
+        <Routes>
+          <Route path="/dashboard" element={<OrganizationDashboardPage />} />
+          <Route path="/create-event" element={<CreateOrgEventPage />} />
+          <Route path="/edit-event/:eventId" element={<EditOrgEventPage />} />
+          <Route path="/import-event" element={<ImportEventPage />} />
+          <Route path="/create-place" element={<CreatePlacePage />} />
+          <Route path="/edit-place/:placeId" element={<EditPlacePage />} />
+          <Route path="/settings" element={<OrganizationSettingsPage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </OrganizationLayout>
+    );
+  }
+
+  if (isUser) {
+    if (needsPersonalityTest) {
+      return <PersonalityTestPage onTestComplete={handleActionComplete} />;
+    }
+    return (
+      <div className="md:flex h-screen w-full">
+        <div className="flex-1 overflow-y-auto">
+          <Routes>
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/places" element={<PlacesPage />} />
+            <Route path="/create" element={<CreateEventPage />} />
+            <Route path="/chat" element={<ChatListPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/chat/:chatId" element={<ChatPage />} />
+            <Route path="/event/:eventId" element={<EventDetailPage />} />
+            <Route path="/home/filter" element={<EventFilterPage />} />
+            <Route path="/places/filter" element={<PlacesFilterPage />} />
+            <Route path="/checkin" element={<CheckinPage />} />
+            <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/faq" element={<FAQPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsOfServicePage />} />
+            <Route path="/friends" element={<FriendsPage />} />
+            {user.is_admin && <Route path="/admin" element={<AdminPage />} />}
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Routes>
+        </div>
+        <BottomNav />
       </div>
     );
   }
 
-  if (!session) {
-    return (
-      <Routes>
-        <Route path="/" element={<OnboardingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/create-organization" element={<CreateOrganizationPage />} />
-        <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    );
+  if (needsUserProfile) {
+    return <CreateProfilePage onProfileCreated={handleActionComplete} />;
   }
 
-  // User is logged in, check if organization or regular user
-  if (organization) {
-    return <OrganizationRoutes />;
-  }
-
-  if (profile && profile.personality_test_completed) {
-    return <MainAppRoutes onTestComplete={handleTestComplete} />;
-  }
-
-  // Onboarding Flow for regular users
+  // Public routes for unauthenticated users
   return (
     <Routes>
-      {!profile && (
-        <Route path="*" element={<CreateProfilePage onProfileCreated={handleStateRefresh} />} />
-      )}
-      {profile && !profile.personality_test_completed && (
-        <Route path="*" element={<PersonalityTestPage onTestComplete={handleTestComplete} />} />
-      )}
+      <Route path="/" element={<OnboardingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/create-organization" element={<CreateOrganizationPage />} />
+      <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
 
-const App: React.FC = () => {
-  return (
-    <ThemeProvider>
-      <div className="w-full font-sans bg-background dark:bg-dark-background">
+const App: React.FC = () => (
+  <ThemeProvider>
+    <NotificationProvider>
+      <MockNotificationGenerator />
+      <AuthProvider>
         <HashRouter>
           <AppContent />
         </HashRouter>
-      </div>
-    </ThemeProvider>
-  );
-};
+      </AuthProvider>
+    </NotificationProvider>
+  </ThemeProvider>
+);
 
 export default App;

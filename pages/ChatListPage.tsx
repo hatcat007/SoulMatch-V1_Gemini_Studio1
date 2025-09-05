@@ -5,6 +5,7 @@ import type { MessageThread, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
+import { useAuth } from '../contexts/AuthContext';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -36,7 +37,7 @@ const ChatListPage: React.FC = () => {
     const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
     const [threads, setThreads] = useState<MessageThread[]>([]);
     const [loading, setLoading] = useState(true);
-    const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+    const { user: currentUser, loading: authLoading } = useAuth();
 
     const aiMentorThread: MessageThread = {
       id: 'ai-mentor',
@@ -54,24 +55,13 @@ const ChatListPage: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
-            setLoading(true);
-
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (!authUser) { setLoading(false); return; }
-
-            const { data: userProfile, error: profileError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('auth_id', authUser.id)
-                .single();
-
-            if (profileError || !userProfile) {
-                console.error('Error fetching user profile:', profileError);
-                setLoading(false);
+            if (!currentUser) {
+                if (!authLoading) setLoading(false);
                 return;
             }
-            const userId = userProfile.id;
-            setCurrentUserId(userId);
+
+            setLoading(true); // Start loading chat data
+            const userId = currentUser.id;
 
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
@@ -87,7 +77,7 @@ const ChatListPage: React.FC = () => {
                 .eq('user_id', userId);
 
             if (tpError) {
-                console.error('Error fetching thread participants:', tpError);
+                console.error('Error fetching thread participants:', tpError.message);
                 setLoading(false);
                 return;
             }
@@ -114,15 +104,15 @@ const ChatListPage: React.FC = () => {
         };
 
         fetchData();
-    }, []);
+    }, [currentUser, authLoading]);
 
-    if (loading) {
-        return <div className="p-4 text-center">Loading chats...</div>;
+    if (authLoading || loading) {
+        return <div className="p-4 text-center">Indlæser chats...</div>;
     }
     
     const getOtherParticipant = (thread: MessageThread): User | null => {
         if (thread.id === 'ai-mentor') return thread.participants[0].user;
-        const participant = thread.participants.find(p => p.user && p.user.id !== currentUserId);
+        const participant = thread.participants.find(p => p.user && p.user.id !== currentUser?.id);
         return participant ? participant.user : null;
     }
 

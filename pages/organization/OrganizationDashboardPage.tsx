@@ -20,44 +20,81 @@ const OrganizationDashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+    let channel: any; // SupabaseRealtimeChannel
 
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('auth_id', user.id)
-        .single();
-
-      if (orgData) {
-        setOrganization(orgData);
-
+    const fetchDynamicData = async (orgId: number) => {
+        // Fetch events with participant counts
         const { data: eventsData } = await supabase
             .from('events')
             .select('*, event_participants(count)')
-            .eq('organization_id', orgData.id);
+            .eq('organization_id', orgId);
 
         if (eventsData) {
             setEvents(eventsData.map(e => ({ ...e, participant_count: e.event_participants[0]?.count || 0 })));
         }
 
+        // Fetch places with checkin counts
         const { data: placesData } = await supabase
             .from('places')
             .select('*, checkins(count)')
-            .eq('organization_id', orgData.id);
+            .eq('organization_id', orgId);
 
         if (placesData) {
             setPlaces(placesData.map((p: any) => ({ ...p, checkin_count: p.checkins[0]?.count || 0 })));
         }
-      }
-      setLoading(false);
     };
-    fetchDashboardData();
+
+    const setupDashboard = async () => {
+        setLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('auth_id', user.id)
+            .single();
+
+        if (orgData) {
+            setOrganization(orgData);
+            await fetchDynamicData(orgData.id);
+
+            // Set up real-time subscription
+            channel = supabase
+                .channel(`dashboard-org-${orgData.id}`)
+                .on('postgres_changes', { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'event_participants'
+                }, 
+                (payload) => {
+                    console.log('Participant change detected, refetching dashboard data.');
+                    fetchDynamicData(orgData.id);
+                })
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'checkins'
+                },
+                (payload) => {
+                    console.log('Check-in change detected, refetching dashboard data.');
+                    fetchDynamicData(orgData.id);
+                })
+                .subscribe();
+        }
+        setLoading(false);
+    };
+
+    setupDashboard();
+
+    return () => {
+        if (channel) {
+            supabase.removeChannel(channel);
+        }
+    };
   }, []);
 
   const handleDeleteEvent = async (eventId: number) => {
@@ -89,8 +126,15 @@ const OrganizationDashboardPage: React.FC = () => {
     return <div className="p-8 text-center">Could not find organization data.</div>;
   }
   
-  const eventChartData = events.map(e => ({ label: e.title, value: e.participant_count })).slice(0, 5);
-  const placeChartData = places.map(p => ({ label: p.name, value: p.checkin_count })).slice(0, 5);
+  const eventChartData = events
+    .sort((a, b) => b.participant_count - a.participant_count)
+    .slice(0, 5)
+    .map(e => ({ label: e.title, value: e.participant_count }));
+    
+  const placeChartData = places
+    .sort((a, b) => b.checkin_count - a.checkin_count)
+    .slice(0, 5)
+    .map(p => ({ label: p.name, value: p.checkin_count }));
 
   return (
     <div className="p-6 md:p-8">

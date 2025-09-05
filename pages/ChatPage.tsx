@@ -7,6 +7,7 @@ import { getAiClient } from '../services/geminiService';
 import type { Chat } from "@google/genai";
 import ReportUserModal from '../components/ReportUserModal';
 import { fetchPrivateFile } from '../services/s3Service';
+import { useAuth } from '../contexts/AuthContext';
 
 const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -81,7 +82,7 @@ const ChatPage: React.FC = () => {
     const [newMessage, setNewMessage] = useState('');
     const [thread, setThread] = useState<MessageThread | null>(null);
     const [otherUser, setOtherUser] = useState<User | null>(null);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const { user: currentUser, loading: authLoading } = useAuth();
     const [loading, setLoading] = useState(true);
     const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>('loading');
     const [aiChat, setAiChat] = useState<Chat | null>(null);
@@ -130,23 +131,9 @@ const ChatPage: React.FC = () => {
     }, [emojiLevel, isAiMentorChat]);
     
     useEffect(() => {
-        const fetchInitialData = async () => {
-             const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (!authUser) { navigate('/login'); return; }
-            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
-            setCurrentUser(userProfile);
-        };
-        
         const fetchChatData = async () => {
-            if (!chatId) return;
+            if (!chatId || !currentUser) return;
             setLoading(true);
-
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (!authUser) { setLoading(false); navigate('/login'); return; }
-
-            const { data: userProfile } = await supabase.from('users').select('*').eq('auth_id', authUser.id).single();
-            if (!userProfile) { setLoading(false); return; }
-            setCurrentUser(userProfile);
 
             const { data: threadData } = await supabase
                 .from('message_threads')
@@ -156,17 +143,17 @@ const ChatPage: React.FC = () => {
             
             if (threadData) {
                 setThread(threadData as any);
-                const other = threadData.participants.find(p => p.user.id !== userProfile.id)?.user;
+                const other = threadData.participants.find(p => p.user.id !== currentUser.id)?.user;
                 setOtherUser(other || null);
 
                 if (other) {
-                    const u1 = Math.min(userProfile.id, other.id);
-                    const u2 = Math.max(userProfile.id, other.id);
+                    const u1 = Math.min(currentUser.id, other.id);
+                    const u2 = Math.max(currentUser.id, other.id);
                     const { data: friendshipData } = await supabase.from('friends').select('*').eq('user_id_1', u1).eq('user_id_2', u2).single();
                     if (friendshipData) {
                         if (friendshipData.status === 'accepted') setFriendshipStatus('friends');
                         else if (friendshipData.status === 'pending') {
-                            setFriendshipStatus(friendshipData.action_user_id === userProfile.id ? 'pending_me' : 'pending_them');
+                            setFriendshipStatus(friendshipData.action_user_id === currentUser.id ? 'pending_me' : 'pending_them');
                         }
                     } else {
                         setFriendshipStatus('not_friends');
@@ -185,7 +172,7 @@ const ChatPage: React.FC = () => {
         };
         
         if (isAiMentorChat) {
-            fetchInitialData().then(() => {
+            if (currentUser) {
                 const aiUser: User = {
                     id: -1, name: 'SoulMatch AI mentor', age: 0,
                     avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png',
@@ -197,11 +184,17 @@ const ChatPage: React.FC = () => {
                     created_at: new Date().toISOString(), sender_id: -1, thread_id: 'ai-mentor'
                 }]);
                 setLoading(false);
-            });
+            } else if (!authLoading) {
+                navigate('/login');
+            }
         } else {
-            fetchChatData();
+            if (currentUser) {
+               fetchChatData();
+            } else if (!authLoading) {
+               navigate('/login');
+            }
         }
-    }, [chatId, navigate, isAiMentorChat]);
+    }, [chatId, navigate, isAiMentorChat, currentUser, authLoading]);
 
     useEffect(() => {
         if (isAiMentorChat || !chatId) return;
@@ -213,11 +206,14 @@ const ChatPage: React.FC = () => {
                 filter: `thread_id=eq.${chatId}` 
             },
             (payload) => {
-                setMessages(currentMessages => [...currentMessages, payload.new as Message]);
+                 // Only add the message if it's from another user to avoid duplicates from optimistic update
+                if (payload.new.sender_id !== currentUser?.id) {
+                    setMessages(currentMessages => [...currentMessages, payload.new as Message]);
+                }
             }
         ).subscribe();
         return () => { supabase.removeChannel(channel); };
-    }, [chatId, isAiMentorChat]);
+    }, [chatId, isAiMentorChat, currentUser?.id]);
 
 
     useEffect(() => {
@@ -247,22 +243,24 @@ const ChatPage: React.FC = () => {
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (newMessage.trim() === '' || !currentUser) return;
+
+        const textToSend = newMessage;
         
         if (isAiMentorChat) {
-             if (!aiChat) return;
+            if (!aiChat) return;
             const userMessage: Message = {
                 id: Date.now(),
-                text: newMessage,
+                text: textToSend,
                 created_at: new Date().toISOString(),
                 sender_id: currentUser.id,
                 thread_id: 'ai-mentor'
             };
+            setNewMessage(''); // Clear input after grabbing text
             setMessages(prev => [...prev, userMessage]);
-            setNewMessage('');
             setIsAiReplying(true);
 
             try {
-                const response = await aiChat.sendMessage({ message: newMessage });
+                const response = await aiChat.sendMessage({ message: textToSend });
                 const aiResponse: Message = {
                     id: Date.now() + 1,
                     text: response.text,
@@ -285,16 +283,39 @@ const ChatPage: React.FC = () => {
                 setIsAiReplying(false);
             }
         } else {
-            const { error } = await supabase.from('messages').insert({
-                thread_id: Number(chatId),
+            setNewMessage(''); // Clear input immediately
+
+            const optimisticMessage: Message = {
+                id: `temp-${Date.now()}`,
+                text: textToSend,
+                created_at: new Date().toISOString(),
                 sender_id: currentUser.id,
-                text: newMessage,
-            });
+                thread_id: Number(chatId),
+            };
+
+            setMessages(currentMessages => [...currentMessages, optimisticMessage]);
+
+            const { data, error } = await supabase
+                .from('messages')
+                .insert({
+                    thread_id: Number(chatId),
+                    sender_id: currentUser.id,
+                    text: textToSend,
+                })
+                .select()
+                .single();
 
             if (error) {
                 console.error('Error sending message:', error);
-            } else {
-                setNewMessage('');
+                // Revert state on error
+                setMessages(currentMessages => currentMessages.filter(m => m.id !== optimisticMessage.id));
+                // Restore the input so the user can try again
+                setNewMessage(textToSend);
+            } else if (data) {
+                // Replace the temporary message with the real one from the DB to get correct id/timestamp
+                setMessages(currentMessages =>
+                    currentMessages.map(m => (m.id === optimisticMessage.id ? (data as Message) : m))
+                );
             }
         }
     };
@@ -370,7 +391,7 @@ const ChatPage: React.FC = () => {
         );
     };
 
-    if (loading) {
+    if (authLoading || loading) {
         return <div className="p-4 text-center">Loading chat...</div>;
     }
     

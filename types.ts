@@ -11,6 +11,13 @@ export interface User {
   personality_test_completed?: boolean;
   is_admin?: boolean;
   auth_id?: string;
+  user_traits?: UserTrait[];
+}
+
+export interface UserTrait {
+  user_id: number;
+  trait: string;
+  value: number;
 }
 
 export interface ImageRecord {

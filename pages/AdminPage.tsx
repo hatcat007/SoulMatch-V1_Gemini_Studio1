@@ -13,6 +13,21 @@ const AdminPage: React.FC = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+    const fetchData = async () => {
+        // Fetch stats
+        const { count: usersCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
+        const { count: eventsCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
+        const { count: threadsCount } = await supabase.from('message_threads').select('*', { count: 'exact', head: true });
+        setStats({ users: usersCount ?? 0, events: eventsCount ?? 0, threads: threadsCount ?? 0 });
+
+        // Fetch all users
+        const { data: usersData } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+        if (usersData) {
+            setAllUsers(usersData);
+        }
+        setLoading(false);
+    };
+
     useEffect(() => {
         const checkAdminStatus = async () => {
             const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -35,21 +50,6 @@ const AdminPage: React.FC = () => {
             }
         };
 
-        const fetchData = async () => {
-            // Fetch stats
-            const { count: usersCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
-            const { count: eventsCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
-            const { count: threadsCount } = await supabase.from('message_threads').select('*', { count: 'exact', head: true });
-            setStats({ users: usersCount ?? 0, events: eventsCount ?? 0, threads: threadsCount ?? 0 });
-
-            // Fetch all users
-            const { data: usersData } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-            if (usersData) {
-                setAllUsers(usersData);
-            }
-            setLoading(false);
-        };
-
         checkAdminStatus();
     }, [navigate]);
 
@@ -64,52 +64,12 @@ const AdminPage: React.FC = () => {
         setActionMessage(null);
 
         try {
-            // 1. Delete existing connections
-            setActionMessage({ type: 'success', text: 'Sletter gamle chats...' });
-            const { error: deleteParticipantsError } = await supabase.from('message_thread_participants').delete().neq('thread_id', 0); // Dummy condition to delete all
-            if (deleteParticipantsError) throw deleteParticipantsError;
-            
-            const { error: deleteThreadsError } = await supabase.from('message_threads').delete().neq('id', 0);
-            if (deleteThreadsError) throw deleteThreadsError;
+            const { data, error } = await supabase.rpc('admin_match_all_users');
+            if (error) throw error;
 
-            // 2. Get all users
-            setActionMessage({ type: 'success', text: 'Henter brugere...' });
-            const { data: users, error: usersError } = await supabase.from('users').select('id');
-            if (usersError) throw usersError;
-            if (!users || users.length < 2) {
-                throw new Error("Ikke nok brugere til at oprette matches.");
-            }
-
-            const userIds = users.map(u => u.id);
-            const pairs: [number, number][] = [];
-            for (let i = 0; i < userIds.length; i++) {
-                for (let j = i + 1; j < userIds.length; j++) {
-                    pairs.push([userIds[i], userIds[j]]);
-                }
-            }
-            
-            setActionMessage({ type: 'success', text: `Opretter ${pairs.length} nye chats...` });
-
-            // 3. Create new threads and participants for each pair
-            for (const pair of pairs) {
-                const { data: newThread, error: threadError } = await supabase
-                    .from('message_threads')
-                    .insert({ match_timestamp: new Date().toISOString() })
-                    .select()
-                    .single();
-                
-                if (threadError) throw threadError;
-
-                const participants = [
-                    { thread_id: newThread.id, user_id: pair[0] },
-                    { thread_id: newThread.id, user_id: pair[1] },
-                ];
-                
-                const { error: participantsError } = await supabase.from('message_thread_participants').insert(participants);
-                if (participantsError) throw participantsError;
-            }
-
-            setActionMessage({ type: 'success', text: `Færdig! ${pairs.length} chats blev oprettet.` });
+            setActionMessage({ type: 'success', text: data || 'Success! All users have been matched.' });
+            // Refresh stats after the operation
+            await fetchData();
         } catch (error: any) {
             setActionMessage({ type: 'error', text: `Fejl: ${error.message}` });
         } finally {

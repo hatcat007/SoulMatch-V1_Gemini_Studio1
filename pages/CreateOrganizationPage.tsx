@@ -26,7 +26,7 @@ const CreateOrganizationPage: React.FC = () => {
         </div>
         <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-12">Bliv en del af fællesskabet</h2>
         <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-4 max-w-sm">
-          Opret en profil for din organisation og vær med til at skabe meningsfulde events og tilbud.
+          Opret en profil for din organisation og vær med til at skabe meningsfulde events, mødesteder og tilbud i kampen om ensomhed i Danmark.
         </p>
       </div>
 

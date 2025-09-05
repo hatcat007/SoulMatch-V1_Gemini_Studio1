@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import type { User, Interest } from '../types';
+import type { User, Interest, UserTrait } from '../types';
 
 // Lazily initialize the AI client to avoid accessing process.env on initial module load,
 // which can interfere with other libraries' environment detection (like the AWS S3 SDK).
@@ -129,6 +129,72 @@ export async function analyzePersonality(
     }
 }
 
+
+/**
+ * Generates a ranked list of compatible friends based on bios and personality traits.
+ * @param currentUser The user for whom to find matches.
+ * @param allOtherUsers A list of potential users to match against.
+ * @returns A list of user IDs sorted by compatibility.
+ */
+export async function findCompatibleFriends(currentUser: User, allOtherUsers: User[]): Promise<number[]> {
+  const formatTraits = (user: User) => {
+    if (!user.user_traits || user.user_traits.length === 0) {
+      return 'No personality data available.';
+    }
+    return user.user_traits.map(t => `- ${t.trait}: ${t.value}`).join('\n');
+  };
+
+  const prompt = `
+    You are a sophisticated matchmaking AI for SoulMatch, an app designed to combat loneliness by creating meaningful friendships. Your goal is to find compatible friends, NOT romantic partners.
+
+    Analyze the current user's profile and compare it against a list of potential matches. Consider shared interests mentioned in bios, life philosophies, and complementary personality traits. A good match could be someone very similar, or someone with different but complementary traits that would lead to a balanced friendship.
+
+    Current User (ID: ${currentUser.id}):
+    - Bio: "${currentUser.bio}"
+    - Personality Type: ${currentUser.personality_type || 'Not specified'}
+    - Traits:
+      ${formatTraits(currentUser)}
+
+    ---
+
+    Potential Matches:
+    ${allOtherUsers.map(u => `
+    User ID: ${u.id}
+    Bio: "${u.bio}"
+    Personality Type: ${u.personality_type || 'Not specified'}
+    Traits:
+      ${formatTraits(u)}
+    `).join('\n\n')}
+
+    ---
+
+    Based on your analysis, return a JSON array of user IDs, ordered from the most compatible to the least. Only include IDs from the "Potential Matches" list. The output must be ONLY the JSON array.
+    Example output: [102, 105, 101]
+  `;
+  
+  try {
+    const aiClient = getAiClient();
+    const response = await aiClient.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.INTEGER },
+        },
+      },
+    });
+
+    const textResponse = response.text.trim();
+    const matches = JSON.parse(textResponse);
+    return matches as number[];
+  } catch (error) {
+    console.error("Error fetching AI friend matches:", error);
+    // Fallback to a random shuffle on error.
+    return allOtherUsers.map(u => u.id).sort(() => 0.5 - Math.random());
+  }
+}
 
 /**
  * Generates a list of recommended user IDs based on a user's profile.

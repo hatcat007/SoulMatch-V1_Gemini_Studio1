@@ -342,6 +342,7 @@ CREATE POLICY "Allow org owner to manage their places" ON public.places FOR ALL 
 -- Checkins
 CREATE POLICY "Allow authenticated users to create checkins" ON public.checkins FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "Allow admins to see all checkins" ON public.checkins FOR SELECT USING ((SELECT is_admin FROM public.users WHERE auth_id = auth.uid()) = true);
+
 -- Messages and Threads
 CREATE POLICY "Allow users to access their own threads" ON public.message_threads FOR SELECT USING (
     id IN (
@@ -349,6 +350,30 @@ CREATE POLICY "Allow users to access their own threads" ON public.message_thread
         WHERE user_id IN (SELECT id from public.users where auth_id = auth.uid())
     )
 );
+CREATE POLICY "Allow authenticated users to create threads" ON public.message_threads FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow users to see participants of their own threads" ON public.message_thread_participants FOR SELECT USING (
+    EXISTS (
+        SELECT 1 FROM public.message_thread_participants p
+        WHERE p.thread_id = public.message_thread_participants.thread_id
+        AND p.user_id = (SELECT id FROM public.users WHERE auth_id = auth.uid())
+    )
+);
+CREATE POLICY "Allow users to add participants if they are friends or themselves" ON public.message_thread_participants FOR INSERT WITH CHECK (
+    (user_id = (SELECT id FROM public.users WHERE auth_id = auth.uid()))
+    OR
+    EXISTS (
+        SELECT 1 FROM friends
+        WHERE status = 'accepted' AND (
+            (user_id_1 = (SELECT id FROM users WHERE auth_id = auth.uid()) AND user_id_2 = public.message_thread_participants.user_id) OR
+            (user_id_2 = (SELECT id FROM users WHERE auth_id = auth.uid()) AND user_id_1 = public.message_thread_participants.user_id)
+        )
+    )
+);
+CREATE POLICY "Allow users to remove themselves from threads" ON public.message_thread_participants FOR DELETE USING (
+    user_id = (SELECT id FROM public.users WHERE auth_id = auth.uid())
+);
+
 CREATE POLICY "Allow users to see their own messages" ON public.messages FOR SELECT USING (
     thread_id IN (
         SELECT thread_id FROM public.message_thread_participants 
@@ -362,6 +387,7 @@ CREATE POLICY "Allow users to send messages in their threads" ON public.messages
     )
     AND sender_id IN (SELECT id from public.users where auth_id = auth.uid())
 );
+
 -- Friends
 CREATE POLICY "Allow users to see their own friendships" ON public.friends FOR SELECT USING (
     (SELECT auth_id FROM public.users WHERE id = user_id_1) = auth.uid() OR
@@ -386,7 +412,7 @@ CREATE POLICY "Allow admins to see all reports" ON public.user_reports FOR SELEC
 -- Section 5: Grants
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM public, anon, authenticated;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated, anon;
-GRANT INSERT, UPDATE, DELETE ON public.users, public.interests, public.user_interests, public.user_profile_images, public.user_traits, public.events, public.event_participants, public.messages, public.friends, public.user_reports, public.organizations, public.places, public.checkins TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.users, public.interests, public.user_interests, public.user_profile_images, public.user_traits, public.events, public.event_participants, public.messages, public.friends, public.user_reports, public.organizations, public.places, public.checkins, public.message_threads, public.message_thread_participants TO authenticated;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
