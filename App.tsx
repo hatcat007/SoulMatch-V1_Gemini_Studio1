@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
@@ -74,7 +75,7 @@ const MockNotificationGenerator: React.FC = () => {
 
 
 const AppContent: React.FC = () => {
-  const { session, user, organization, loading } = useAuth();
+  const { session, user, organization, loading, refetchUserProfile } = useAuth();
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
@@ -86,9 +87,8 @@ const AppContent: React.FC = () => {
   const needsPersonalityTest = isUser && !user.personality_test_completed;
 
   const handleActionComplete = () => {
-    // A simple reload is the most robust way to ensure the context picks up all changes.
-    window.location.hash = '/';
-    window.location.reload();
+    // A controlled refetch is better than a full page reload.
+    refetchUserProfile();
   };
 
   if (isOrganization) {

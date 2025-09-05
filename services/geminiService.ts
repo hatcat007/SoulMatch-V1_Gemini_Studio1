@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import type { User, Interest, UserTrait } from '../types';
+import type { User, Interest, PersonalityTag } from '../types';
 
 // Lazily initialize the AI client to avoid accessing process.env on initial module load,
 // which can interfere with other libraries' environment detection (like the AWS S3 SDK).
@@ -40,6 +39,7 @@ export interface ImportedEventData {
  * Streams the AI's thought process via a callback.
  * @param user - The user object containing bio and other details.
  * @param interests - A list of the user's interests.
+ * @param personalityTags - A list of the user's self-described personality tags.
  * @param testType - The depth of the analysis requested ('short' or 'long').
  * @param answers - The user's answers to the personality test questions.
  * @param onThinkingUpdate - Callback function to receive real-time updates from the AI's thought process.
@@ -48,23 +48,26 @@ export interface ImportedEventData {
 export async function analyzePersonality(
     user: User,
     interests: Interest[],
+    personalityTags: PersonalityTag[],
     testType: 'short' | 'long',
     answers: { question: string; answer: number }[],
     onThinkingUpdate: (update: string) => void
 ): Promise<PersonalityAnalysisResult> {
     const interestNames = interests.map(i => i.name).join(', ');
+    const personalityTagNames = personalityTags.map(t => t.name).join(', ');
     const answersText = answers.map(a => `- Question: "${a.question}"\n  - Answer (0-100, 50 is neutral, 0 is strongly disagree, 100 is strongly agree): ${a.answer}`).join('\n');
 
     const prompt = `
         You are a sophisticated personality analysis AI for an app called SoulMatch. Your task is to analyze the provided user data and generate a personality profile.
 
-        First, output your step-by-step reasoning for the personality analysis as plain text. Explain how you are weighing the user's bio, interests, and test answers. Think out loud, as if writing to a log.
+        First, output your step-by-step reasoning for the personality analysis as plain text. Explain how you are weighing the user's bio, interests, self-described personality tags, and test answers. The personality tags are the user's self-perception and should be given significant weight. Think out loud, as if writing to a log.
         When your reasoning is complete, you MUST output a unique separator token on its own line: "||JSON_START||".
         After the separator, output a single, valid JSON object containing the final personality analysis. Do not add any text, markdown formatting, or explanations after the JSON object.
 
         User Data:
         - Bio: "${user.bio}"
         - Interests: ${interestNames}
+        - Self-Described Personality Tags: ${personalityTagNames || 'None provided'}
         - Requested Test Type: ${testType}
         - Personality Test Answers:
         ${answersText}

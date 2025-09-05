@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, UserX, UserMinus, Loader2, UserPlus, BrainCircuit } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import type { User, Friendship } from '../types';
-import { findCompatibleFriends } from '../services/geminiService';
 
 interface FriendshipWithUser extends Friendship {
     friend: User;
@@ -64,43 +63,42 @@ const FriendsPage: React.FC = () => {
         fetchFriendData();
     }, [fetchFriendData]);
 
-    const fetchMatches = async () => {
+    const fetchMatches = useCallback(async () => {
         if (!currentUserId) return;
         setMatchLoading(true);
 
-        // 1. Get current user with traits
-        const { data: currentUserData } = await supabase.from('users').select('*, user_traits(*)').eq('id', currentUserId).single();
-        if (!currentUserData) { setMatchLoading(false); return; }
-
-        // 2. Get existing relationships to exclude
-        const { data: friendships } = await supabase.from('friends').select('*').or(`user_id_1.eq.${currentUserId},user_id_2.eq.${currentUserId}`);
+        // 1. Get existing relationships to exclude
+        const { data: friendships } = await supabase
+            .from('friends')
+            .select('user_id_1, user_id_2')
+            .or(`user_id_1.eq.${currentUserId},user_id_2.eq.${currentUserId}`);
+            
         const existingRelations = new Set(friendships?.map(f => f.user_id_1 === currentUserId ? f.user_id_2 : f.user_id_1));
         existingRelations.add(currentUserId);
 
-        // 3. Get all other users with traits
-        const { data: allUsersData } = await supabase.from('users').select('*, user_traits(*)');
-        const potentialMatches = allUsersData?.filter(u => !existingRelations.has(u.id)) || [];
-        
-        if (potentialMatches.length === 0) {
-            setMatches([]);
+        // 2. Get all users
+        const { data: allUsersData, error: usersError } = await supabase
+            .from('users')
+            .select('*');
+            
+        if (usersError) {
+            console.error("Error fetching users for matches:", usersError);
             setMatchLoading(false);
             return;
         }
 
-        // 4. Call AI service
-        const sortedIds = await findCompatibleFriends(currentUserData, potentialMatches);
-
-        // 5. Sort the fetched users based on AI result
-        const sortedMatches = sortedIds.map(id => potentialMatches.find(u => u.id === id)).filter((u): u is User => !!u);
-        setMatches(sortedMatches);
+        // 3. Filter out users who are already related
+        const potentialMatches = allUsersData?.filter(u => !existingRelations.has(u.id)) || [];
+        
+        setMatches(potentialMatches);
         setMatchLoading(false);
-    };
+    }, [currentUserId]);
 
     useEffect(() => {
         if (currentTab === 'matches' && matches.length === 0) {
             fetchMatches();
         }
-    }, [currentTab, matches.length]);
+    }, [currentTab, matches.length, fetchMatches]);
 
     const handleAcceptRequest = async (friendshipId: number, friendId: number) => {
         // 1. Update friendship status optimistically
@@ -206,8 +204,8 @@ const FriendsPage: React.FC = () => {
             return (
                 <div className="text-center p-8 text-text-secondary flex flex-col items-center">
                     <Loader2 size={32} className="animate-spin text-primary mb-4" />
-                    <p className="font-semibold">Finder de bedste matches til dig...</p>
-                    <p className="text-sm">Vores AI analyserer profiler.</p>
+                    <p className="font-semibold">Finder nye SoulMatches...</p>
+                    <p className="text-sm">Et øjeblik.</p>
                 </div>
             );
         }
@@ -275,7 +273,7 @@ const FriendsPage: React.FC = () => {
                         onClick={() => setCurrentTab('matches')}
                         className={`w-full py-3 text-center font-semibold transition-colors flex items-center justify-center ${currentTab === 'matches' ? 'text-primary border-b-2 border-primary' : 'text-text-secondary dark:text-dark-text-secondary'}`}
                     >
-                         <BrainCircuit size={16} className="mr-1.5"/> Find Venner
+                         <BrainCircuit size={16} className="mr-1.5"/> SoulMatches
                     </button>
                 </div>
             </nav>

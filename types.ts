@@ -12,6 +12,7 @@ export interface User {
   is_admin?: boolean;
   auth_id?: string;
   user_traits?: UserTrait[];
+  personality_tags?: PersonalityTag[];
 }
 
 export interface UserTrait {
@@ -138,9 +139,26 @@ export interface Notification {
   icon?: string;
 }
 
+export interface InterestCategory {
+    id: number;
+    name: string;
+}
+
 export interface Interest {
     id: number;
     name: string;
+    category_id: number;
+}
+
+export interface PersonalityTagCategory {
+    id: number;
+    name: string;
+}
+
+export interface PersonalityTag {
+    id: number;
+    name: string;
+    category_id: number;
 }
 
 export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';

@@ -1,10 +1,8 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { analyzePersonality } from '../services/geminiService';
-import type { User, Interest } from '../types';
+import type { User, Interest, PersonalityTag } from '../types';
 import { BrainCircuit, Loader, CheckCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface PersonalityTestPageProps {
@@ -32,6 +30,7 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
     const navigate = useNavigate();
     const [user, setUser] = useState<User | null>(null);
     const [interests, setInterests] = useState<Interest[]>([]);
+    const [personalityTags, setPersonalityTags] = useState<PersonalityTag[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSkipping, setIsSkipping] = useState(false);
     const [step, setStep] = useState<'selection' | 'testing' | 'analyzing' | 'complete'>('selection');
@@ -51,14 +50,17 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
             if (profileError || !profileData) { navigate('/create-profile'); return; }
             setUser(profileData);
 
-            const { data: interestData, error: interestError } = await supabase
+            const { data: interestData } = await supabase
                 .from('user_interests')
                 .select('interest:interests(*)')
                 .eq('user_id', profileData.id);
-
-            if (!interestError && interestData) {
-                setInterests(interestData.map((item: any) => item.interest));
-            }
+            setInterests(interestData?.map((item: any) => item.interest) || []);
+            
+            const { data: tagsData } = await supabase
+                .from('user_personality_tags')
+                .select('tag:personality_tags(*)')
+                .eq('user_id', profileData.id);
+            setPersonalityTags(tagsData?.map((item: any) => item.tag) || []);
 
             setIsLoading(false);
         };
@@ -112,7 +114,7 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
         };
 
         try {
-            const result = await analyzePersonality(user, interests, testType, formattedAnswers, onThinkingUpdate);
+            const result = await analyzePersonality(user, interests, personalityTags, testType, formattedAnswers, onThinkingUpdate);
             
             const { error: traitsError } = await supabase.from('user_traits').upsert(
                 result.traits.map(t => ({ user_id: user.id, trait: t.trait, value: t.value })),
@@ -125,12 +127,22 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
                 personality_test_completed: true,
             }).eq('id', user.id);
             if (userUpdateError) throw userUpdateError;
+            
+            // Verification step to ensure the update was persisted before proceeding
+            const { data: updatedUser, error: checkError } = await supabase
+                .from('users')
+                .select('personality_test_completed')
+                .eq('id', user.id)
+                .single();
+
+            if (checkError || !updatedUser?.personality_test_completed) {
+                throw new Error("Kunne ikke bekræfte, at profilen blev opdateret. Prøv venligst igen.");
+            }
 
             setStep('complete');
-            // Calling onTestComplete immediately makes the state flow more robust.
-            // App.tsx will handle the navigation/re-render, and this component will show the 'complete'
-            // UI until it gets unmounted.
-            onTestComplete();
+            setTimeout(() => {
+                onTestComplete();
+            }, 1500); // Shorter delay for a smoother UX without full reload.
 
         } catch (err: any) {
             setError(`Der skete en fejl under analysen: ${err.message}`);
@@ -152,7 +164,19 @@ const PersonalityTestPage: React.FC<PersonalityTestPageProps> = ({ onTestComplet
             setError(`Kunne ikke opdatere profil: ${userUpdateError.message}`);
             setIsSkipping(false);
         } else {
-            onTestComplete();
+             // Verification step
+            const { data: updatedUser, error: checkError } = await supabase
+                .from('users')
+                .select('personality_test_completed')
+                .eq('id', user.id)
+                .single();
+            
+            if (checkError || !updatedUser?.personality_test_completed) {
+                setError(`Kunne ikke bekræfte profilopdatering. Prøv igen.`);
+                setIsSkipping(false);
+            } else {
+                onTestComplete();
+            }
         }
     };
 
