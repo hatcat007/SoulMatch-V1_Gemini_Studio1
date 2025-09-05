@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ImageIcon, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users } from 'lucide-react';
 import type { Event, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
@@ -182,13 +182,18 @@ const HomePage: React.FC = () => {
                 <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
                 <NotificationIcon />
             </div>
-            <div className="relative mb-6">
-                <input
-                    type="text"
-                    placeholder="Søg på dine interesser eller ønsker"
-                    className="w-full bg-gray-100 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border rounded-full py-3 pl-10 pr-4 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-dark-text-secondary" size={20} />
+            <div className="flex items-center gap-3 mb-6">
+                <div className="relative flex-grow">
+                    <input
+                        type="text"
+                        placeholder="Søg på dine interesser eller ønsker"
+                        className="w-full bg-gray-100 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border rounded-full py-3 pl-10 pr-4 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-dark-text-secondary" size={20} />
+                </div>
+                <Link to="/friends" className="flex-shrink-0 p-3 bg-gray-100 dark:bg-dark-surface-light rounded-full text-gray-600 dark:text-dark-text-secondary hover:bg-gray-200 dark:hover:bg-dark-surface" aria-label="Venner">
+                    <Users size={20} />
+                </Link>
             </div>
 
             <OnlineNowSection users={onlineUsers} />
