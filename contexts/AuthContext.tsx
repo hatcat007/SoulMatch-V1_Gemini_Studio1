@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import type { User, Organization } from '../types';
-import type { Session } from '@supabase/supabase-js';
+import type { Session, AuthError } from '@supabase/supabase-js';
 
 interface AuthContextType {
   session: Session | null;
@@ -13,88 +13,98 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper to check for a specific Supabase auth error.
+const isInvalidRefreshTokenError = (error: any): error is AuthError => {
+  return error && typeof error.message === 'string' && error.message.includes('Invalid Refresh Token');
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [loading, setLoading] = useState(true); // Manages initial load state
+  const [loading, setLoading] = useState(true); // Start true for initial load
 
-  // A single function to fetch profile data based on a session.
   const fetchProfileData = useCallback(async (currentSession: Session | null) => {
-    // If no session, clear data and we're done.
     if (!currentSession?.user) {
       setUser(null);
       setOrganization(null);
       return;
     }
-    
-    // Fetch profile based on session metadata.
+
     try {
       const isOrganization = currentSession.user.user_metadata?.is_organization;
+      
       if (isOrganization) {
-        const { data: orgData, error } = await supabase.from('organizations').select('*').eq('auth_id', currentSession.user.id).single();
-        if (error) throw error;
-        setOrganization(orgData || null);
+        const { data, error } = await supabase.from('organizations').select('*').eq('auth_id', currentSession.user.id).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        setOrganization(data || null);
         setUser(null);
       } else {
-        const { data: userData, error } = await supabase.from('users').select('*').eq('auth_id', currentSession.user.id).single();
-        if (error) throw error;
-        setUser(userData || null);
+        const { data, error } = await supabase.from('users').select('*').eq('auth_id', currentSession.user.id).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        setUser(data || null);
         setOrganization(null);
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      // Clear profiles on error to avoid inconsistent state
+      console.error("AuthContext: Error fetching profile data:", error);
       setUser(null);
       setOrganization(null);
     }
   }, []);
-  
-  // Exposed function for manual refetches.
+
   const refetchUserProfile = useCallback(async () => {
-    // This refetch should not show the main "Loading..." screen,
-    // but it should update the data.
-    const { data: { session } } = await supabase.auth.getSession();
-    setSession(session);
-    await fetchProfileData(session);
+    setLoading(true);
+    try {
+      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+      if (error) {
+        if (isInvalidRefreshTokenError(error)) {
+          // This signOut will trigger the onAuthStateChange listener, which will handle all state updates.
+          await supabase.auth.signOut();
+          return; // The listener takes over responsibility for loading state.
+        }
+        throw error;
+      }
+      
+      // Manually update session and profile, as getSession doesn't trigger the listener if the session is unchanged.
+      setSession(currentSession);
+      await fetchProfileData(currentSession);
+    } catch (e) {
+      console.error("AuthContext: Error during manual refetch:", e);
+      setSession(null);
+      setUser(null);
+      setOrganization(null);
+    } finally {
+      // This manual refetch function is responsible for its own loading state.
+      setLoading(false);
+    }
   }, [fetchProfileData]);
 
   useEffect(() => {
     let mounted = true;
 
-    // This function handles the initial session load reliably.
-    const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      // Only update state if the component is still mounted.
-      if (mounted) {
-        setSession(session);
-        await fetchProfileData(session);
-        setLoading(false); // End loading after the very first check.
-      }
-    };
-    
-    getInitialSession();
-
-    // The onAuthStateChange listener handles subsequent changes (login/logout).
+    // Set up the listener which is the single source of truth for auth changes.
+    // It fires on init, login, and logout.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (_event, newSession) => {
         if (mounted) {
-          setSession(session);
-          await fetchProfileData(session);
+          setLoading(true);
+          setSession(newSession);
+          await fetchProfileData(newSession);
+          setLoading(false);
         }
       }
     );
 
-    // This listener handles re-checking when the tab becomes visible.
+    // Set up a listener to refresh data when the user returns to the tab.
     const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible' && mounted) {
             refetchUserProfile();
         }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      mounted = false; // Cleanup to prevent state updates on unmounted component
+      mounted = false;
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

@@ -78,7 +78,17 @@ const AppContent: React.FC = () => {
   const { session, user, organization, loading, refetchUserProfile } = useAuth();
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-center p-4">
+        <p className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-4">Loading...</p>
+        <button
+          onClick={() => refetchUserProfile()}
+          className="px-4 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary-dark transition-colors"
+        >
+          Opdater
+        </button>
+      </div>
+    );
   }
 
   const isUser = session && user;
