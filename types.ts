@@ -15,6 +15,8 @@ export interface User {
   auth_id?: string;
   user_traits?: UserTrait[];
   personality_tags?: PersonalityTag[];
+  // FIX: Add missing interests property
+  interests?: Interest[];
 }
 
 export interface UserTrait {

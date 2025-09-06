@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Info, Ticket } from 'lucide-react';
+import { ArrowLeft, Info, Ticket, MapPin, Clock, Users, Calendar, Heart, Share2, User as UserIcon } from 'lucide-react';
 import type { Event, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import ImageSlideshow from '../components/ImageSlideshow';
@@ -63,26 +63,18 @@ const EventDetailPage: React.FC = () => {
 
     const formattedTimeRange = useMemo(() => {
         if (!event?.time) return 'Tidspunkt ukendt';
-        
-        const startTime = new Date(event.time);
-        
-        const weekday = startTime.toLocaleString('da-DK', { weekday: 'long' });
-        const day = startTime.getDate();
-        const month = startTime.toLocaleString('da-DK', { month: 'short' }).replace('.', '');
-        const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-        const datePart = `${capitalizedWeekday} d. ${day} ${month}`;
-
-        const startTimeString = startTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
-
-        let timePart = startTimeString;
-
-        if (event.end_time) {
-            const endTime = new Date(event.end_time);
-            const endTimeString = endTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
-            timePart += ` - ${endTimeString}`;
+        const options: Intl.DateTimeFormatOptions = {
+            weekday: 'long',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        };
+        const startTime = new Date(event.time).toLocaleString('da-DK', options);
+        if (!event.end_time) {
+            return startTime;
         }
-        
-        return `${datePart}, ${timePart}`;
+        const endTime = new Date(event.end_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `${startTime} - ${endTime}`;
     }, [event]);
 
     useEffect(() => {
@@ -219,75 +211,189 @@ const EventDetailPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-background dark:bg-dark-background">
-            <header className="fixed top-0 left-0 right-0 z-20 bg-white bg-opacity-80 backdrop-blur-sm md:relative md:bg-transparent md:backdrop-blur-none dark:bg-dark-surface/80 dark:md:bg-transparent">
+            {/* Header */}
+            <header className="fixed top-0 left-0 right-0 z-20 bg-white/90 backdrop-blur-md md:relative md:bg-transparent md:backdrop-blur-none dark:bg-dark-surface/90 dark:md:bg-transparent border-b border-gray-100 dark:border-dark-border md:border-0">
                 <div className="max-w-4xl mx-auto flex items-center justify-between p-4">
-                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-text-primary dark:text-dark-text-primary">
+                    <button 
+                        onClick={() => navigate(-1)} 
+                        className="p-2 -ml-2 text-text-primary dark:text-dark-text-primary hover:bg-primary-light dark:hover:bg-dark-surface-light rounded-full transition-colors"
+                    >
                         <ArrowLeft size={24} />
                     </button>
-                    <h1 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">SoulMatch</h1>
+                    <h1 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Event Detaljer</h1>
                     <div className="w-8"></div>
                 </div>
             </header>
 
             <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
-                <div className="md:max-w-4xl mx-auto p-4 md:p-6">
+                {/* Hero Image Section */}
+                <div className="relative">
                     <ImageSlideshow images={event.images} alt={event.title} />
+                    
+                    {/* Event Title Overlay */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-2xl">{event.icon || '🎉'}</span>
+                                <span className="bg-primary text-white px-3 py-1 rounded-full text-sm font-semibold">
+                                    {event.category?.name || 'Event'}
+                                </span>
+                            </div>
+                            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">{event.title}</h1>
+                            <div className="flex items-center gap-4 text-white/90">
+                                <div className="flex items-center gap-1">
+                                    <Users size={16} />
+                                    <span className="text-sm font-medium">{event.participants?.length || 0} deltagere</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <UserIcon size={16} />
+                                    <span className="text-sm font-medium">Host: {event.host_name}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div className={`md:max-w-4xl mx-auto p-4 md:p-6 pt-4 md:pt-6`}>
-                    <div className="relative p-6 rounded-3xl shadow-xl bg-gray-50 dark:bg-dark-surface mb-8">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">{event.title}</h2>
-                                <p className="text-text-secondary dark:text-dark-text-secondary mt-1 font-semibold">{formattedTimeRange}</p>
-                                <p className="text-text-secondary dark:text-dark-text-secondary mt-1">Host: {event.host_name}</p>
-                                <p className="font-semibold text-primary mt-2">{event.category?.name || 'Ukendt'}</p>
+                <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+                    {/* Quick Info Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Time & Date Card */}
+                        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
+                                    <Calendar className="text-primary" size={20} />
+                                </div>
+                                <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Tidspunkt</h3>
                             </div>
-                            {event.organization_id && (
-                                <Link to={`/organization/${event.organization_id}`} className="p-3 bg-white dark:bg-dark-surface-light rounded-full border border-gray-200 dark:border-dark-border text-primary hover:bg-primary-light dark:hover:bg-primary/20">
-                                    <Info size={24} />
+                            <p className="text-text-secondary dark:text-dark-text-secondary font-medium">{formattedTimeRange}</p>
+                        </div>
+
+                        {/* Location Card */}
+                        {event.address && (
+                            <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
+                                        <MapPin className="text-primary" size={20} />
+                                    </div>
+                                    <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Lokation</h3>
+                                </div>
+                                <p className="text-text-secondary dark:text-dark-text-secondary font-medium">{event.address}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Sponsored Offer */}
+                    {event.is_sponsored && event.offer && (
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-6">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-full">
+                                    <Ticket className="text-green-600 dark:text-green-400" size={24} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-green-800 dark:text-green-300 text-lg mb-2">🎁 Sponsoreret Tilbud</h3>
+                                    <p className="text-green-700 dark:text-green-200 font-medium">{event.offer}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Organization Info */}
+                    {event.organization_id && (
+                        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
+                                        <Info className="text-primary" size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Arrangør</h3>
+                                        <p className="text-text-secondary dark:text-dark-text-secondary text-sm">Se mere om organisationen</p>
+                                    </div>
+                                </div>
+                                <Link 
+                                    to={`/organization/${event.organization_id}`} 
+                                    className="bg-primary text-white px-4 py-2 rounded-full font-semibold hover:bg-primary-dark transition-colors"
+                                >
+                                    Se profil
                                 </Link>
-                            )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Participants Section */}
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
+                                <Users className="text-primary" size={20} />
+                            </div>
+                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl">
+                                Deltagere ({event.participants?.length || 0})
+                            </h3>
+                        </div>
+                        
+                        {participantsToShow.length > 0 ? (
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                                {participantsToShow.map(user => (
+                                    <div key={user.id} className="text-center group">
+                                        <div className="relative">
+                                            <PrivateImage 
+                                                src={user.avatar_url} 
+                                                alt={user.name} 
+                                                className="w-16 h-16 rounded-full mx-auto object-cover border-2 border-gray-100 dark:border-dark-border group-hover:border-primary transition-colors" 
+                                            />
+                                            {user.online && (
+                                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-white dark:border-dark-surface rounded-full"></div>
+                                            )}
+                                        </div>
+                                        <p className="text-sm mt-2 truncate font-semibold text-text-secondary dark:text-dark-text-secondary group-hover:text-primary transition-colors">
+                                            {user.name}
+                                        </p>
+                                    </div>
+                                ))}
+                                {remainingParticipants > 0 && (
+                                    <div className="text-center">
+                                        <div className="w-16 h-16 rounded-full bg-primary-light dark:bg-primary/20 flex items-center justify-center mx-auto border-2 border-primary/30">
+                                            <span className="font-bold text-primary text-sm">+{remainingParticipants}</span>
+                                        </div>
+                                        <p className="text-sm mt-2 font-semibold text-text-secondary dark:text-dark-text-secondary">flere</p>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8">
+                                <div className="w-16 h-16 bg-gray-100 dark:bg-dark-surface-light rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Users className="text-gray-400" size={24} />
+                                </div>
+                                <p className="text-text-secondary dark:text-dark-text-secondary">Ingen deltagere endnu</p>
+                                <p className="text-text-secondary dark:text-dark-text-secondary text-sm mt-1">Vær den første til at tilmelde dig! 🎉</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Description Section */}
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
+                        <h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Om eventet</h3>
+                        <div className="prose prose-gray dark:prose-invert max-w-none">
+                            <MarkdownRenderer text={event.description || 'Ingen beskrivelse tilgængelig.'} />
                         </div>
                     </div>
 
-                    {event.is_sponsored && event.offer && (
-                        <section className="mb-8">
-                            <div className="bg-green-100 dark:bg-green-900/30 border-l-4 border-green-500 text-green-800 dark:text-green-300 p-4 rounded-r-lg flex items-center">
-                                <Ticket className="h-8 w-8 mr-4" />
-                                <div>
-                                    <h3 className="font-bold">Sponsoreret Tilbud</h3>
-                                    <p>{event.offer}</p>
-                                </div>
+                    {/* Interests Section */}
+                    {event.interests && event.interests.length > 0 && (
+                        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
+                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Interesser</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {event.interests.map(interest => (
+                                    <span 
+                                        key={interest.id}
+                                        className="bg-primary-light dark:bg-primary/20 text-primary px-3 py-1 rounded-full text-sm font-medium"
+                                    >
+                                        {interest.name}
+                                    </span>
+                                ))}
                             </div>
-                        </section>
+                        </div>
                     )}
-
-                    <section className="mb-8">
-                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Deltagere ({event.participants?.length || 0})</h3>
-                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
-                            {participantsToShow.map(user => (
-                                <div key={user.id} className="text-center">
-                                    <PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full mx-auto object-cover" />
-                                    <p className="text-sm mt-2 truncate font-semibold text-text-secondary dark:text-dark-text-secondary">{user.name}</p>
-                                </div>
-                            ))}
-                            {remainingParticipants > 0 && (
-                                <div className="flex flex-col items-center justify-center text-center">
-                                    <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-dark-surface-light flex items-center justify-center">
-                                        <span className="font-bold text-text-secondary dark:text-dark-text-secondary">+{remainingParticipants}</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Beskrivelse</h3>
-                        <div className="bg-gray-100 dark:bg-dark-surface-light p-4 rounded-xl text-text-secondary dark:text-dark-text-primary">
-                            <MarkdownRenderer text={event.description || ''} />
-                        </div>
-                    </section>
                 </div>
             </main>
             

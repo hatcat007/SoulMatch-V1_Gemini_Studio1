@@ -21,9 +21,9 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ fullScreen = false, messa
       transition={{ duration: 0.3 }}
     >
       <motion.img 
-        src="https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/SoulMatch%20logo.jpeg"
+        src="https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/soulmatch_v1_logo_v2.webp"
         alt="SoulMatch Logo" 
-        className="w-48 h-auto"
+        className="w-80 h-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4, delay: 0.1, ease: 'easeOut' }}

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
@@ -97,6 +98,8 @@ const CreateEventPage: React.FC = () => {
     const { user } = useAuth();
     const [formData, setFormData] = usePersistentState('createUserEventForm', initialFormState);
     const [isUploading, setIsUploading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     
     // State for interests
     const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
@@ -192,53 +195,71 @@ const CreateEventPage: React.FC = () => {
             return;
         }
 
-        const { eventName, description, time, end_time, location, images, ...rest } = formData;
+        setIsSubmitting(true);
+        setError(null);
+        let submissionError: string | null = null;
 
-        // 1. Create the event
-        const { data: newEvent, error: eventError } = await supabase.from('events').insert({
-            title: eventName,
-            description, time, end_time, address: location,
-            creator_user_id: user.id,
-            host_name: user.name,
-            host_avatar_url: user.avatar_url || '',
-            organization_id: null,
-            image_url: images.length > 0 ? images[0] : null,
-            ...rest
-        }).select().single();
+        try {
+            const { eventName, description, time, end_time, location, images, ...rest } = formData;
 
-        if (eventError || !newEvent) {
-            console.error(eventError);
-            alert('Event kunne ikke oprettes!');
-            return;
-        }
+            // 1. Create the event
+            const { data: newEvent, error: eventError } = await supabase.from('events').insert({
+                title: eventName,
+                description,
+                time,
+                end_time: end_time || null,
+                address: location,
+                creator_user_id: user.id,
+                host_name: user.name,
+                host_avatar_url: user.avatar_url || '',
+                organization_id: null,
+                image_url: images.length > 0 ? images[0] : null,
+                ...rest
+            }).select().single();
 
-        // 2. Link images to the new event
-        if (images.length > 0) {
-            const eventImages = images.map(imageUrl => ({
-                event_id: newEvent.id,
-                image_url: imageUrl
-            }));
-            const { error: imageError } = await supabase.from('event_images').insert(eventImages);
-            if (imageError) {
-                console.error("Error linking images:", imageError);
+            if (eventError) throw eventError;
+            if (!newEvent) throw new Error("Event data not returned after creation.");
+
+            // 2. Link images to the new event
+            if (images.length > 0) {
+                const eventImages = images.map(imageUrl => ({
+                    event_id: newEvent.id,
+                    image_url: imageUrl
+                }));
+                const { error: imageError } = await supabase.from('event_images').insert(eventImages);
+                if (imageError) {
+                    console.error("Error linking images to event:", imageError);
+                    submissionError = `Error linking images to event:\n${imageError.message}`;
+                }
             }
-        }
 
-        // 3. Link interests to the new event using RPC
-        if (selectedInterests.length > 0) {
-            const interestIds = selectedInterests.map(interest => interest.id);
-            const { error: interestError } = await supabase.rpc('add_interests_to_event', {
-                p_event_id: newEvent.id,
-                p_interest_ids: interestIds
-            });
-            if (interestError) {
-                console.error("Error linking interests:", interestError);
+            // 3. Link interests to the new event using RPC
+            if (selectedInterests.length > 0) {
+                const interestIds = selectedInterests.map(interest => interest.id);
+                const { error: interestError } = await supabase.rpc('add_interests_to_event', {
+                    p_event_id: newEvent.id,
+                    p_interest_ids: interestIds
+                });
+                if (interestError) {
+                    console.error("Error linking interests:", interestError);
+                    submissionError = (submissionError ? submissionError + "\n" : "") + `Error linking interests:\n${interestError.message}`;
+                }
             }
+            
+            if (!submissionError) {
+                alert('Event oprettet!');
+                setFormData(initialFormState);
+                setSelectedInterests([]);
+            } else {
+                setError(submissionError);
+            }
+           
+        } catch (err: any) {
+            console.error("Failed to create event:", err);
+            setError(`Event kunne ikke oprettes: ${err.message}`);
+        } finally {
+            setIsSubmitting(false);
         }
-        
-        alert('Event oprettet!');
-        setFormData(initialFormState); // Clear form and sessionStorage on submit
-        setSelectedInterests([]); // Clear local state as well
     };
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
@@ -253,6 +274,7 @@ const CreateEventPage: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
                 <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
+                {error && <p className="text-red-500 text-center bg-red-100 p-3 rounded-lg text-sm whitespace-pre-wrap">{error}</p>}
                 {/* Emoji */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                     <label className="block text-lg font-semibold text-gray-800 mb-3">Vælg dit ikon til event</label>
@@ -401,9 +423,10 @@ const CreateEventPage: React.FC = () => {
                 <div>
                      <button
                         type="submit"
-                        className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+                        disabled={isSubmitting || isUploading}
+                        className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
                     >
-                        Opret event
+                        {isSubmitting ? 'Opretter...' : 'Opret event'}
                     </button>
                 </div>
             </form>
