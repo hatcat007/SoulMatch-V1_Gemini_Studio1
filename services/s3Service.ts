@@ -1,5 +1,4 @@
-// This service uses aws4fetch to sign and send requests, avoiding potential environment
-// detection issues that can occur with the full AWS SDK in some bundlerless environments.
+// Optimeret S3 service med aws4fetch - simpel, hurtig og effektiv
 import { AwsClient } from 'aws4fetch';
 
 // ===================================================================================
@@ -11,15 +10,11 @@ import { AwsClient } from 'aws4fetch';
 // This configuration is ONLY for the AI Studio sandbox. DO NOT use this in production.
 // ===================================================================================
 
-// --- Configuration for iDrive E2 using AWS SDK v3 style ---
-// By separating the endpoint from the bucket, we enforce a "path-style" URL
-// structure (e.g., https://endpoint/bucket/key), which is more reliable for many
-// S3-compatible services than the "virtual-hosted style" (e.g., https://bucket.endpoint/key).
 const S3_ENDPOINT = "https://u7v1.fra.idrivee2-55.com";
 const BUCKET_NAME = 'soulmatch-uploads-private';
-const S3_REGION = "us-east-1"; // Although iDrive E2 is in FRA, 'us-east-1' is often used as a default region for signing with S3-compatible services.
+const S3_REGION = "us-east-1";
 
-// Create a single AwsClient instance for signing requests.
+// Enkelt AwsClient instans til alle requests
 const awsClient = new AwsClient({
     accessKeyId: "HNsDuYcm7wnCxyxQF3Un",
     secretAccessKey: "yoLnrzFojZkgGYVY0kQVSjbtK8m6z8M6Pgi06DFY",
@@ -28,143 +23,120 @@ const awsClient = new AwsClient({
 });
 
 /**
- * Uploads a File object to the S3-compatible storage.
- * @param file The File object to upload.
- * @returns The permanent, non-signed URL to be stored in the database.
+ * Uploader en fil til S3-kompatibel storage.
+ * @param file File objektet der skal uploades.
+ * @returns Den permanente URL til filen.
  */
 export async function uploadFile(file: File): Promise<string> {
-    // Use a unique file name to avoid overwrites, sanitizing the original name.
     const sanitizedFileName = file.name.replace(/\s+/g, '_');
     const fileName = `${Date.now()}-${sanitizedFileName}`;
-    
-    // Construct the full path-style URL for the object.
     const objectUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
 
     try {
-        // Sign the request. The aws4fetch library needs the body here to calculate the
-        // content hash, which is part of the signature. However, this process consumes
-        // the readable stream of the 'file' object.
-        const signedRequest = await awsClient.sign(objectUrl, {
+        // Brug aws4fetch.fetch() direkte - mere simpelt og effektivt
+        const response = await awsClient.fetch(objectUrl, {
             method: 'PUT',
             headers: {
                 'Content-Type': file.type || 'application/octet-stream',
-            }
-        });
-
-        // CRITICAL FIX: The `signedRequest` object's body stream might have been consumed during signing.
-        // To avoid "TypeError: Failed to fetch" or "Request has already been used" errors,
-        // we manually construct a new fetch call using the signed URL and headers, but provide the
-        // original, unconsumed 'file' object as the body again.
-        const response = await fetch(signedRequest.url, {
-            method: signedRequest.method,
-            headers: signedRequest.headers,
-            body: file, // Provide the original file object again.
+            },
+            body: file,
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`S3 upload failed with status ${response.status}: ${errorText}`);
+            throw new Error(`S3 upload failed: ${response.status} ${errorText}`);
         }
         
-        // Return the permanent, path-style URL to be stored in the database.
         return objectUrl;
     } catch (error) {
-        console.error("Error uploading file with aws4fetch:", error);
-        throw new Error("File upload failed. Please check your S3 configuration and network connection.");
+        console.error("Upload fejl:", error);
+        throw new Error("File upload failed. Check S3 configuration.");
     }
 }
 
 /**
- * Converts a base64 string to a Blob for uploading.
- * @param base64 The base64 encoded string (without the "data:..." prefix).
- * @param contentType The MIME type of the file.
- * @returns A Blob object.
+ * Konverterer base64 string til File objekt.
+ * @param base64 Base64 string (uden data: prefix).
+ * @param fileName Filnavn.
+ * @param contentType MIME type.
+ * @returns File objekt.
  */
-function base64ToBlob(base64: string, contentType: string): Blob {
+function base64ToFile(base64: string, fileName: string, contentType: string = 'image/jpeg'): File {
     const byteCharacters = atob(base64);
-    const byteArrays = [];
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-        const slice = byteCharacters.slice(offset, offset + 512);
-        const byteNumbers = new Array(slice.length);
-        for (let i = 0; i < slice.length; i++) {
-            byteNumbers[i] = slice.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        byteArrays.push(byteArray);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-    return new Blob(byteArrays, { type: contentType });
+    const byteArray = new Uint8Array(byteNumbers);
+    return new File([byteArray], fileName, { type: contentType });
 }
 
 /**
- * Uploads a file from a base64 string, typically for AI-generated images.
- * @param base64Data The raw base64 data of the image.
- * @param fileNamePrefix A prefix for the generated file name.
- * @param contentType The MIME type of the image.
- * @returns The permanent URL of the uploaded file.
+ * Uploader base64 data som fil - kompatibilitetsfunktion.
+ * @param base64Data Base64 data.
+ * @param fileNamePrefix Filnavn prefix.
+ * @param contentType MIME type.
+ * @returns URL til uploaded fil.
  */
 export async function uploadBase64File(base64Data: string, fileNamePrefix: string, contentType: string = 'image/jpeg'): Promise<string> {
-    const blob = base64ToBlob(base64Data, contentType);
-    const fileName = `${Date.now()}-${fileNamePrefix.replace(/\s+/g, '_')}.jpg`;
-    
-    const objectUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
+    const fileName = `${fileNamePrefix.replace(/\s+/g, '_')}.jpg`;
+    const file = base64ToFile(base64Data, fileName, contentType);
+    return uploadFile(file);
+}
+
+/**
+ * Henter en privat fil fra S3 og returnerer en signeret URL.
+ * @param objectUrl URL til objektet der skal hentes.
+ * @returns Signeret URL eller tom streng ved fejl.
+ */
+export async function getSignedUrl(objectUrl: string): Promise<string> {
+    if (!objectUrl || !objectUrl.startsWith(S3_ENDPOINT)) {
+        return objectUrl || '';
+    }
 
     try {
-        const signedRequest = await awsClient.sign(objectUrl, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': contentType,
+        // Generer presigned URL med signQuery: true
+        const signedRequest = await awsClient.sign(objectUrl, { 
+            method: 'GET',
+            aws: {
+                signQuery: true  // Signer query string i stedet for Authorization header
             }
         });
-        
-        // CRITICAL FIX: Reconstruct the fetch call with the original blob to avoid body consumption issues.
-        const response = await fetch(signedRequest.url, {
-            method: signedRequest.method,
-            headers: signedRequest.headers,
-            body: blob, // Provide the original blob object again.
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`S3 base64 upload failed with status ${response.status}: ${errorText}`);
-        }
-
-        return objectUrl;
+        return signedRequest.url.toString();
     } catch (error) {
-        console.error("Error uploading base64 file with aws4fetch:", error);
-        throw new Error(`File upload from base64 failed: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`Fejl ved generering af signeret URL:`, error);
+        return '';
     }
 }
 
 /**
- * Fetches a private file from S3-compatible storage and returns a local blob URL for safe display.
- * If the URL is not a private S3 URL, it's returned directly.
- * @param objectUrl The full URL of the object to display.
- * @returns A promise that resolves to a local blob URL or the original public URL.
+ * Henter en privat fil og returnerer blob URL til visning.
+ * @param objectUrl URL til objektet der skal vises.
+ * @returns Blob URL eller original URL.
  */
 export async function fetchPrivateFile(objectUrl: string): Promise<string> {
-    if (!objectUrl) {
-        return '';
-    }
-
-    // If it's not a private URL from our storage, return it directly.
-    if (!objectUrl.startsWith(S3_ENDPOINT)) {
-        return objectUrl;
+    if (!objectUrl || !objectUrl.startsWith(S3_ENDPOINT)) {
+        return objectUrl || '';
     }
 
     try {
-        // For GET requests, the body is not an issue, so signing the request directly is fine.
-        const signedRequest = await awsClient.sign(objectUrl, { method: 'GET' });
-        
-        const response = await fetch(signedRequest);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to fetch private file: ${response.status} ${response.statusText}. Response: ${errorText}`);
+        // Generer signeret URL først
+        const signedUrl = await getSignedUrl(objectUrl);
+        if (!signedUrl) {
+            throw new Error('Kunne ikke generere signeret URL');
         }
+        
+        // Fetch med den signerede URL
+        const response = await fetch(signedUrl);
+        
+        if (!response.ok) {
+            throw new Error(`Fetch fejl: ${response.status}`);
+        }
+        
         const blob = await response.blob();
         return URL.createObjectURL(blob);
     } catch (error) {
-        console.error(`Error fetching private file for ${objectUrl}:`, error);
-        return ''; 
+        console.error(`Fejl ved hentning af fil:`, error);
+        return '';
     }
 }

@@ -50,11 +50,30 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 };
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => {
-    const formattedTime = event.time ? new Date(event.time).toLocaleString('da-DK', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-    }) : 'Tidspunkt ukendt';
+    const formattedTimeRange = useMemo(() => {
+        if (!event?.time) return 'Tidspunkt ukendt';
+        
+        const startTime = new Date(event.time);
+        
+        const weekday = startTime.toLocaleString('da-DK', { weekday: 'long' });
+        const day = startTime.getDate();
+        const month = startTime.toLocaleString('da-DK', { month: 'short' }).replace('.', '');
+        const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+        const datePart = `${capitalizedWeekday} d. ${day} ${month}`;
+
+        const startTimeString = startTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
+
+        let timePart = startTimeString;
+
+        if (event.end_time) {
+            const endTime = new Date(event.end_time);
+            const endTimeString = endTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
+            timePart += ` - ${endTimeString}`;
+        }
+        
+        return `${datePart}, ${timePart}`;
+    }, [event.time, event.end_time]);
+
 
     return (
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
@@ -69,7 +88,7 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
             )}
             <div className="p-4 flex flex-col flex-1">
                 <div>
-                    <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{formattedTime}</p>
+                    <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{formattedTimeRange}</p>
                     <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1 line-clamp-2">{event.title}</h3>
                 </div>
                 <div className="mt-auto pt-4 flex items-center">

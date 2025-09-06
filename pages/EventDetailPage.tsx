@@ -63,18 +63,26 @@ const EventDetailPage: React.FC = () => {
 
     const formattedTimeRange = useMemo(() => {
         if (!event?.time) return 'Tidspunkt ukendt';
-        const options: Intl.DateTimeFormatOptions = {
-            weekday: 'long',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        };
-        const startTime = new Date(event.time).toLocaleString('da-DK', options);
-        if (!event.end_time) {
-            return startTime;
+        
+        const startTime = new Date(event.time);
+        
+        const weekday = startTime.toLocaleString('da-DK', { weekday: 'long' });
+        const day = startTime.getDate();
+        const month = startTime.toLocaleString('da-DK', { month: 'short' }).replace('.', '');
+        const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+        const datePart = `${capitalizedWeekday} d. ${day} ${month}`;
+
+        const startTimeString = startTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
+
+        let timePart = startTimeString;
+
+        if (event.end_time) {
+            const endTime = new Date(event.end_time);
+            const endTimeString = endTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
+            timePart += ` - ${endTimeString}`;
         }
-        const endTime = new Date(event.end_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false });
-        return `${startTime} - ${endTime}`;
+        
+        return `${datePart}, ${timePart}`;
     }, [event]);
 
     useEffect(() => {
