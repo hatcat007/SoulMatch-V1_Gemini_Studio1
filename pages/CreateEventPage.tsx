@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
@@ -80,7 +79,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = (
 };
 
 const initialFormState = {
-    emoji: '🎉',
+    icon: '🎉',
     eventName: '',
     description: '',
     time: '',
@@ -202,7 +201,7 @@ const CreateEventPage: React.FC = () => {
             creator_user_id: user.id,
             host_name: user.name,
             host_avatar_url: user.avatar_url || '',
-            organization_id: 999, // Placeholder for user-created events
+            organization_id: null,
             image_url: images.length > 0 ? images[0] : null,
             ...rest
         }).select().single();
@@ -213,20 +212,31 @@ const CreateEventPage: React.FC = () => {
             return;
         }
 
-        // 2. Link interests to the new event
-        if (selectedInterests.length > 0) {
-            const eventInterests = selectedInterests.map(interest => ({
+        // 2. Link images to the new event
+        if (images.length > 0) {
+            const eventImages = images.map(imageUrl => ({
                 event_id: newEvent.id,
-                interest_id: interest.id
+                image_url: imageUrl
             }));
-            const { error: interestError } = await supabase.from('event_interests').insert(eventInterests);
+            const { error: imageError } = await supabase.from('event_images').insert(eventImages);
+            if (imageError) {
+                console.error("Error linking images:", imageError);
+            }
+        }
+
+        // 3. Link interests to the new event using RPC
+        if (selectedInterests.length > 0) {
+            const interestIds = selectedInterests.map(interest => interest.id);
+            const { error: interestError } = await supabase.rpc('add_interests_to_event', {
+                p_event_id: newEvent.id,
+                p_interest_ids: interestIds
+            });
             if (interestError) {
                 console.error("Error linking interests:", interestError);
-                // The event is created, but interests failed. Can notify user.
             }
         }
         
-        alert('Event oprettet! (Se konsol for data)');
+        alert('Event oprettet!');
         setFormData(initialFormState); // Clear form and sessionStorage on submit
         setSelectedInterests([]); // Clear local state as well
     };
@@ -245,12 +255,12 @@ const CreateEventPage: React.FC = () => {
                 <style>{`.toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
                 {/* Emoji */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <label className="block text-lg font-semibold text-gray-800 mb-3">Vælg dit emoji til event</label>
+                    <label className="block text-lg font-semibold text-gray-800 mb-3">Vælg dit ikon til event</label>
                     <div className="flex items-center space-x-4">
-                        <div className="text-5xl">{formData.emoji}</div>
+                        <div className="text-5xl">{formData.icon}</div>
                         <div className="grid grid-cols-6 gap-2 flex-1">
                             {emojiOptions.map(e => (
-                                <button key={e} type="button" onClick={() => handleSimpleStateChange('emoji', e)} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.emoji === e ? 'bg-primary-light scale-110' : 'hover:bg-gray-100'}`}>
+                                <button key={e} type="button" onClick={() => handleSimpleStateChange('icon', e)} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light scale-110' : 'hover:bg-gray-100'}`}>
                                     {e}
                                 </button>
                             ))}

@@ -27,6 +27,8 @@ import CreateProfilePage from './pages/CreateProfilePage';
 import PersonalityTestPage from './pages/PersonalityTestPage';
 import FriendsPage from './pages/FriendsPage';
 import AdminPage from './pages/AdminPage';
+import MyEventsPage from './pages/MyEventsPage';
+import EditEventPage from './pages/EditEventPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import type { User, Event, Place } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -182,6 +184,8 @@ const AppContent: React.FC = () => {
                       <Route path="/privacy" element={<PrivacyPolicyPage />} />
                       <Route path="/terms" element={<TermsOfServicePage />} />
                       <Route path="/friends" element={<FriendsPage />} />
+                      <Route path="/my-events" element={<MyEventsPage />} />
+                      <Route path="/edit-event/:eventId" element={<EditEventPage />} />
                       {user.is_admin && <Route path="/admin" element={<AdminPage />} />}
                       <Route path="*" element={<Navigate to="/home" replace />} />
                     </Routes>

@@ -47,7 +47,7 @@ export interface Event {
   color: string;
   description?: string;
   participants?: User[];
-  organization_id: number;
+  organization_id: number | null;
   organization?: {
     logo_url: string;
   };

@@ -1,7 +1,8 @@
+
 // FIX: Added 'useCallback' to the import statement from 'react' to resolve the undefined error.
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Settings, MessageCircle, Edit, Save, Plus, X, Users, BrainCircuit, ShieldCheck, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, ClipboardList } from 'lucide-react';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import type { User, Interest } from '../types';
@@ -404,6 +405,9 @@ const ProfilePage: React.FC = () => {
                             <button onClick={() => setIsEditing(true)} className="flex items-center justify-center w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg">
                                 <Edit size={20} className="mr-2"/> Rediger Profil
                             </button>
+                             <Link to="/my-events" className="flex items-center justify-center w-full bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition duration-300">
+                                <ClipboardList size={20} className="mr-2"/> Mine Events
+                            </Link>
                             <Link to="/friends" className="flex items-center justify-center w-full bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border transition duration-300">
                                 <Users size={20} className="mr-2"/> Venner
                             </Link>

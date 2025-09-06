@@ -243,9 +243,11 @@ const EventDetailPage: React.FC = () => {
                                 <p className="text-text-secondary dark:text-dark-text-secondary mt-1">Host: {event.host_name}</p>
                                 <p className="font-semibold text-primary mt-2">{event.category?.name || 'Ukendt'}</p>
                             </div>
-                            <Link to={`/organization/${event.organization_id}`} className="p-3 bg-white dark:bg-dark-surface-light rounded-full border border-gray-200 dark:border-dark-border text-primary hover:bg-primary-light dark:hover:bg-primary/20">
-                                <Info size={24} />
-                            </Link>
+                            {event.organization_id && (
+                                <Link to={`/organization/${event.organization_id}`} className="p-3 bg-white dark:bg-dark-surface-light rounded-full border border-gray-200 dark:border-dark-border text-primary hover:bg-primary-light dark:hover:bg-primary/20">
+                                    <Info size={24} />
+                                </Link>
+                            )}
                         </div>
                     </div>
 

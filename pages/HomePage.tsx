@@ -76,7 +76,7 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
 
 
     return (
-        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
+        <div className="relative bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
             {event.image_url ? (
                 <div className="aspect-square overflow-hidden">
                     <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -98,6 +98,9 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
                         <p className="text-xs text-gray-500 dark:text-dark-text-secondary/70">Host: {event.host_name}</p>
                     </div>
                 </div>
+            </div>
+            <div className="absolute bottom-4 right-4 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-sm w-12 h-12 rounded-full flex items-center justify-center text-2xl shadow-lg">
+                {event.icon}
             </div>
         </div>
     );
