@@ -17,7 +17,7 @@ import { AwsClient } from 'aws4fetch';
 // S3-compatible services than the "virtual-hosted style" (e.g., https://bucket.endpoint/key).
 const S3_ENDPOINT = "https://u7v1.fra.idrivee2-55.com";
 const BUCKET_NAME = 'soulmatch-uploads-private';
-const S3_REGION = ""; // Although iDrive E2 is in FRA, 'us-east-1' is often used as a default region for signing with S3-compatible services.
+const S3_REGION = "us-east-1"; // Although iDrive E2 is in FRA, 'us-east-1' is often used as a default region for signing with S3-compatible services.
 
 // Create a single AwsClient instance for signing requests.
 const awsClient = new AwsClient({
@@ -26,12 +26,6 @@ const awsClient = new AwsClient({
     region: S3_REGION,
     service: 's3',
 });
-
-// --- In-memory cache for fetched private files ---
-// This cache stores promises to handle concurrent requests for the same URL efficiently.
-// It maps the permanent S3 URL to a promise that resolves with a temporary, local blob URL.
-// The cache is cleared on page reload, and blob URLs are managed by the browser session.
-const privateFileCache = new Map<string, Promise<string>>();
 
 /**
  * Uploads a File object to the S3-compatible storage.
@@ -143,52 +137,34 @@ export async function uploadBase64File(base64Data: string, fileNamePrefix: strin
 
 /**
  * Fetches a private file from S3-compatible storage and returns a local blob URL for safe display.
- * This function is memoized to cache results within the same session, preventing redundant network requests.
  * If the URL is not a private S3 URL, it's returned directly.
  * @param objectUrl The full URL of the object to display.
  * @returns A promise that resolves to a local blob URL or the original public URL.
  */
-export function fetchPrivateFile(objectUrl: string): Promise<string> {
+export async function fetchPrivateFile(objectUrl: string): Promise<string> {
     if (!objectUrl) {
-        return Promise.resolve('');
+        return '';
     }
 
     // If it's not a private URL from our storage, return it directly.
     if (!objectUrl.startsWith(S3_ENDPOINT)) {
-        return Promise.resolve(objectUrl);
+        return objectUrl;
     }
 
-    // Check if the request is already in our cache. If so, return the cached promise.
-    if (privateFileCache.has(objectUrl)) {
-        return privateFileCache.get(objectUrl)!;
-    }
+    try {
+        // For GET requests, the body is not an issue, so signing the request directly is fine.
+        const signedRequest = await awsClient.sign(objectUrl, { method: 'GET' });
+        
+        const response = await fetch(signedRequest);
 
-    // If not cached, create a new promise for the fetch request.
-    const fetchPromise = new Promise<string>(async (resolve, reject) => {
-        try {
-            // For GET requests, the body is not an issue, so signing the request directly is fine.
-            const signedRequest = await awsClient.sign(objectUrl, { method: 'GET' });
-            
-            const response = await fetch(signedRequest);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch private file: ${response.status} ${response.statusText}. Response: ${errorText}`);
-            }
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            resolve(blobUrl);
-        } catch (error) {
-            console.error(`Error fetching private file for ${objectUrl}:`, error);
-            // On error, remove the failed promise from the cache to allow future retries.
-            privateFileCache.delete(objectUrl);
-            // We resolve with an empty string so the UI doesn't crash on a failed image.
-            resolve('');
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch private file: ${response.status} ${response.statusText}. Response: ${errorText}`);
         }
-    });
-
-    // Store the new promise in the cache immediately.
-    privateFileCache.set(objectUrl, fetchPromise);
-
-    return fetchPromise;
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+    } catch (error) {
+        console.error(`Error fetching private file for ${objectUrl}:`, error);
+        return ''; 
+    }
 }
