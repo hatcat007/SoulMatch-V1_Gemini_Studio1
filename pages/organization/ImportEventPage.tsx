@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { generateEventImageFromText, importEventFromMultimodal } from '../../services/geminiService';
-import { uploadBase64File, fetchPrivateFile } from '../../services/s3Service';
+import { fetchPrivateFile } from '../../services/s3Service';
 import type { Organization, Category } from '../../types';
 import type { ImportedEventData } from '../../services/geminiService';
 import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X, FileText, UploadCloud, Palette, XCircle, CheckCircle } from 'lucide-react';
@@ -42,7 +42,7 @@ const PrivateImage: React.FC<{src: string, onRemove?: () => void, className?: st
             setIsLoading(false);
         });
         return () => {
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            if (objectUrl && objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl);
         };
     }, [src]);
 
@@ -151,8 +151,8 @@ const ImportEventPage: React.FC = () => {
         if (imageGenerationStyle !== 'none') {
             setImportStatus(`Genererer ${numberOfImages} billede(r)...`);
             const base64Images = await generateEventImageFromText(data.description, imageGenerationStyle, data.title, includeTitleOnImage, numberOfImages);
-            setImportStatus('Uploader billede(r)...');
-            imageUrls = await Promise.all(base64Images.map(base64 => uploadBase64File(base64, data.title || 'event-image')));
+            setImportStatus('Klargør billeder...');
+            imageUrls = base64Images.map(base64 => `data:image/jpeg;base64,${base64}`);
         }
         
         updateState({
@@ -190,8 +190,8 @@ const ImportEventPage: React.FC = () => {
                 if (imageGenerationStyle !== 'none') {
                     setImportStatus(`Genererer billede(r) for ${importedData.title}...`);
                     const base64Images = await generateEventImageFromText(importedData.description, imageGenerationStyle, importedData.title, includeTitleOnImage, numberOfImages);
-                    setImportStatus(`Uploader billede(r)...`);
-                    imageUrls = await Promise.all(base64Images.map(base64 => uploadBase64File(base64, importedData.title)));
+                    setImportStatus('Klargør billeder...');
+                    imageUrls = base64Images.map(base64 => `data:image/jpeg;base64,${base64}`);
                 }
                 results.push({ success: true, data: { ...importedData, image_urls: imageUrls }, sourceFileName: file.name });
             } catch (err: any) {

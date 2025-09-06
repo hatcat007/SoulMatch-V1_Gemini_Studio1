@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
@@ -18,7 +19,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
         const processUrl = async () => {
             if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
             setIsLoading(true);
-            if (src.startsWith('blob:')) {
+            if (src.startsWith('blob:') || src.startsWith('data:')) {
                 setDisplayUrl(src);
                 setIsLoading(false);
             } else {

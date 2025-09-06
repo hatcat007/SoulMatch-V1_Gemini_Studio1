@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import type { Organization } from '../../types';
-import { uploadFile, fetchPrivateFile, uploadBase64File } from '../../services/s3Service';
+import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { generatePlaceImageFromText } from '../../services/geminiService';
 import { Loader2, Plus, X, Sparkles } from 'lucide-react';
 import { usePersistentState } from '../../hooks/useNotifications';
@@ -21,7 +22,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
             if (!src) { if (isMounted) setIsLoading(false); return; }
             setIsLoading(true);
 
-            if (src.startsWith('blob:') || src.startsWith('http')) {
+            if (src.startsWith('blob:') || src.startsWith('http') || src.startsWith('data:')) {
                 setDisplayUrl(src);
                 setIsLoading(false);
             } else {
@@ -150,9 +151,8 @@ const CreatePlacePage: React.FC = () => {
         setError(null);
         try {
             const base64Images = await generatePlaceImageFromText(formData.description, formData.name, aiImageStyle, aiNumberOfImages);
-            const uploadPromises = base64Images.map(base64 => uploadBase64File(base64, formData.name));
-            const newUrls = await Promise.all(uploadPromises);
-            setFormData(p => ({...p, images: [...p.images, ...newUrls]}));
+            const dataUrls = base64Images.map(base64 => `data:image/jpeg;base64,${base64}`);
+            setFormData(p => ({...p, images: [...p.images, ...dataUrls]}));
         } catch (err: any) {
             setError(`Fejl ved billedgenerering: ${err.message}`);
         } finally {

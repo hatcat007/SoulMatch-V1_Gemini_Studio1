@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
@@ -28,7 +29,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = (
             
             setIsLoading(true);
 
-            if (src.startsWith('blob:')) {
+            if (src.startsWith('blob:') || src.startsWith('data:')) {
                 // It's a local preview blob URL, use it directly.
                 setDisplayUrl(src);
                 setIsLoading(false);

@@ -33,13 +33,17 @@ export async function uploadFile(file: File): Promise<string> {
     const objectUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
 
     try {
+        // Læs filen ind i et ArrayBuffer for at forhindre stream-genbrugsproblemer.
+        // Dette løser "Request object has already been used" fejlen ved samtidige uploads.
+        const fileBuffer = await file.arrayBuffer();
+
         // Brug aws4fetch.fetch() direkte - mere simpelt og effektivt
         const response = await awsClient.fetch(objectUrl, {
             method: 'PUT',
             headers: {
                 'Content-Type': file.type || 'application/octet-stream',
             },
-            body: file,
+            body: fileBuffer, // Brug bufferen i stedet for fil-streamen
         });
 
         if (!response.ok) {
@@ -52,36 +56,6 @@ export async function uploadFile(file: File): Promise<string> {
         console.error("Upload fejl:", error);
         throw new Error("File upload failed. Check S3 configuration.");
     }
-}
-
-/**
- * Konverterer base64 string til File objekt.
- * @param base64 Base64 string (uden data: prefix).
- * @param fileName Filnavn.
- * @param contentType MIME type.
- * @returns File objekt.
- */
-function base64ToFile(base64: string, fileName: string, contentType: string = 'image/jpeg'): File {
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    return new File([byteArray], fileName, { type: contentType });
-}
-
-/**
- * Uploader base64 data som fil - kompatibilitetsfunktion.
- * @param base64Data Base64 data.
- * @param fileNamePrefix Filnavn prefix.
- * @param contentType MIME type.
- * @returns URL til uploaded fil.
- */
-export async function uploadBase64File(base64Data: string, fileNamePrefix: string, contentType: string = 'image/jpeg'): Promise<string> {
-    const fileName = `${fileNamePrefix.replace(/\s+/g, '_')}.jpg`;
-    const file = base64ToFile(base64Data, fileName, contentType);
-    return uploadFile(file);
 }
 
 /**
@@ -110,31 +84,21 @@ export async function getSignedUrl(objectUrl: string): Promise<string> {
 }
 
 /**
- * Henter en privat fil og returnerer blob URL til visning.
+ * Henter en privat fil og returnerer en signeret URL til direkte brug i <img>-tags.
  * @param objectUrl URL til objektet der skal vises.
- * @returns Blob URL eller original URL.
+ * @returns En signeret URL til billedet.
  */
 export async function fetchPrivateFile(objectUrl: string): Promise<string> {
+    // Pass-through for non-S3 URLs like blob: or data:
     if (!objectUrl || !objectUrl.startsWith(S3_ENDPOINT)) {
         return objectUrl || '';
     }
 
     try {
-        // Generer signeret URL først
-        const signedUrl = await getSignedUrl(objectUrl);
-        if (!signedUrl) {
-            throw new Error('Kunne ikke generere signeret URL');
-        }
-        
-        // Fetch med den signerede URL
-        const response = await fetch(signedUrl);
-        
-        if (!response.ok) {
-            throw new Error(`Fetch fejl: ${response.status}`);
-        }
-        
-        const blob = await response.blob();
-        return URL.createObjectURL(blob);
+        // Returner den signerede URL direkte i stedet for at hente filen og lave en blob.
+        // Dette undgår en ekstra `fetch`-anmodning på klientsiden og løser potentielle
+        // problemer med genbrug af Request-objekter.
+        return await getSignedUrl(objectUrl);
     } catch (error) {
         console.error(`Fejl ved hentning af fil:`, error);
         return '';

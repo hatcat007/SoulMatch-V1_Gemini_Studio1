@@ -52,7 +52,7 @@ Når brugeren klikker på "Importer", sker følgende bag scenen:
 4.  **Billedgenerering (To-trins proces):**
     a. Først analyserer en avanceret tekst-model (Gemini 2.5 Flash) eventets beskrivelse og genererer en kort, præcis og visuel prompt på engelsk.
     b. Denne optimerede prompt sendes derefter til en billedgenererings-model (Imagen), som skaber de ønskede billeder. Dette sikrer højere kvalitet og færre fejl.
-5.  **Upload af Billeder:** De AI-genererede billeder uploades automatisk til lageret og knyttes til det kommende event.
+5.  **Klargøring af Billeder:** De AI-genererede billeder konverteres til `data:` URL'er. Disse URL'er kan gemmes direkte i databasen og vises i appen uden et separat upload-trin, hvilket gør processen hurtigere.
 
 ### Trin 5: Gennemse og Bekræft
 
@@ -74,7 +74,7 @@ Herfra kan brugeren med ét klik godkende og oprette alle de succesfulde events.
 -   **AI-model (Tekst):** `gemini-2.5-flash` bruges til at analysere den multimodale input (tekst + billeder/PDFs) og til at generere den visuelle prompt.
 -   **AI-model (Billeder):** `imagen-4.0-generate-001` bruges til at generere billederne baseret på den optimerede prompt.
 -   **Struktureret Output:** Vi instruerer Gemini-modellen til at returnere data i et specifikt JSON-format ved hjælp af en `responseSchema`. Dette sikrer, at vi modtager pålidelige og forudsigelige data, som systemet kan arbejde med.
--   **Datahåndtering:** Uploadede filer konverteres til base64-strenge, før de sendes til Gemini API'en. AI-genererede billeder modtages som base64 og uploades derefter til appens S3-kompatible lager.
+-   **Datahåndtering:** Uploadede filer konverteres til base64-strenge, før de sendes til Gemini API'en. AI-genererede billeder modtages som base64 og konverteres til `data:` URL'er (`data:image/jpeg;base64,...`) for direkte lagring i databasen og visning i appen. Dette eliminerer behovet for et S3-upload for AI-genereret indhold.
 
 ## 4. Fordele
 
