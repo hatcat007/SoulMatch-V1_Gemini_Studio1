@@ -58,6 +58,8 @@ export interface Event {
   offer?: string;
   category: Category;
   category_id: number;
+  creator_user_id?: number;
+  interests?: Interest[];
 }
 
 export interface Place {
@@ -141,12 +143,15 @@ export type NotificationType = 'message' | 'event' | 'friend_request' | 'system'
 
 export interface Notification {
   id: number;
-  message: string;
+  user_id: number;
+  actor_id: number | null;
   type: NotificationType;
-  timestamp: number;
+  message: string;
+  related_entity_id: number | null;
   read: boolean;
-  actor?: User;
-  icon?: string;
+  created_at: string;
+  // Eager-loaded on the client
+  actor: User | null;
 }
 
 export interface InterestCategory {

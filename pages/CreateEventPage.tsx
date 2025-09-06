@@ -3,9 +3,10 @@ import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon,
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 import { usePersistentState } from '../hooks/useNotifications';
 import CategorySelector from '../components/CategorySelector';
-
-// Mock data for user's interests
-const userInterests = ['Gaming', 'Film', 'Kaffe', 'Brætspil', 'Musik', 'Gåtur'];
+import TagSelector from '../components/TagSelector';
+import type { Interest, InterestCategory } from '../types';
+import { supabase } from '../services/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 // This component can display a local blob URL directly or fetch a private S3 URL.
 const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = ({ src, alt, className }) => {
@@ -83,21 +84,42 @@ const initialFormState = {
     description: '',
     time: '',
     end_time: '',
-    tags: [] as string[],
     location: '',
     isDiagnosisFriendly: false,
     images: [] as string[],
     is_sponsored: false,
     offer: '',
     category_id: null as number | null,
+    selectedInterestIds: [] as number[],
 };
 
 const CreateEventPage: React.FC = () => {
+    const { user } = useAuth();
     const [formData, setFormData] = usePersistentState('createUserEventForm', initialFormState);
-    const [tagInput, setTagInput] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+    
+    // State for interests
+    const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
+    const [allInterests, setAllInterests] = useState<Interest[]>([]);
+    const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
+
 
     const imageInputRef = useRef<HTMLInputElement>(null);
+
+     useEffect(() => {
+        const fetchTagData = async () => {
+            const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
+            const { data: iData } = await supabase.from('interests').select('*');
+            if (iCatData) setInterestCategories(iCatData);
+            if (iData) {
+                setAllInterests(iData);
+                // Hydrate selectedInterests from persisted IDs
+                const hydratedInterests = iData.filter(i => formData.selectedInterestIds.includes(i.id));
+                setSelectedInterests(hydratedInterests);
+            }
+        };
+        fetchTagData();
+    }, []); // formData.selectedInterestIds is not included to prevent re-fetching on every selection
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -113,24 +135,12 @@ const CreateEventPage: React.FC = () => {
         setFormData(p => ({...p, [key]: value}));
     };
 
-    const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && tagInput.trim() !== '') {
-            e.preventDefault();
-            if (!formData.tags.includes(tagInput.trim())) {
-                setFormData(p => ({...p, tags: [...p.tags, tagInput.trim()]}));
-            }
-            setTagInput('');
-        }
-    };
-
-    const addTag = (tag: string) => {
-        if (!formData.tags.includes(tag)) {
-            setFormData(p => ({...p, tags: [...p.tags, tag]}));
-        }
-    };
-
-    const removeTag = (tagToRemove: string) => {
-        setFormData(p => ({...p, tags: p.tags.filter(tag => tag !== tagToRemove)}));
+    const handleInterestToggle = (interest: Interest) => {
+        const newSelected = selectedInterests.some(i => i.id === interest.id) 
+            ? selectedInterests.filter(i => i.id !== interest.id)
+            : [...selectedInterests, interest];
+        setSelectedInterests(newSelected);
+        setFormData(p => ({ ...p, selectedInterestIds: newSelected.map(i => i.id) }));
     };
 
     const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -175,11 +185,49 @@ const CreateEventPage: React.FC = () => {
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log(formData);
+        if (!user) {
+            alert('Du skal være logget ind for at oprette et event.');
+            return;
+        }
+
+        const { eventName, description, time, end_time, location, images, ...rest } = formData;
+
+        // 1. Create the event
+        const { data: newEvent, error: eventError } = await supabase.from('events').insert({
+            title: eventName,
+            description, time, end_time, address: location,
+            creator_user_id: user.id,
+            host_name: user.name,
+            host_avatar_url: user.avatar_url || '',
+            organization_id: 999, // Placeholder for user-created events
+            image_url: images.length > 0 ? images[0] : null,
+            ...rest
+        }).select().single();
+
+        if (eventError || !newEvent) {
+            console.error(eventError);
+            alert('Event kunne ikke oprettes!');
+            return;
+        }
+
+        // 2. Link interests to the new event
+        if (selectedInterests.length > 0) {
+            const eventInterests = selectedInterests.map(interest => ({
+                event_id: newEvent.id,
+                interest_id: interest.id
+            }));
+            const { error: interestError } = await supabase.from('event_interests').insert(eventInterests);
+            if (interestError) {
+                console.error("Error linking interests:", interestError);
+                // The event is created, but interests failed. Can notify user.
+            }
+        }
+        
         alert('Event oprettet! (Se konsol for data)');
         setFormData(initialFormState); // Clear form and sessionStorage on submit
+        setSelectedInterests([]); // Clear local state as well
     };
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
@@ -252,32 +300,15 @@ const CreateEventPage: React.FC = () => {
                      </div>
                 </div>
 
-                {/* Tags */}
+                {/* Interests */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Tag size={20} className="mr-2 text-primary"/> Tags</label>
-                     <div className="mb-2">
-                         <p className="text-sm font-medium text-gray-700 mb-2">Forslag baseret på dine interesser:</p>
-                         <div className="flex flex-wrap gap-2">
-                             {userInterests.map(interest => (
-                                 <button key={interest} type="button" onClick={() => addTag(interest)} className="bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-sm hover:bg-gray-300">
-                                     + {interest}
-                                 </button>
-                             ))}
-                         </div>
-                     </div>
-                     <div className="flex flex-wrap items-center gap-2 mb-3 min-h-[2rem]">
-                         {formData.tags.map(tag => (
-                            <div key={tag} className="flex items-center bg-primary text-white px-3 py-1 rounded-full text-sm">
-                                <span>{tag}</span>
-                                <button type="button" onClick={() => removeTag(tag)} className="ml-2 -mr-1 text-white hover:bg-primary-dark rounded-full p-0.5"><X size={14}/></button>
-                            </div>
-                         ))}
-                     </div>
-                     <input
-                        type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={handleTagKeyDown}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Tilføj dine egne tags (tryk Enter)"
-                     />
+                    <TagSelector
+                        title="Vælg interesser for dit event"
+                        categories={interestCategories}
+                        allTags={allInterests}
+                        selectedTags={selectedInterests}
+                        onToggleTag={handleInterestToggle}
+                    />
                 </div>
                 
                  {/* Location */}

@@ -1,20 +1,23 @@
 
 
+
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Info } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import type { Notification } from '../types';
 
-const formatRelativeTime = (timestamp: number): string => {
+const formatRelativeTime = (createdAt: string): string => {
+  const timestamp = new Date(createdAt).getTime();
   const now = new Date();
   const seconds = Math.round((now.getTime() - timestamp) / 1000);
   const minutes = Math.round(seconds / 60);
   const hours = Math.round(minutes / 60);
 
   if (seconds < 5) return "Lige nu";
+  if (minutes < 1) return `${seconds}s siden`;
   if (minutes < 60) return `${minutes}min siden`;
-  if (hours < 24) return `${hours} time siden`;
+  if (hours < 24) return `${hours}t siden`;
   
   const date = new Date(timestamp);
   return date.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' });
@@ -27,7 +30,7 @@ const groupNotificationsByDate = (notifications: Notification[]) => {
   yesterday.setDate(yesterday.getDate() - 1);
 
   notifications.forEach(notif => {
-    const notifDate = new Date(notif.timestamp);
+    const notifDate = new Date(notif.created_at);
     let key;
     if (notifDate.toDateString() === today.toDateString()) {
       key = 'I dag';
@@ -47,22 +50,22 @@ const groupNotificationsByDate = (notifications: Notification[]) => {
 
 const NotificationItem: React.FC<{ notification: Notification }> = ({ notification }) => {
   return (
-    <div className="flex items-start space-x-4 py-3">
+    <div className={`flex items-start space-x-4 py-3 px-2 rounded-lg ${!notification.read ? 'bg-primary-light/50 dark:bg-primary/10' : ''}`}>
       <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center">
         {notification.actor ? (
-          <img src={notification.actor.avatar_url} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200" />
+          <img src={notification.actor.avatar_url} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200 dark:ring-dark-border" />
         ) : (
-          <div className="w-12 h-12 bg-primary-light rounded-full flex items-center justify-center text-2xl">
-            {notification.icon}
+          <div className="w-12 h-12 bg-primary-light dark:bg-dark-surface-light rounded-full flex items-center justify-center text-2xl text-primary">
+            <Info />
           </div>
         )}
       </div>
       <div className="flex-1">
-        <p className="text-text-primary">
-          {notification.actor && <strong className="font-bold">{notification.actor.name}</strong>} {notification.message}
+        <p className="text-text-primary dark:text-dark-text-primary">
+          <strong className="font-bold">{notification.actor?.name}</strong> {notification.message}
         </p>
-        <p className="text-sm text-text-secondary mt-0.5">
-          {formatRelativeTime(notification.timestamp)}
+        <p className={`text-sm mt-0.5 ${notification.read ? 'text-text-secondary' : 'text-primary font-semibold'}`}>
+          {formatRelativeTime(notification.created_at)}
         </p>
       </div>
     </div>
@@ -74,19 +77,23 @@ const NotificationsPage: React.FC = () => {
   const { notifications, markAllAsRead, clearNotifications } = useNotifications();
 
   useEffect(() => {
-    markAllAsRead();
+    // Mark as read after a short delay to allow the user to see the unread state briefly.
+    const timer = setTimeout(() => {
+        markAllAsRead();
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [markAllAsRead]);
 
   const groupedNotifications = useMemo(() => groupNotificationsByDate(notifications), [notifications]);
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 hover:text-primary" aria-label="Gå tilbage">
+    <div className="flex flex-col h-full bg-white dark:bg-dark-background">
+      <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border">
+        <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary" aria-label="Gå tilbage">
           <ArrowLeft size={24} />
         </button>
-        <h1 className="text-xl font-bold text-text-primary">Notifikationer</h1>
-        <button onClick={clearNotifications} className="p-2 -mr-2 text-gray-600 hover:text-primary" aria-label="Ryd alle notifikationer">
+        <h1 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Notifikationer</h1>
+        <button onClick={clearNotifications} className="p-2 -mr-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary" aria-label="Ryd alle notifikationer">
           <Trash2 size={22} />
         </button>
       </header>
@@ -96,8 +103,8 @@ const NotificationsPage: React.FC = () => {
           <div className="p-4">
             {Object.entries(groupedNotifications).map(([dateLabel, notifs]) => (
               <section key={dateLabel} className="mb-6">
-                <h2 className="text-lg font-bold text-text-primary mb-2">{dateLabel}</h2>
-                <div className="divide-y divide-gray-100">
+                <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">{dateLabel}</h2>
+                <div className="space-y-1">
                   {notifs.map(notification => (
                     <NotificationItem key={notification.id} notification={notification} />
                   ))}
@@ -107,8 +114,8 @@ const NotificationsPage: React.FC = () => {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <h2 className="text-xl font-bold text-text-primary">Ingen notifikationer</h2>
-            <p className="text-text-secondary mt-2">Du har ingen nye notifikationer endnu. <br/> Kom igen senere!</p>
+            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Ingen notifikationer</h2>
+            <p className="text-text-secondary dark:text-dark-text-secondary mt-2">Du har ingen nye notifikationer endnu. <br/> Kom igen senere!</p>
           </div>
         )}
       </main>

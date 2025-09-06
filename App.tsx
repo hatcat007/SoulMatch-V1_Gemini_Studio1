@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,8 +28,7 @@ import PersonalityTestPage from './pages/PersonalityTestPage';
 import FriendsPage from './pages/FriendsPage';
 import AdminPage from './pages/AdminPage';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { useNotifications } from './hooks/useNotifications';
-import type { NotificationType, User, Event, Place } from './types';
+import type { User, Event, Place } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { supabase } from './services/supabase';
@@ -44,36 +42,6 @@ import ImportEventPage from './pages/organization/ImportEventPage';
 import OrganizationSettingsPage from './pages/organization/OrganizationSettingsPage';
 import EditOrgEventPage from './pages/organization/EditOrgEventPage';
 import EditPlacePage from './pages/organization/EditPlacePage';
-
-const MockNotificationGenerator: React.FC = () => {
-  const { addNotification } = useNotifications();
-
-  React.useEffect(() => {
-    const mockUsers: User[] = [
-        { id: 101, name: 'Patrick', age: 28, avatar_url: 'https://i.pravatar.cc/80?u=101', online: true },
-        { id: 102, name: 'Johanne', age: 25, avatar_url: 'https://i.pravatar.cc/80?u=102', online: false },
-        { id: 103, name: 'Anne', age: 24, avatar_url: 'https://i.pravatar.cc/80?u=103', online: true },
-        { id: 104, name: 'Chris', age: 30, avatar_url: 'https://i.pravatar.cc/80?u=104', online: false },
-    ];
-
-    const mockNotifs: { message: string; type: NotificationType; actor?: User; icon?: string; timestamp?: number }[] = [
-      { message: 'Event starter om 15min 🥳', type: 'event', icon: '🎸', timestamp: Date.now() - (5 * 1000) },
-      { message: '👀 på din profil', type: 'profile_view', actor: mockUsers[0], timestamp: Date.now() - (10 * 1000) },
-      { message: '👀 på din profil', type: 'profile_view', actor: mockUsers[1], timestamp: Date.now() - (2 * 60 * 1000) },
-      { message: 'sendte dig en besked', type: 'message', actor: mockUsers[2], timestamp: Date.now() - (15 * 60 * 1000) },
-      { message: 'sendte en venneanmodning', type: 'friend_request', actor: mockUsers[3], timestamp: Date.now() - (1 * 60 * 60 * 1000) },
-    ];
-
-    const interval = setInterval(() => {
-      const randomNotif = mockNotifs[Math.floor(Math.random() * mockNotifs.length)];
-      addNotification({ ...randomNotif, timestamp: Date.now() });
-    }, 30000); // Add a new notification every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [addNotification]);
-
-  return null;
-};
 
 const AppContent: React.FC = () => {
   const { session, user, organization, loading: authLoading, refetchUserProfile } = useAuth();
@@ -247,14 +215,13 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => (
   <ThemeProvider>
-    <NotificationProvider>
-      <MockNotificationGenerator />
-      <AuthProvider>
+    <AuthProvider>
+      <NotificationProvider>
         <HashRouter>
           <AppContent />
         </HashRouter>
-      </AuthProvider>
-    </NotificationProvider>
+      </NotificationProvider>
+    </AuthProvider>
   </ThemeProvider>
 );
 

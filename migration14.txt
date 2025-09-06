@@ -1,0 +1,45 @@
+-- SoulMatch Migration
+-- version: 18.0
+-- Adds support for tagging events with multiple interests.
+
+-- 1. Add a creator_user_id to the events table to track user-created events
+ALTER TABLE public.events
+ADD COLUMN IF NOT EXISTS creator_user_id bigint REFERENCES public.users(id) ON DELETE SET NULL;
+
+-- Assign a placeholder organization_id for user-created events for schema consistency
+-- A better long-term solution would be to make organization_id nullable.
+-- For now, we use a "magic number" and handle it in the app logic.
+-- This ensures user-created events don't get orphaned without a host.
+-- ALTER TABLE public.events ALTER COLUMN organization_id SET DEFAULT 999;
+
+
+-- 2. Create the event_interests join table
+CREATE TABLE IF NOT EXISTS "public"."event_interests" (
+    "event_id" bigint NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+    "interest_id" bigint NOT NULL REFERENCES public.interests(id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, interest_id)
+);
+
+-- 3. Enable RLS and set up policies
+ALTER TABLE public.event_interests ENABLE ROW LEVEL SECURITY;
+
+-- Allow public read access
+DROP POLICY IF EXISTS "Allow public read access to event interests" ON public.event_interests;
+CREATE POLICY "Allow public read access to event interests" ON public.event_interests
+FOR SELECT USING (true);
+
+-- Allow event creators (users or organizations) to manage interests for their events
+DROP POLICY IF EXISTS "Allow event creators to manage their event interests" ON public.event_interests;
+CREATE POLICY "Allow event creators to manage their event interests"
+FOR ALL USING (
+    -- Check if the user is the direct creator of the event
+    (SELECT creator_user_id FROM public.events WHERE id = event_id) = (SELECT id FROM public.users WHERE auth_id = auth.uid())
+    OR
+    -- Check if the user is part of the organization that owns the event
+    (SELECT organization_id FROM public.events WHERE id = event_id) IN (SELECT id FROM public.organizations WHERE auth_id = auth.uid())
+);
+
+-- 4. Grants
+GRANT SELECT ON public.event_interests TO authenticated, anon;
+GRANT INSERT, UPDATE, DELETE ON public.event_interests TO authenticated; -- RLS restricts to creators
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
