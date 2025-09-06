@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Settings, Calendar, Users, LogOut, Shield, MapPin, Loader2, Image as ImageIcon, Edit, Save, BrainCircuit, X, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
-import type { User, Interest, PersonalityTag, UserTrait, InterestCategory, PersonalityTagCategory, UserAiDescription } from '../types';
+import type { User, Interest, PersonalityTag, UserPersonalityDimension, InterestCategory, PersonalityTagCategory, UserAiDescription } from '../types';
 import LoadingScreen from '../components/LoadingScreen';
 import PersonalityRadarChart from '../components/PersonalityRadarChart';
 import { fetchPrivateFile } from '../services/s3Service';
@@ -54,7 +54,7 @@ const ProfilePage: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [interests, setInterests] = useState<Interest[]>([]);
     const [personalityTags, setPersonalityTags] = useState<PersonalityTag[]>([]);
-    const [traits, setTraits] = useState<UserTrait[]>([]);
+    const [personalityDimensions, setPersonalityDimensions] = useState<UserPersonalityDimension[]>([]);
     const [savedAiDescriptions, setSavedAiDescriptions] = useState<UserAiDescription[]>([]);
     
     // For editing
@@ -83,15 +83,13 @@ const ProfilePage: React.FC = () => {
         
         setLoading(true);
 
-        // FIX: The `order` parameter within the `select` string was causing a parser error.
-        // Moved the ordering for the 'user_ai_descriptions' foreign table to the `.order()` method for robust execution.
         const { data, error } = await supabase
             .from('users')
             .select(`
                 *,
                 user_interests(interest:interests(*, category:interest_categories(*))),
                 user_personality_tags(tag:personality_tags(*, category:personality_tag_categories(*))),
-                user_traits(*),
+                personality_dimensions:user_personality_dimensions(*),
                 user_ai_descriptions(*)
             `)
             .order('created_at', { foreignTable: 'user_ai_descriptions', ascending: false })
@@ -109,12 +107,13 @@ const ProfilePage: React.FC = () => {
             interests: data.user_interests.map((i: any) => i.interest).filter(Boolean),
             personality_tags: data.user_personality_tags.map((t: any) => t.tag).filter(Boolean),
             ai_descriptions: data.user_ai_descriptions,
+            personality_dimensions: data.personality_dimensions,
         };
         
         setUser(fetchedUser);
         setInterests(fetchedUser.interests || []);
         setPersonalityTags(fetchedUser.personality_tags || []);
-        setTraits(data.user_traits || []);
+        setPersonalityDimensions(fetchedUser.personality_dimensions || []);
         setSavedAiDescriptions(data.user_ai_descriptions || []);
 
         // For editing mode, fetch all possible tags and categories
@@ -186,14 +185,14 @@ const ProfilePage: React.FC = () => {
     };
 
     const handleGenerateDescription = async () => {
-        if (!user || traits.length === 0) return;
+        if (!user || personalityDimensions.length === 0) return;
         setIsGeneratingDescription(true);
         setAiDescription(null);
         try {
             const description = await generateProfileDescription({
                 bio: user.bio || '',
                 personality_type: user.personality_type || '',
-                traits,
+                dimensions: personalityDimensions,
                 interests,
                 tags: personalityTags
             });
@@ -349,16 +348,16 @@ const ProfilePage: React.FC = () => {
                                 </section>
                             )}
                             
-                            {traits.length > 0 && (
+                            {personalityDimensions.length > 0 && (
                                 <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm mt-6">
-                                    <div className="text-center">
-                                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Personlighed</h3>
-                                        <p className="text-2xl font-bold text-primary">{user.personality_type}</p>
+                                    <div className="text-center mb-6">
+                                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Din Personlighedstype</h3>
+                                        <p className="text-3xl font-bold text-primary">{user.personality_type}</p>
                                     </div>
-                                    <div className="min-h-[350px]">
-                                        <PersonalityRadarChart traits={traits} />
-                                    </div>
-                                    <div className="text-center mt-4">
+                                    
+                                    <PersonalityRadarChart dimensions={personalityDimensions} />
+                                    
+                                    <div className="text-center mt-8">
                                          <button onClick={handleGenerateDescription} disabled={isGeneratingDescription} className="bg-primary text-white font-semibold py-2 px-5 rounded-full flex items-center justify-center mx-auto disabled:opacity-70">
                                             {isGeneratingDescription ? <Loader2 className="animate-spin" /> : <><BrainCircuit size={18} className="mr-2"/> Beskriv mig</>}
                                         </button>

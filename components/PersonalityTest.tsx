@@ -11,33 +11,33 @@ interface PersonalityTestProps {
 }
 
 const questions = [
-    // Ekstrovert (Extraversion)
-    { id: 1, text: "Jeg er ofte festens midtpunkt og nyder at være omgivet af mennesker.", dimension: "Extraversion" },
-    { id: 2, text: "Jeg foretrækker rolige aftener alene eller med få nære venner frem for store sociale arrangementer.", dimension: "Extraversion", reversed: true },
-    { id: 3, text: "Jeg starter let samtaler med fremmede.", dimension: "Extraversion" },
-    { id: 4, text: "Jeg tænker mig grundigt om, før jeg taler eller handler.", dimension: "Extraversion", reversed: true },
-    { id: 5, text: "Jeg føler mig energisk efter at have været social.", dimension: "Extraversion" },
+    // E/I Dimension
+    { id: 1, text: "Jeg får energi af at være sammen med andre mennesker.", dimension: "EI" },
+    { id: 2, text: "Jeg foretrækker at lytte frem for at tale i en gruppesamtale.", dimension: "EI", reversed: true },
+    { id: 3, text: "Jeg trives i livlige sociale situationer med mange nye ansigter.", dimension: "EI" },
+    { id: 4, text: "Jeg har brug for alenetid for at genoplade mine batterier.", dimension: "EI", reversed: true },
+    { id: 5, text: "Jeg er ofte den, der tager initiativ til at starte en samtale.", dimension: "EI" },
     
-    // Venlighed (Agreeableness)
-    { id: 6, text: "Jeg har let ved at føle empati for andre.", dimension: "Agreeableness" },
-    { id: 7, text: "Jeg er mere optaget af mine egne mål end af at hjælpe andre med deres.", dimension: "Agreeableness", reversed: true },
-    { id: 8, text: "Jeg stoler på andre mennesker og tror på det bedste i dem.", dimension: "Agreeableness" },
-    { id: 9, text: "Jeg er hurtig til at påpege andres fejl.", dimension: "Agreeableness", reversed: true },
-    { id: 10, text: "Jeg prioriterer harmoni i grupper og undgår konfrontationer.", dimension: "Agreeableness" },
+    // S/N Dimension
+    { id: 6, text: "Jeg stoler mere på konkrete fakta og erfaringer end på teorier og ideer.", dimension: "SN" },
+    { id: 7, text: "Jeg er mere interesseret i 'hvad der er' end 'hvad der kunne være'.", dimension: "SN" },
+    { id: 8, text: "Jeg lægger mærke til små detaljer, som andre ofte overser.", dimension: "SN" },
+    { id: 9, text: "Jeg dagdrømmer ofte om fremtiden og forskellige muligheder.", dimension: "SN", reversed: true },
+    { id: 10, text: "Jeg foretrækker praktiske opgaver frem for abstrakte koncepter.", dimension: "SN" },
 
-    // Samvittighedsfuldhed (Conscientiousness)
-    { id: 11, text: "Jeg er meget organiseret og kan lide at have en plan.", dimension: "Conscientiousness" },
-    { id: 12, text: "Jeg har en tendens til at udskyde opgaver.", dimension: "Conscientiousness", reversed: true },
-    { id: 13, text: "Jeg er omhyggelig med mine pligter og fuldfører altid det, jeg starter.", dimension: "Conscientiousness" },
-    { id: 14, text: "Jeg er spontan og foretrækker at holde mine muligheder åbne.", dimension: "Conscientiousness", reversed: true },
-    { id: 15, text: "Jeg kan lide orden og rydder ofte op.", dimension: "Conscientiousness" },
+    // T/F Dimension
+    { id: 11, text: "Når jeg træffer beslutninger, vægter jeg logik og objektivitet højest.", dimension: "TF" },
+    { id: 12, text: "Jeg tager hensyn til andres følelser, før jeg træffer en beslutning, der påvirker dem.", dimension: "TF", reversed: true },
+    { id: 13, text: "Jeg er mere tilbøjelig til at være ærlig end diplomatisk for at undgå at såre nogen.", dimension: "TF" },
+    { id: 14, text: "Harmoni i gruppen er vigtigere for mig end at have ret.", dimension: "TF", reversed: true },
+    { id: 15, text: "Jeg lader mig styre af mine principper frem for mine følelser.", dimension: "TF" },
 
-    // Neuroticisme (Neuroticism)
-    { id: 16, text: "Jeg bliver let bekymret og tænker meget over tingene.", dimension: "Neuroticism" },
-    { id: 17, text: "Jeg er følelsesmæssigt stabil og bliver sjældent oprørt.", dimension: "Neuroticism", reversed: true },
-    { id: 18, text: "Jeg oplever ofte humørsvingninger.", dimension: "Neuroticism" },
-    { id: 19, text: "Jeg er generelt afslappet og bekymrer mig ikke meget.", dimension: "Neuroticism", reversed: true },
-    { id: 20, text: "Jeg bliver let irriteret over småting.", dimension: "Neuroticism" },
+    // J/P Dimension
+    { id: 16, text: "Jeg kan lide at have en klar plan og følge den.", dimension: "JP" },
+    { id: 17, text: "Jeg trives med spontanitet og kan ikke lide at være låst fast af en plan.", dimension: "JP", reversed: true },
+    { id: 18, text: "Jeg kan lide at afslutte opgaver, før jeg slapper af.", dimension: "JP" },
+    { id: 19, text: "Jeg holder mine muligheder åbne og kan lide at improvisere.", dimension: "JP", reversed: true },
+    { id: 20, text: "Jeg er organiseret og kan lide at have styr på mine omgivelser.", dimension: "JP" },
 ];
 
 const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => {
@@ -90,7 +90,7 @@ const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => 
         try {
             const answerData = questions.map(q => ({
                 question: q.text,
-                answer: answers[q.id], // 1-100 scale
+                answer: answers[q.id],
                 dimension: q.dimension,
                 reversed: !!q.reversed,
             }));
@@ -104,21 +104,23 @@ const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => 
                 tags: personality_tags || [],
             });
 
-            const finalTraits = Object.entries(analysis.scores).map(([trait, value]) => ({
+            const finalDimensions = analysis.dimensions.map(dim => ({
                 user_id: user.id,
-                trait: trait,
-                value: Math.round(value),
+                dimension: dim.dimension,
+                dominant_trait: dim.dominant_trait,
+                score: Math.round(dim.score),
+                description: dim.description,
             }));
 
-            // Clear old traits
-            await supabase.from('user_traits').delete().eq('user_id', user.id);
-            // Insert new traits
-            const { error: insertError } = await supabase.from('user_traits').insert(finalTraits);
+            // Clear old dimensions
+            await supabase.from('user_personality_dimensions').delete().eq('user_id', user.id);
+            // Insert new dimensions
+            const { error: insertError } = await supabase.from('user_personality_dimensions').insert(finalDimensions);
             if (insertError) throw insertError;
 
             // Mark test as completed and save personality type
             const { error: updateUserError } = await supabase.from('users')
-                .update({ personality_test_completed: true, personality_type: analysis.personality_type.code })
+                .update({ personality_test_completed: true, personality_type: analysis.type_code })
                 .eq('id', user.id);
             if (updateUserError) throw updateUserError;
             
@@ -233,6 +235,7 @@ const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => 
                 
                 {step === 'questions' && (
                     <div className="mt-8">
+                        {error && <p className="text-red-500 text-center text-sm mb-2">{error}</p>}
                         <div className="w-full bg-gray-200 dark:bg-dark-border rounded-full h-2.5">
                             <motion.div
                                 className="bg-primary h-2.5 rounded-full"

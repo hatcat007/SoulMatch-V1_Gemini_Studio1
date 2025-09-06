@@ -13,16 +13,19 @@ export interface User {
   personality_test_completed?: boolean;
   is_admin?: boolean;
   auth_id?: string;
-  user_traits?: UserTrait[];
+  personality_dimensions?: UserPersonalityDimension[];
   personality_tags?: PersonalityTag[];
   interests?: Interest[];
   ai_descriptions?: UserAiDescription[];
 }
 
-export interface UserTrait {
+export interface UserPersonalityDimension {
+  id: number;
   user_id: number;
-  trait: string;
-  value: number;
+  dimension: 'EI' | 'SN' | 'TF' | 'JP';
+  dominant_trait: 'E' | 'I' | 'S' | 'N' | 'T' | 'F' | 'J' | 'P';
+  score: number;
+  description: string;
 }
 
 export interface ImageRecord {

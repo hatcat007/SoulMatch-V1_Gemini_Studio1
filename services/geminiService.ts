@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 // FIX: Import types needed for the new generateProfileDescription function
-import type { Interest, PersonalityTag, UserTrait } from '../types';
+import type { Interest, PersonalityTag, UserPersonalityDimension } from '../types';
 
 
 let aiClient: GoogleGenAI;
@@ -177,39 +177,28 @@ export async function analyzePersonality(data: {
   interests: { name: string }[];
   tags: { name: string }[];
 }): Promise<{
-  scores: {
-    Openness: number;
-    Conscientiousness: number;
-    Extraversion: number;
-    Agreeableness: number;
-    Neuroticism: number;
-  };
-  personality_type: { code: string; title: string };
+  type_code: string;
+  dimensions: {
+    dimension: 'EI' | 'SN' | 'TF' | 'JP';
+    dominant_trait: 'E' | 'I' | 'S' | 'N' | 'T' | 'F' | 'J' | 'P';
+    score: number;
+    description: string;
+  }[];
 }> {
   const ai = getAiClient();
-  const systemInstruction = `Du er en ekspert i personlighedsanalyse baseret på Big Five-modellen (Åbenhed, Samvittighedsfuldhed, Ekstroversion, Venlighed, Neuroticisme).
-  Analysér brugerens svar, bio, interesser og tags. Beregn en score for hver af de fem dimensioner på en skala fra 0-100.
-  Baseret på disse scores skal du også bestemme den mest passende personlighedstype ud fra den vedlagte liste over 16 typer.
-  Dit svar SKAL være i JSON-format og følge det angivne skema. Vær objektiv og baser din analyse udelukkende på de angivne data.
-  
-  De 16 personlighedstyper er:
-  - ISTJ – “Inspektøren”
-  - ISFJ – “Omsorgsgiveren”
-  - INFJ – “Rådgiveren”
-  - INTJ – “Strategen”
-  - ISTP – “Håndværkeren”
-  - ISFP – “Kunstneren”
-  - INFP – “Idealisten”
-  - INTP – “Tænkeren”
-  - ESTP – “Entreprenøren”
-  - ESFP – “Performeren”
-  - ENFP – “Inspiratoren”
-  - ENTP – “Opfinderen”
-  - ESTJ – “Lederen”
-  - ESFJ – “Plejeren”
-  - ENFJ – “Læreren”
-  - ENTJ – “Kommandøren”
-  `;
+  const systemInstruction = `Du er en ekspert i personlighedsanalyse baseret på en model inspireret af Myers-Briggs (MBTI). Du skal analysere brugerens svar, bio, interesser og tags for at score dem på fire dimensioner:
+- E/I (Ekstrovert/Introvert): Hvordan brugeren får energi.
+- S/N (Sansning/Intuition): Hvordan brugeren tager information ind.
+- T/F (Tænkning/Følen): Hvordan brugeren træffer beslutninger.
+- J/P (Vurderende/Opfattende): Hvordan brugeren strukturerer sit liv.
+
+For hver dimension skal du:
+1. Bestemme det dominerende træk (f.eks. 'I' for Introvert).
+2. Beregne en score (0-100) for det dominerende træk. En score på 70 for 'I' betyder 70% Introvert og 30% Ekstrovert.
+3. Skrive en kort, personlig og indsigtsfuld beskrivelse (på dansk, i "Du er..." format) der forklarer, hvad denne balance betyder for brugeren. Inddrag gerne hints fra deres bio og interesser for at gøre beskrivelsen mere personlig.
+4. Sammensæt de fire dominerende træk til en 4-bogstavs personlighedskode (f.eks. 'INFP').
+
+Svaret SKAL være i JSON-format og følge det angivne skema.`;
   
   const prompt = `
     Brugerdata:
@@ -228,21 +217,17 @@ export async function analyzePersonality(data: {
         responseSchema: {
             type: Type.OBJECT,
             properties: {
-                scores: {
-                    type: Type.OBJECT,
-                    properties: {
-                        Openness: { type: Type.NUMBER, description: "Score for Åbenhed (0-100)"},
-                        Conscientiousness: { type: Type.NUMBER, description: "Score for Samvittighedsfuldhed (0-100)"},
-                        Extraversion: { type: Type.NUMBER, description: "Score for Ekstroversion (0-100)"},
-                        Agreeableness: { type: Type.NUMBER, description: "Score for Venlighed (0-100)"},
-                        Neuroticism: { type: Type.NUMBER, description: "Score for Neuroticisme (0-100)"},
-                    },
-                },
-                personality_type: {
-                    type: Type.OBJECT,
-                    properties: {
-                        code: { type: Type.STRING, description: "Den 4-bogstavs personlighedskode (f.eks. 'INFJ')" },
-                        title: { type: Type.STRING, description: "Den fulde titel (f.eks. 'INFJ – “Rådgiveren”')" }
+                type_code: { type: Type.STRING, description: "Den 4-bogstavs personlighedskode (f.eks. 'INFP')." },
+                dimensions: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                             dimension: { type: Type.STRING, description: "Dimensionen, f.eks. 'EI', 'SN', 'TF', 'JP'." },
+                             dominant_trait: { type: Type.STRING, description: "Det dominerende træk, f.eks. 'E', 'I', 'S', 'N', 'T', 'F', 'J', 'P'." },
+                             score: { type: Type.NUMBER, description: "Scoren (0-100) for det dominerende træk." },
+                             description: { type: Type.STRING, description: "En kort, personlig beskrivelse af brugerens balance på denne dimension." }
+                        }
                     }
                 }
             }
@@ -266,13 +251,13 @@ export async function analyzePersonality(data: {
 export async function generateProfileDescription(profile: {
     bio: string;
     personality_type: string;
-    traits: UserTrait[];
+    dimensions: UserPersonalityDimension[];
     interests: Interest[];
     tags: PersonalityTag[];
 }): Promise<string> {
     const ai = getAiClient();
 
-    const traitsText = profile.traits.map(t => `${t.trait}: ${t.value}%`).join(', ');
+    const dimensionsText = profile.dimensions.map(d => `${d.dominant_trait}: ${d.score}% - ${d.description}`).join('\n');
     const interestsText = profile.interests.map(i => i.name).join(', ');
     const tagsText = profile.tags.map(t => t.name).join(', ');
 
@@ -281,11 +266,12 @@ export async function generateProfileDescription(profile: {
 
         - Eksisterende Bio: "${profile.bio}"
         - Personlighedstype: ${profile.personality_type}
-        - Personlighedstræk (Big Five-model, scores ud af 100): ${traitsText}
+        - Personlighedsdimensioner: 
+        ${dimensionsText}
         - Interesser: ${interestsText}
         - Personlighedstags: ${tagsText}
 
-        Kombiner disse elementer til et naturligt klingende afsnit. Fokuser på de positive aspekter. Nævn et par nøgleinteresser og antyd deres personlighedstype uden at være for teknisk.
+        Kombiner disse elementer til et naturligt klingende afsnit på 3-4 sætninger. Fokuser på de positive aspekter. Nævn et par nøgleinteresser og flet elegant personlighedsbeskrivelserne ind uden at være for teknisk. Målet er en tekst, der lyder som noget, personen selv kunne have skrevet.
     `;
 
     const response = await ai.models.generateContent({
