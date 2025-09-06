@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, Calendar, Users, LogOut, Shield, MapPin, Loader2, Image as ImageIcon, Edit, Save, BrainCircuit, X } from 'lucide-react';
+import { Settings, Calendar, Users, LogOut, Shield, MapPin, Loader2, Image as ImageIcon, Edit, Save, BrainCircuit, X, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
-import type { User, Interest, PersonalityTag, UserTrait, InterestCategory, PersonalityTagCategory } from '../types';
+import type { User, Interest, PersonalityTag, UserTrait, InterestCategory, PersonalityTagCategory, UserAiDescription } from '../types';
 import LoadingScreen from '../components/LoadingScreen';
 import PersonalityRadarChart from '../components/PersonalityRadarChart';
 import { fetchPrivateFile } from '../services/s3Service';
@@ -55,6 +55,7 @@ const ProfilePage: React.FC = () => {
     const [interests, setInterests] = useState<Interest[]>([]);
     const [personalityTags, setPersonalityTags] = useState<PersonalityTag[]>([]);
     const [traits, setTraits] = useState<UserTrait[]>([]);
+    const [savedAiDescriptions, setSavedAiDescriptions] = useState<UserAiDescription[]>([]);
     
     // For editing
     const [isEditing, setIsEditing] = useState(false);
@@ -70,6 +71,7 @@ const ProfilePage: React.FC = () => {
     // AI Description state
     const [aiDescription, setAiDescription] = useState<string | null>(null);
     const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+    const [isSavingDescription, setIsSavingDescription] = useState(false);
 
     const [loading, setLoading] = useState(true);
     
@@ -81,14 +83,18 @@ const ProfilePage: React.FC = () => {
         
         setLoading(true);
 
+        // FIX: The `order` parameter within the `select` string was causing a parser error.
+        // Moved the ordering for the 'user_ai_descriptions' foreign table to the `.order()` method for robust execution.
         const { data, error } = await supabase
             .from('users')
             .select(`
                 *,
                 user_interests(interest:interests(*, category:interest_categories(*))),
                 user_personality_tags(tag:personality_tags(*, category:personality_tag_categories(*))),
-                user_traits(*)
+                user_traits(*),
+                user_ai_descriptions(*)
             `)
+            .order('created_at', { foreignTable: 'user_ai_descriptions', ascending: false })
             .eq('id', authUser.id)
             .single();
 
@@ -102,12 +108,14 @@ const ProfilePage: React.FC = () => {
             ...data,
             interests: data.user_interests.map((i: any) => i.interest).filter(Boolean),
             personality_tags: data.user_personality_tags.map((t: any) => t.tag).filter(Boolean),
+            ai_descriptions: data.user_ai_descriptions,
         };
         
         setUser(fetchedUser);
         setInterests(fetchedUser.interests || []);
         setPersonalityTags(fetchedUser.personality_tags || []);
         setTraits(data.user_traits || []);
+        setSavedAiDescriptions(data.user_ai_descriptions || []);
 
         // For editing mode, fetch all possible tags and categories
         const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
@@ -198,6 +206,37 @@ const ProfilePage: React.FC = () => {
         }
     };
     
+    const handleSaveAiDescription = async () => {
+        if (!aiDescription || !user) return;
+        setIsSavingDescription(true);
+        const { data, error } = await supabase
+            .from('user_ai_descriptions')
+            .insert({ user_id: user.id, description: aiDescription })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Error saving AI description:", error);
+        } else if (data) {
+            setSavedAiDescriptions(prev => [data, ...prev]);
+            setAiDescription(null);
+        }
+        setIsSavingDescription(false);
+    };
+
+    const handleDeleteAiDescription = async (descriptionId: number) => {
+        const originalDescriptions = savedAiDescriptions;
+        setSavedAiDescriptions(prev => prev.filter(d => d.id !== descriptionId));
+        const { error } = await supabase
+            .from('user_ai_descriptions')
+            .delete()
+            .eq('id', descriptionId);
+        if (error) {
+            setSavedAiDescriptions(originalDescriptions);
+            console.error("Error deleting AI description:", error);
+        }
+    };
+
     if (loading || authLoading) {
         return <LoadingScreen message="Indlæser profil..." />;
     }
@@ -331,10 +370,40 @@ const ProfilePage: React.FC = () => {
                                                 exit={{ opacity: 0, height: 0 }}
                                                 className="mt-4 text-left p-4 bg-primary-light/50 dark:bg-primary/10 rounded-lg text-text-secondary dark:text-dark-text-secondary"
                                             >
-                                               <p>{aiDescription}</p>
+                                               <p className="whitespace-pre-wrap">{aiDescription}</p>
+                                               <div className="mt-4 flex justify-end">
+                                                    <button
+                                                        onClick={handleSaveAiDescription}
+                                                        disabled={isSavingDescription}
+                                                        className="flex items-center bg-green-500 text-white font-semibold py-2 px-4 rounded-full text-sm hover:bg-green-600 transition disabled:opacity-70"
+                                                    >
+                                                        {isSavingDescription ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
+                                                        Gem
+                                                    </button>
+                                                </div>
                                             </motion.div>
                                         )}
                                         </AnimatePresence>
+                                    </div>
+                                </section>
+                            )}
+
+                            {savedAiDescriptions.length > 0 && (
+                                <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm mt-6">
+                                    <h3 className="font-bold text-text-primary dark:text-dark-text-primary mb-3">Beskrivelser fra min AI-analyse</h3>
+                                    <div className="space-y-4">
+                                        {savedAiDescriptions.map(desc => (
+                                            <div key={desc.id} className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg relative group">
+                                                <p className="text-text-secondary dark:text-dark-text-secondary whitespace-pre-wrap">{desc.description}</p>
+                                                <button 
+                                                    onClick={() => handleDeleteAiDescription(desc.id)} 
+                                                    className="absolute top-2 right-2 p-1.5 bg-white/50 dark:bg-dark-surface/50 rounded-full text-gray-500 hover:text-red-500 hover:bg-white dark:hover:bg-dark-surface opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    aria-label="Slet beskrivelse"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        ))}
                                     </div>
                                 </section>
                             )}
