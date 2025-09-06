@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 // FIX: Import types needed for the new generateProfileDescription function
-import type { UserTrait, Interest, PersonalityTag } from '../types';
+import type { Interest, PersonalityTag, UserTrait } from '../types';
 
 
 let aiClient: GoogleGenAI;
@@ -171,6 +171,95 @@ export async function generatePlaceImageFromText(
     return response.generatedImages.map(img => img.image.imageBytes);
 }
 
+export async function analyzePersonality(data: {
+  answers: { question: string; answer: number; dimension: string, reversed: boolean }[];
+  bio: string;
+  interests: { name: string }[];
+  tags: { name: string }[];
+}): Promise<{
+  scores: {
+    Openness: number;
+    Conscientiousness: number;
+    Extraversion: number;
+    Agreeableness: number;
+    Neuroticism: number;
+  };
+  personality_type: { code: string; title: string };
+}> {
+  const ai = getAiClient();
+  const systemInstruction = `Du er en ekspert i personlighedsanalyse baseret på Big Five-modellen (Åbenhed, Samvittighedsfuldhed, Ekstroversion, Venlighed, Neuroticisme).
+  Analysér brugerens svar, bio, interesser og tags. Beregn en score for hver af de fem dimensioner på en skala fra 0-100.
+  Baseret på disse scores skal du også bestemme den mest passende personlighedstype ud fra den vedlagte liste over 16 typer.
+  Dit svar SKAL være i JSON-format og følge det angivne skema. Vær objektiv og baser din analyse udelukkende på de angivne data.
+  
+  De 16 personlighedstyper er:
+  - ISTJ – “Inspektøren”
+  - ISFJ – “Omsorgsgiveren”
+  - INFJ – “Rådgiveren”
+  - INTJ – “Strategen”
+  - ISTP – “Håndværkeren”
+  - ISFP – “Kunstneren”
+  - INFP – “Idealisten”
+  - INTP – “Tænkeren”
+  - ESTP – “Entreprenøren”
+  - ESFP – “Performeren”
+  - ENFP – “Inspiratoren”
+  - ENTP – “Opfinderen”
+  - ESTJ – “Lederen”
+  - ESFJ – “Plejeren”
+  - ENFJ – “Læreren”
+  - ENTJ – “Kommandøren”
+  `;
+  
+  const prompt = `
+    Brugerdata:
+    - Svar på spørgeskema: ${JSON.stringify(data.answers)}
+    - Bio: "${data.bio}"
+    - Interesser: ${data.interests.map(i => i.name).join(', ')}
+    - Personlighedstags: ${data.tags.map(t => t.name).join(', ')}
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+                scores: {
+                    type: Type.OBJECT,
+                    properties: {
+                        Openness: { type: Type.NUMBER, description: "Score for Åbenhed (0-100)"},
+                        Conscientiousness: { type: Type.NUMBER, description: "Score for Samvittighedsfuldhed (0-100)"},
+                        Extraversion: { type: Type.NUMBER, description: "Score for Ekstroversion (0-100)"},
+                        Agreeableness: { type: Type.NUMBER, description: "Score for Venlighed (0-100)"},
+                        Neuroticism: { type: Type.NUMBER, description: "Score for Neuroticisme (0-100)"},
+                    },
+                },
+                personality_type: {
+                    type: Type.OBJECT,
+                    properties: {
+                        code: { type: Type.STRING, description: "Den 4-bogstavs personlighedskode (f.eks. 'INFJ')" },
+                        title: { type: Type.STRING, description: "Den fulde titel (f.eks. 'INFJ – “Rådgiveren”')" }
+                    }
+                }
+            }
+        }
+    }
+  });
+  
+  try {
+    const jsonText = response.text.trim();
+    return JSON.parse(jsonText);
+  } catch (e) {
+    console.error("Failed to parse personality analysis response:", response.text);
+    throw new Error("Kunne ikke analysere personlighedsdata.");
+  }
+}
+
+
 /**
  * Generates a descriptive profile summary using AI based on user data.
  */
@@ -188,15 +277,15 @@ export async function generateProfileDescription(profile: {
     const tagsText = profile.tags.map(t => t.name).join(', ');
 
     const prompt = `
-        Based on the following user profile data, write a short, engaging, and friendly bio in first-person ("Jeg er...") for a social app. The bio should be in Danish.
+        Baseret på følgende brugerprofildata, skriv en kort, engagerende og venlig biografi i første person ("Jeg er...") til en social app. Biografien skal være på dansk.
 
-        - Existing Bio: "${profile.bio}"
-        - Personality Type: ${profile.personality_type}
-        - Personality Traits (Big Five model, scores out of 100): ${traitsText}
-        - Interests: ${interestsText}
-        - Personality Tags: ${tagsText}
+        - Eksisterende Bio: "${profile.bio}"
+        - Personlighedstype: ${profile.personality_type}
+        - Personlighedstræk (Big Five-model, scores ud af 100): ${traitsText}
+        - Interesser: ${interestsText}
+        - Personlighedstags: ${tagsText}
 
-        Combine these elements into a natural-sounding paragraph. Focus on the positive aspects. Mention a few key interests and hint at their personality type without being too technical.
+        Kombiner disse elementer til et naturligt klingende afsnit. Fokuser på de positive aspekter. Nævn et par nøgleinteresser og antyd deres personlighedstype uden at være for teknisk.
     `;
 
     const response = await ai.models.generateContent({

@@ -58,7 +58,7 @@ const ProfilePage: React.FC = () => {
     
     // For editing
     const [isEditing, setIsEditing] = useState(false);
-    const [formData, setFormData] = useState({ bio: '' });
+    const [formData, setFormData] = useState({ bio: '', name: '', age: '', location: '' });
     const [allInterests, setAllInterests] = useState<Interest[]>([]);
     const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
     const [allPersonalityTags, setAllPersonalityTags] = useState<PersonalityTag[]>([]);
@@ -85,8 +85,8 @@ const ProfilePage: React.FC = () => {
             .from('users')
             .select(`
                 *,
-                user_interests:user_interests(interest:interests(*, category:interest_categories(*))),
-                user_personality_tags:user_personality_tags(tag:personality_tags(*, category:personality_tag_categories(*))),
+                user_interests(interest:interests(*, category:interest_categories(*))),
+                user_personality_tags(tag:personality_tags(*, category:personality_tag_categories(*))),
                 user_traits(*)
             `)
             .eq('id', authUser.id)
@@ -137,7 +137,12 @@ const ProfilePage: React.FC = () => {
     const handleEditToggle = () => {
         if (!user) return;
         if (!isEditing) {
-            setFormData({ bio: user.bio || '' });
+            setFormData({ 
+                bio: user.bio || '',
+                name: user.name || '',
+                age: user.age?.toString() || '',
+                location: user.location || '',
+            });
             setSelectedInterests(interests);
             setSelectedPersonalityTags(personalityTags);
         }
@@ -148,8 +153,13 @@ const ProfilePage: React.FC = () => {
         if (!user) return;
         setIsSaving(true);
 
-        // Update bio
-        await supabase.from('users').update({ bio: formData.bio }).eq('id', user.id);
+        // Update basic info
+        await supabase.from('users').update({ 
+            bio: formData.bio,
+            name: formData.name,
+            age: parseInt(formData.age, 10) || user.age,
+            location: formData.location
+        }).eq('id', user.id);
 
         // Sync interests
         await supabase.from('user_interests').delete().eq('user_id', user.id);
@@ -242,10 +252,25 @@ const ProfilePage: React.FC = () => {
                     {isEditing ? (
                         /* EDITING VIEW */
                         <div className="mt-6 space-y-6">
-                             <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm">
-                                <label htmlFor="bio-edit" className="font-bold text-text-primary dark:text-dark-text-primary mb-2 block">Om mig</label>
-                                <textarea id="bio-edit" value={formData.bio} onChange={e => setFormData(p => ({...p, bio: e.target.value}))} rows={4} className="w-full p-2 bg-gray-50 dark:bg-dark-surface-light border rounded-md"></textarea>
-                            </div>
+                             <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm space-y-4">
+                                <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Rediger basisoplysninger</h3>
+                                <div>
+                                    <label htmlFor="name-edit" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Navn</label>
+                                    <input id="name-edit" value={formData.name} onChange={e => setFormData(p => ({...p, name: e.target.value}))} className="w-full p-2 bg-gray-50 dark:bg-dark-surface-light border rounded-md"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="age-edit" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Alder</label>
+                                    <input id="age-edit" type="number" value={formData.age} onChange={e => setFormData(p => ({...p, age: e.target.value}))} className="w-full p-2 bg-gray-50 dark:bg-dark-surface-light border rounded-md"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="location-edit" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Lokation</label>
+                                    <input id="location-edit" value={formData.location} onChange={e => setFormData(p => ({...p, location: e.target.value}))} className="w-full p-2 bg-gray-50 dark:bg-dark-surface-light border rounded-md"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="bio-edit" className="font-bold text-text-primary dark:text-dark-text-primary mb-2 block">Om mig</label>
+                                    <textarea id="bio-edit" value={formData.bio} onChange={e => setFormData(p => ({...p, bio: e.target.value}))} rows={4} className="w-full p-2 bg-gray-50 dark:bg-dark-surface-light border rounded-md"></textarea>
+                                </div>
+                             </div>
                              <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm">
                                 <TagSelector title="Rediger Interesser" categories={interestCategories} allTags={allInterests} selectedTags={selectedInterests} onToggleTag={tag => setSelectedInterests(prev => prev.some(i => i.id === tag.id) ? prev.filter(i => i.id !== tag.id) : [...prev, tag as Interest])} containerHeight="h-[400px]" />
                             </div>
