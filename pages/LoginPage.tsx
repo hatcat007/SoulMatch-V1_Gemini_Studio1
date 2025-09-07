@@ -120,7 +120,13 @@ const LoginPage: React.FC = () => {
               </button>
             </div>
           </form>
-          <p className="mt-8 text-center text-text-secondary dark:text-dark-text-secondary">
+           <div className="mt-8 text-center bg-primary-light dark:bg-primary/10 p-3 rounded-lg">
+            <p className="text-sm font-semibold text-primary-dark dark:text-primary-light">BETA V1</p>
+            <p className="text-xs text-text-secondary dark:text-dark-text-secondary">
+              Oprettelse kræver en invitationskode.
+            </p>
+          </div>
+          <p className="mt-4 text-center text-text-secondary dark:text-dark-text-secondary">
             Har du ikke en bruger?{' '}
             <Link to="/signup" className="font-bold text-primary hover:underline">
               Opret en her

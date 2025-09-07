@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { MessageThread, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
@@ -133,6 +133,11 @@ const ChatListPage: React.FC = () => {
                     className="w-full bg-gray-100 border border-gray-200 rounded-full py-3 pl-10 pr-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary"
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            </div>
+            
+            <div className="flex items-center justify-center text-xs text-text-secondary dark:text-dark-text-secondary text-center mb-6 px-4">
+                <Lock size={12} className="mr-1.5 flex-shrink-0" />
+                <span>Beskeder er beskyttet med end-to-end-kryptering. Det er kun personer i denne chat, der kan læse, lytte til eller dele dem.</span>
             </div>
 
             <div>

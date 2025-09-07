@@ -21,6 +21,7 @@ const SignupPage: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [invitationCode, setInvitationCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -30,6 +31,12 @@ const SignupPage: React.FC = () => {
     setLoading(true);
     setError(null);
     setMessage(null);
+
+    if (invitationCode.toLowerCase().trim() !== 'sm25gratis') {
+        setError('Ugyldig invitationskode.');
+        setLoading(false);
+        return;
+    }
 
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email,
@@ -88,7 +95,7 @@ const SignupPage: React.FC = () => {
 
           <h2 className="text-3xl sm:text-4xl font-bold text-text-primary dark:text-dark-text-primary mb-2">Opret en bruger</h2>
           <p className="text-text-secondary dark:text-dark-text-secondary mb-8">
-            Bliv en del af fællesskabet og bekæmp ensomhed.
+            Velkommen til BETA V1. Indtast venligst en gyldig invitationskode for at oprette en bruger.
           </p>
           <form className="space-y-6" onSubmit={handleSignup}>
             {error && <p className="text-red-500 text-center bg-red-100 dark:bg-red-500/10 dark:text-red-400 p-3 rounded-lg">{error}</p>}
@@ -136,6 +143,21 @@ const SignupPage: React.FC = () => {
                 placeholder="Vælg en sikker adgangskode"
                 required
                 autoComplete="new-password"
+              />
+            </div>
+             <div>
+              <label htmlFor="invitationCode" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">
+                Invitationskode
+              </label>
+              <input
+                type="text"
+                id="invitationCode"
+                value={invitationCode}
+                onChange={(e) => setInvitationCode(e.target.value)}
+                className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="Indtast din kode"
+                required
+                autoComplete="off"
               />
             </div>
             <div>

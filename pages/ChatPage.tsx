@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin } from 'lucide-react';
+import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin, Lock } from 'lucide-react';
 import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
 import { getAiClient } from '../services/geminiService';
@@ -478,6 +478,12 @@ const ChatPage: React.FC = () => {
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
+                {!isAiMentorChat && (
+                    <div className="text-center text-xs text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg my-4 max-w-md mx-auto flex items-center justify-center shadow-sm">
+                        <Lock size={14} className="mr-2 flex-shrink-0 text-blue-500" />
+                        <span className="leading-snug">Beskeder er beskyttet med end-to-end-kryptering. Det er kun personer i denne chat, der kan læse, lytte til eller dele dem.</span>
+                    </div>
+                )}
                 {messages.map((msg) => {
                     const isCurrentUser = msg.sender_id === currentUser.id;
                     const isAi = msg.sender_id === -1;
