@@ -7,10 +7,10 @@ interface PersonalityDimensionChartProps {
 }
 
 const dimensionDetails = {
-    EI: { left: 'Introvert', right: 'Ekstrovert', leftColor: 'bg-blue-500', rightColor: 'bg-yellow-400' },
-    SN: { left: 'Sansning', right: 'Intuition', leftColor: 'bg-green-500', rightColor: 'bg-purple-500' },
-    TF: { left: 'Tænkning', right: 'Følen', leftColor: 'bg-red-500', rightColor: 'bg-teal-400' },
-    JP: { left: 'Vurderende', right: 'Opfattende', leftColor: 'bg-indigo-500', rightColor: 'bg-orange-400' },
+    EI: { left: 'Introvert', right: 'Ekstrovert' },
+    SN: { left: 'Sansning', right: 'Intuition' },
+    TF: { left: 'Tænkning', right: 'Følen' },
+    JP: { left: 'Vurderende', right: 'Opfattende' },
 };
 
 const DimensionBar: React.FC<{ dimension: UserPersonalityDimension }> = ({ dimension }) => {
@@ -19,6 +19,13 @@ const DimensionBar: React.FC<{ dimension: UserPersonalityDimension }> = ({ dimen
     
     const leftScore = isLeftDominant ? dimension.score : 100 - dimension.score;
     const rightScore = 100 - leftScore;
+
+    const mainColor = 'bg-[#016a75]';
+    const darkColor = 'bg-[#00464f]';
+
+    const leftIsDominant = leftScore >= rightScore;
+    const leftColor = leftIsDominant ? mainColor : darkColor;
+    const rightColor = !leftIsDominant ? mainColor : darkColor;
 
     return (
         <motion.div 
@@ -33,13 +40,13 @@ const DimensionBar: React.FC<{ dimension: UserPersonalityDimension }> = ({ dimen
             </div>
             <div className="w-full h-3 bg-gray-200 dark:bg-dark-border rounded-full flex overflow-hidden">
                 <motion.div
-                    className={details.leftColor}
+                    className={leftColor}
                     initial={{ width: '50%' }}
                     animate={{ width: `${leftScore}%` }}
                     transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
                 />
                 <motion.div
-                    className={details.rightColor}
+                    className={rightColor}
                     initial={{ width: '50%' }}
                     animate={{ width: `${rightScore}%` }}
                     transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}

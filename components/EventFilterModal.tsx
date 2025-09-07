@@ -1,139 +1,162 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Search, ChevronDown, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, SlidersHorizontal, Sun, Moon, Coffee } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
-import type { Category } from '../types';
+import type { Category, Interest } from '../types';
 
-interface MainCategory extends Category {
-    subCategories: Category[];
+export interface Filters {
+    categoryId: number | null;
+    date: string | null;
+    timeOfDay: 'morning' | 'afternoon' | 'evening' | null;
+    interestIds: number[];
+    creatorType: 'all' | 'user' | 'org';
 }
 
 interface EventFilterModalProps {
-  onClose: () => void;
-  onApplyFilter: (categoryId: number | null) => void;
+    onClose: () => void;
+    onApplyFilter: (filters: Filters) => void;
+    currentFilters: Filters;
 }
 
-const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFilter }) => {
-    const [categories, setCategories] = useState<MainCategory[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [openCategory, setOpenCategory] = useState<number | null>(null);
-
+const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFilter, currentFilters }) => {
+    const [filters, setFilters] = useState<Filters>(currentFilters);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [interests, setInterests] = useState<Interest[]>([]);
+    
     useEffect(() => {
-        const fetchCategories = async () => {
-            const { data, error } = await supabase
-                .from('categories')
-                .select('*')
-                .eq('type', 'event')
-                .order('name', { ascending: true });
-            
-            if (error) {
-                console.error('Error fetching categories:', error);
-            } else {
-                const mainCategories = data.filter(c => c.parent_id === null);
-                const subCategories = data.filter(c => c.parent_id !== null);
-                
-                const structuredCategories = mainCategories.map(main => ({
-                    ...main,
-                    subCategories: subCategories.filter(sub => sub.parent_id === main.id)
-                }));
-                setCategories(structuredCategories);
-            }
-        };
-        fetchCategories();
-    }, []);
+        const fetchData = async () => {
+            const { data: catData } = await supabase.from('categories').select('*').eq('type', 'event').not('parent_id', 'is', null);
+            if (catData) setCategories(catData);
 
-    const handleSelectCategory = (categoryId: number) => {
-        onApplyFilter(categoryId);
+            const { data: intData } = await supabase.from('interests').select('*').order('name');
+            if (intData) setInterests(intData);
+        };
+        fetchData();
+    }, []);
+    
+    const handleApply = () => {
+        onApplyFilter(filters);
+    };
+    
+    const handleReset = () => {
+        const resetFilters = {
+            categoryId: null,
+            date: null,
+            timeOfDay: null,
+            interestIds: [],
+            creatorType: 'all' as const
+        };
+        setFilters(resetFilters);
+        onApplyFilter(resetFilters);
     };
 
-    const handleReset = () => {
-        onApplyFilter(null);
-    }
+    const handleInterestToggle = (id: number) => {
+        setFilters(prev => {
+            const newIds = prev.interestIds.includes(id)
+                ? prev.interestIds.filter(i => i !== id)
+                : [...prev.interestIds, id];
+            return { ...prev, interestIds: newIds };
+        });
+    };
 
-    const filteredCategories = categories.map(mainCat => ({
-        ...mainCat,
-        subCategories: mainCat.subCategories.filter(subCat => 
-            subCat.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-    })).filter(mainCat => 
-        mainCat.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        mainCat.subCategories.length > 0
-    );
+    const today = new Date().toISOString().split('T')[0];
 
     return (
         <motion.div
-            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-end md:items-center md:justify-center z-50 p-0 md:p-4"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-end md:items-center md:justify-center z-40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            transition={{ duration: 0.3 }}
         >
             <motion.div
-                className="bg-white dark:bg-dark-surface rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
-                initial={{ y: "100%", opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: "100%", opacity: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="bg-white dark:bg-dark-surface w-full md:max-w-lg rounded-t-3xl md:rounded-2xl max-h-[90vh] flex flex-col"
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <header className="flex-shrink-0 z-10 p-4 border-b border-gray-200 dark:border-dark-border">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="w-8"></div> {/* Spacer for alignment */}
-                        <h1 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Find Events</h1>
-                        <button onClick={onClose} className="p-2 -mr-2" aria-label="Close">
-                            <X size={24} className="text-text-primary dark:text-dark-text-primary" />
-                        </button>
-                    </div>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Søg i kategorier..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-gray-100 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border rounded-lg py-3 pl-10 pr-4 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-                            aria-label="Search categories"
-                        />
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                    </div>
+                <header className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border flex-shrink-0">
+                    <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary flex items-center">
+                        <SlidersHorizontal className="mr-2" />
+                        Filtrer Events
+                    </h2>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-dark-surface-light">
+                        <X size={24} />
+                    </button>
                 </header>
-                
-                <main className="flex-1 overflow-y-auto px-4 py-2">
-                    <div className="w-full bg-white dark:bg-dark-surface rounded-lg overflow-hidden">
-                        {filteredCategories.map(mainCat => (
-                            <div key={mainCat.id} className="border-b border-gray-100 dark:border-dark-border last:border-b-0">
+
+                <main className="overflow-y-auto p-6 space-y-6">
+                    {/* Date */}
+                    <div>
+                        <label htmlFor="date" className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Vælg dato</label>
+                        <input
+                            type="date"
+                            id="date"
+                            min={today}
+                            value={filters.date || ''}
+                            onChange={(e) => setFilters(p => ({ ...p, date: e.target.value }))}
+                            className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                    </div>
+                    
+                    {/* Time of Day */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Tidspunkt på dagen</label>
+                        <div className="grid grid-cols-3 gap-2">
+                             <button type="button" onClick={() => setFilters(p => ({...p, timeOfDay: 'morning'}))} className={`p-3 rounded-lg border-2 flex flex-col items-center ${filters.timeOfDay === 'morning' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}><Coffee size={20} className="mb-1"/> <span className="text-xs font-semibold">Formiddag</span></button>
+                             <button type="button" onClick={() => setFilters(p => ({...p, timeOfDay: 'afternoon'}))} className={`p-3 rounded-lg border-2 flex flex-col items-center ${filters.timeOfDay === 'afternoon' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}><Sun size={20} className="mb-1"/> <span className="text-xs font-semibold">Eftermiddag</span></button>
+                             <button type="button" onClick={() => setFilters(p => ({...p, timeOfDay: 'evening'}))} className={`p-3 rounded-lg border-2 flex flex-col items-center ${filters.timeOfDay === 'evening' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}><Moon size={20} className="mb-1"/> <span className="text-xs font-semibold">Aften</span></button>
+                        </div>
+                    </div>
+                    
+                    {/* Category */}
+                    <div>
+                        <label htmlFor="category" className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Kategori</label>
+                        <select
+                            id="category"
+                            value={filters.categoryId || ''}
+                            onChange={(e) => setFilters(p => ({...p, categoryId: e.target.value ? Number(e.target.value) : null}))}
+                            className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary appearance-none"
+                        >
+                            <option value="">Alle kategorier</option>
+                            {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Creator Type */}
+                     <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Oprettet af</label>
+                         <div className="grid grid-cols-3 gap-2">
+                            <button type="button" onClick={() => setFilters(p => ({...p, creatorType: 'all'}))} className={`p-2 rounded-lg border-2 text-sm font-semibold ${filters.creatorType === 'all' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}>Alle</button>
+                            <button type="button" onClick={() => setFilters(p => ({...p, creatorType: 'user'}))} className={`p-2 rounded-lg border-2 text-sm font-semibold ${filters.creatorType === 'user' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}>Brugere</button>
+                            <button type="button" onClick={() => setFilters(p => ({...p, creatorType: 'org'}))} className={`p-2 rounded-lg border-2 text-sm font-semibold ${filters.creatorType === 'org' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}>Organisationer</button>
+                        </div>
+                    </div>
+                    
+                    {/* Interests */}
+                    <div>
+                         <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Interesser</label>
+                         <div className="max-h-40 overflow-y-auto flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-surface-light rounded-lg">
+                            {interests.map(interest => (
                                 <button
-                                    onClick={() => setOpenCategory(openCategory === mainCat.id ? null : mainCat.id)}
-                                    className="w-full flex justify-between items-center text-left p-4 hover:bg-gray-50 dark:hover:bg-dark-surface-light"
+                                    key={interest.id}
+                                    type="button"
+                                    onClick={() => handleInterestToggle(interest.id)}
+                                    className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 ${filters.interestIds.includes(interest.id) ? 'bg-primary border-primary text-white' : 'bg-white dark:bg-dark-surface border-transparent hover:border-gray-300 dark:hover:border-dark-border'}`}
                                 >
-                                    <span className="text-lg font-bold text-text-primary dark:text-dark-text-primary">{mainCat.name}</span>
-                                    <ChevronDown className={`transition-transform ${openCategory === mainCat.id ? 'rotate-180' : ''}`} />
+                                    {interest.name}
                                 </button>
-                                {openCategory === mainCat.id && (
-                                    <div className="pl-6 pr-4 pb-2">
-                                    {mainCat.subCategories.map(subCat => (
-                                        <button
-                                        key={subCat.id}
-                                        onClick={() => handleSelectCategory(subCat.id)}
-                                        className="w-full text-left py-2 px-2 text-md text-text-secondary dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-border rounded-md"
-                                        >
-                                        {subCat.name}
-                                        </button>
-                                    ))}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                            ))}
+                         </div>
                     </div>
                 </main>
 
-                <footer className="p-4 border-t border-gray-200 dark:border-dark-border">
-                    <button
-                        onClick={handleReset}
-                        className="w-full flex items-center justify-center bg-gray-100 dark:bg-dark-surface-light text-text-primary dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-gray-200 dark:hover:bg-dark-border transition duration-300"
-                    >
-                        <RotateCcw size={20} className="mr-2" />
-                        Nulstil Filter
+                <footer className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-dark-border flex-shrink-0">
+                    <button onClick={handleReset} className="font-bold text-text-secondary dark:text-dark-text-secondary hover:underline">Nulstil</button>
+                    <button onClick={handleApply} className="bg-primary text-white font-bold py-3 px-8 rounded-full text-lg hover:bg-primary-dark transition-colors">
+                        Vis resultater
                     </button>
                 </footer>
             </motion.div>

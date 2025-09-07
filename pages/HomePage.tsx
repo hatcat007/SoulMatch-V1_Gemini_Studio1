@@ -1,14 +1,12 @@
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users } from 'lucide-react';
-import type { Event, User } from '../types';
+import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users, Clock } from 'lucide-react';
+import type { Event, User, Interest, Category } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import { AnimatePresence } from 'framer-motion';
-import EventFilterModal from '../components/EventFilterModal';
+import EventFilterModal, { Filters } from '../components/EventFilterModal';
 
 interface HomePageProps {
     events: Event[];
@@ -50,17 +48,14 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 };
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => {
-    const formattedTimeRange = useMemo(() => {
+    const eventDate = new Date(event.time);
+    const month = eventDate.toLocaleString('da-DK', { month: 'short' }).replace('.', '').toUpperCase();
+    const day = eventDate.getDate();
+    
+    const timeString = useMemo(() => {
         if (!event?.time) return 'Tidspunkt ukendt';
-        
         const startTime = new Date(event.time);
         
-        const weekday = startTime.toLocaleString('da-DK', { weekday: 'long' });
-        const day = startTime.getDate();
-        const month = startTime.toLocaleString('da-DK', { month: 'short' }).replace('.', '');
-        const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-        const datePart = `${capitalizedWeekday} d. ${day} ${month}`;
-
         const startTimeString = startTime.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
 
         let timePart = startTimeString;
@@ -71,24 +66,35 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
             timePart += ` - ${endTimeString}`;
         }
         
-        return `${datePart}, ${timePart}`;
+        return timePart;
     }, [event.time, event.end_time]);
 
+
+    const DateDisplay = () => (
+        <div className="bg-white/80 dark:bg-dark-surface/80 backdrop-blur-sm rounded-lg w-14 text-center py-1 shadow-md">
+            <p className="text-xs font-bold text-red-500">{month}</p>
+            <p className="text-2xl font-bold text-text-primary dark:text-dark-text-primary -mt-1">{day}</p>
+        </div>
+    );
 
     return (
         <div className="relative bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
             {event.image_url ? (
-                <div className="aspect-square overflow-hidden">
+                <div className="aspect-square overflow-hidden relative">
                     <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <div className="absolute top-3 left-3">
+                        <DateDisplay />
+                    </div>
                 </div>
             ) : (
-                <div className={`w-full h-24 flex items-center justify-end p-4 ${event.color}`}>
+                <div className={`w-full h-32 flex items-center justify-between p-4 ${event.color}`}>
+                    <DateDisplay />
                     <div className="text-5xl">{event.icon}</div>
                 </div>
             )}
             <div className="p-4 flex flex-col flex-1">
                 <div>
-                    <p className="text-sm text-gray-600 dark:text-dark-text-secondary">{formattedTimeRange}</p>
+                    <p className="text-sm font-semibold text-primary dark:text-primary-light flex items-center"><Clock size={14} className="mr-1.5" />{timeString}</p>
                     <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mt-1 line-clamp-2">{event.title}</h3>
                 </div>
                 <div className="mt-auto pt-4 flex items-center">
@@ -99,9 +105,11 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
                     </div>
                 </div>
             </div>
-            <div className="absolute bottom-4 right-4 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-sm w-12 h-12 rounded-full flex items-center justify-center text-2xl shadow-lg">
-                {event.icon}
-            </div>
+             {!event.image_url && (
+                <div className="absolute bottom-4 right-4 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-sm w-12 h-12 rounded-full flex items-center justify-center text-2xl shadow-lg">
+                    {event.icon}
+                </div>
+            )}
         </div>
     );
 };
@@ -132,29 +140,127 @@ const OnlineNowSection: React.FC<{ users: User[] }> = ({ users }) => (
 const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-    const selectedCategoryId = searchParams.get('category_id');
+    const [searchTerm, setSearchTerm] = useState('');
+    
+    // State to hold names for interests and categories for display
+    const [interestMap, setInterestMap] = useState<Map<string, string>>(new Map());
+    const [categoryMap, setCategoryMap] = useState<Map<string, string>>(new Map());
+
+    useEffect(() => {
+        const fetchNames = async () => {
+            const { data: interests } = await supabase.from('interests').select('id, name');
+            if (interests) setInterestMap(new Map(interests.map(i => [i.id.toString(), i.name])));
+            
+            const { data: categories } = await supabase.from('categories').select('id, name');
+            if (categories) setCategoryMap(new Map(categories.map(c => [c.id.toString(), c.name])));
+        };
+        fetchNames();
+    }, []);
+    
+    const currentFilters = useMemo((): Filters => ({
+        categoryId: searchParams.get('categoryId') ? parseInt(searchParams.get('categoryId')!, 10) : null,
+        date: searchParams.get('date') || null,
+        // FIX: Cast timeOfDay from search params to the correct string literal union type.
+        timeOfDay: (searchParams.get('timeOfDay') as Filters['timeOfDay']) || null,
+        interestIds: searchParams.getAll('interests').map(Number),
+        creatorType: (searchParams.get('creatorType') as Filters['creatorType']) || 'all',
+    }), [searchParams]);
 
     const filteredEvents = useMemo(() => {
-        if (!selectedCategoryId) {
-            return events;
-        }
-        return events.filter(event => event.category?.id === parseInt(selectedCategoryId, 10));
-    }, [selectedCategoryId, events]);
+        const lowercasedSearchTerm = searchTerm.trim().toLowerCase();
 
-    const selectedCategoryName = useMemo(() => {
-        if (!selectedCategoryId) return null;
-        const event = events.find(e => e.category?.id === parseInt(selectedCategoryId, 10));
-        return event?.category?.name || null;
-    }, [selectedCategoryId, events]);
+        return events.filter(event => {
+            // Search term filter
+            if (lowercasedSearchTerm) {
+                const titleMatch = event.title.toLowerCase().includes(lowercasedSearchTerm);
+                const descriptionMatch = event.description?.toLowerCase().includes(lowercasedSearchTerm) ?? false;
+                const interestMatch = event.interests?.some(interest => 
+                    interest.name.toLowerCase().includes(lowercasedSearchTerm)
+                ) ?? false;
+                
+                if (!titleMatch && !descriptionMatch && !interestMatch) {
+                    return false; // Skip this event if no match in search
+                }
+            }
+            
+            // Modal filters
+            if (currentFilters.categoryId && event.category?.id !== currentFilters.categoryId) return false;
+            
+            if (currentFilters.date) {
+                const eventDate = new Date(event.time);
+                // Adjust for timezone offset before comparing dates
+                const filterDate = new Date(currentFilters.date);
+                filterDate.setMinutes(filterDate.getMinutes() + filterDate.getTimezoneOffset());
+
+                if (eventDate.getFullYear() !== filterDate.getFullYear() || eventDate.getMonth() !== filterDate.getMonth() || eventDate.getDate() !== filterDate.getDate()) {
+                    return false;
+                }
+            }
+            
+            if (currentFilters.timeOfDay) {
+                const eventHour = new Date(event.time).getHours();
+                const { timeOfDay } = currentFilters;
+                if (timeOfDay === 'morning' && (eventHour < 8 || eventHour >= 12)) return false;
+                if (timeOfDay === 'afternoon' && (eventHour < 12 || eventHour >= 17)) return false;
+                if (timeOfDay === 'evening' && (eventHour < 17 || eventHour >= 24)) return false;
+            }
+            
+            if (currentFilters.creatorType !== 'all') {
+                if (currentFilters.creatorType === 'user' && !event.creator_user_id) return false;
+                if (currentFilters.creatorType === 'org' && !event.organization_id) return false;
+            }
+            
+            if (currentFilters.interestIds.length > 0) {
+                if (!event.interests || event.interests.length === 0) return false;
+                const eventInterestIds = new Set(event.interests.map(i => i.id));
+                if (!currentFilters.interestIds.every(id => eventInterestIds.has(id))) return false;
+            }
+            
+            return true;
+        });
+    }, [currentFilters, events, searchTerm]);
     
-    const handleApplyFilter = (categoryId: number | null) => {
-        if (categoryId) {
-            setSearchParams({ category_id: categoryId.toString() });
-        } else {
-            setSearchParams({});
-        }
+    const handleApplyFilter = (filters: Filters) => {
+        const newParams = new URLSearchParams();
+        if (filters.categoryId) newParams.set('categoryId', filters.categoryId.toString());
+        if (filters.date) newParams.set('date', filters.date);
+        if (filters.timeOfDay) newParams.set('timeOfDay', filters.timeOfDay);
+        if (filters.creatorType && filters.creatorType !== 'all') newParams.set('creatorType', filters.creatorType);
+        filters.interestIds.forEach(id => newParams.append('interests', id.toString()));
+        setSearchParams(newParams);
         setIsFilterModalOpen(false);
     };
+
+    const removeFilter = (key: string, value: string | null = null) => {
+        const newParams = new URLSearchParams(searchParams);
+        if (value) { // For multi-value keys like 'interests'
+            const values = newParams.getAll(key).filter(v => v !== value);
+            newParams.delete(key);
+            values.forEach(v => newParams.append(key, v));
+        } else {
+            newParams.delete(key);
+        }
+        setSearchParams(newParams);
+    };
+
+    const activeFilterPills = useMemo(() => {
+        const pills: { key: string, value?: string, label: string }[] = [];
+        if (currentFilters.categoryId) pills.push({ key: 'categoryId', label: `Kategori: ${categoryMap.get(currentFilters.categoryId.toString()) || '...'}` });
+        if (currentFilters.date) pills.push({ key: 'date', label: `Dato: ${new Date(currentFilters.date).toLocaleDateString('da-DK')}` });
+        if (currentFilters.timeOfDay) {
+            const timeLabels = { morning: 'Formiddag', afternoon: 'Eftermiddag', evening: 'Aften' };
+            pills.push({ key: 'timeOfDay', label: timeLabels[currentFilters.timeOfDay as keyof typeof timeLabels] });
+        }
+        if (currentFilters.creatorType !== 'all') {
+            const creatorLabels = { user: 'Brugere', org: 'Organisationer' };
+            pills.push({ key: 'creatorType', label: `Oprettet af: ${creatorLabels[currentFilters.creatorType as keyof typeof creatorLabels]}` });
+        }
+        currentFilters.interestIds.forEach(id => {
+            pills.push({ key: 'interests', value: id.toString(), label: `Interesse: ${interestMap.get(id.toString()) || '...'}` });
+        });
+        return pills;
+    }, [currentFilters, interestMap, categoryMap]);
+
 
     return (
         <div className="p-4 md:p-6">
@@ -168,9 +274,16 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
                     <input
                         type="text"
                         placeholder="Søg på dine interesser eller ønsker"
-                        className="w-full bg-gray-100 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border rounded-full py-3 pl-10 pr-4 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-gray-100 dark:bg-dark-surface-light border border-gray-200 dark:border-dark-border rounded-full py-3 pl-10 pr-10 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-dark-text-secondary" size={20} />
+                     {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text-primary">
+                            <X size={20} />
+                        </button>
+                    )}
                 </div>
                 <Link to="/friends" className="flex-shrink-0 p-3 bg-gray-100 dark:bg-dark-surface-light rounded-full text-gray-600 dark:text-dark-text-secondary hover:bg-gray-200 dark:hover:bg-dark-surface" aria-label="Venner">
                     <Users size={20} />
@@ -197,12 +310,16 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
         </button>
       </div>
       
-      {selectedCategoryId && selectedCategoryName && (
-        <div className="inline-flex items-center bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light font-semibold px-3 py-1.5 rounded-full mb-4 text-sm">
-          <span>Filter: {selectedCategoryName}</span>
-          <button onClick={() => setSearchParams({})} className="ml-2 p-1 -mr-1 hover:bg-primary/20 dark:hover:bg-primary/30 rounded-full">
-            <X size={16} />
-          </button>
+      {activeFilterPills.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {activeFilterPills.map(pill => (
+            <div key={pill.key + (pill.value || '')} className="inline-flex items-center bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light font-semibold pl-3 pr-2 py-1.5 rounded-full text-sm">
+              <span>{pill.label}</span>
+              <button onClick={() => removeFilter(pill.key, pill.value)} className="ml-2 p-0.5 hover:bg-primary/20 dark:hover:bg-primary/30 rounded-full">
+                <X size={14} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -215,7 +332,7 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
             ))}
         </div>
       ) : (
-        <p className="text-center text-text-secondary dark:text-dark-text-secondary mt-8">Ingen events fundet for den valgte kategori.</p>
+        <p className="text-center text-text-secondary dark:text-dark-text-secondary mt-8">Ingen events fundet for de valgte filtre.</p>
       )}
 
       <AnimatePresence>
@@ -223,6 +340,7 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
             <EventFilterModal
                 onClose={() => setIsFilterModalOpen(false)}
                 onApplyFilter={handleApplyFilter}
+                currentFilters={currentFilters}
             />
         )}
       </AnimatePresence>

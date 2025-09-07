@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 import { usePersistentState } from '../hooks/useNotifications';
@@ -95,6 +96,7 @@ const initialFormState = {
 };
 
 const CreateEventPage: React.FC = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const [formData, setFormData] = usePersistentState('createUserEventForm', initialFormState);
     const [isUploading, setIsUploading] = useState(false);
@@ -200,56 +202,67 @@ const CreateEventPage: React.FC = () => {
         let submissionError: string | null = null;
 
         try {
-            const { eventName, description, time, end_time, location, images, ...rest } = formData;
-
             // 1. Create the event
             const { data: newEvent, error: eventError } = await supabase.from('events').insert({
-                title: eventName,
-                description,
-                time,
-                end_time: end_time || null,
-                address: location,
+                title: formData.eventName,
+                description: formData.description,
+                time: formData.time,
+                end_time: formData.end_time || null,
+                address: formData.location,
                 creator_user_id: user.id,
                 host_name: user.name,
                 host_avatar_url: user.avatar_url || '',
                 organization_id: null,
-                image_url: images.length > 0 ? images[0] : null,
-                ...rest
+                image_url: formData.images.length > 0 ? formData.images[0] : null,
+                icon: formData.icon,
+                is_sponsored: formData.is_sponsored,
+                offer: formData.offer,
+                category_id: formData.category_id,
             }).select().single();
 
             if (eventError) throw eventError;
             if (!newEvent) throw new Error("Event data not returned after creation.");
 
-            // 2. Link images to the new event
-            if (images.length > 0) {
-                const eventImages = images.map(imageUrl => ({
-                    event_id: newEvent.id,
-                    image_url: imageUrl
-                }));
+            // 2. Link images
+            if (formData.images.length > 0) {
+                const eventImages = formData.images.map(imageUrl => ({ event_id: newEvent.id, image_url: imageUrl }));
                 const { error: imageError } = await supabase.from('event_images').insert(eventImages);
                 if (imageError) {
-                    console.error("Error linking images to event:", imageError);
-                    submissionError = `Error linking images to event:\n${imageError.message}`;
+                    submissionError = `Fejl ved linkning af billeder: ${imageError.message}`;
                 }
             }
 
-            // 3. Link interests to the new event using RPC
+            // 3. Link interests
             if (selectedInterests.length > 0) {
                 const interestIds = selectedInterests.map(interest => interest.id);
-                const { error: interestError } = await supabase.rpc('add_interests_to_event', {
-                    p_event_id: newEvent.id,
-                    p_interest_ids: interestIds
-                });
+                const { error: interestError } = await supabase.rpc('add_interests_to_event', { p_event_id: newEvent.id, p_interest_ids: interestIds });
                 if (interestError) {
-                    console.error("Error linking interests:", interestError);
-                    submissionError = (submissionError ? submissionError + "\n" : "") + `Error linking interests:\n${interestError.message}`;
+                    submissionError = (submissionError ? submissionError + "\n" : "") + `Fejl ved linkning af interesser: ${interestError.message}`;
                 }
             }
             
             if (!submissionError) {
-                alert('Event oprettet!');
+                 // 4. Create notification
+                const notificationMessage = `Du oprettede event "${formData.eventName}", SÅDAN!, den er nu online på SoulMatch!🌍🤩`;
+                const { error: notificationError } = await supabase.from('notifications').insert({
+                    user_id: user.id,
+                    actor_id: user.id,
+                    type: 'event',
+                    message: notificationMessage,
+                    related_entity_id: newEvent.id,
+                });
+
+                if (notificationError) {
+                    console.warn("Could not create success notification:", notificationError);
+                }
+                
+                // 5. Clean up and navigate with a delay
                 setFormData(initialFormState);
                 setSelectedInterests([]);
+                // Add a short delay to allow the toast notification to appear before navigating.
+                setTimeout(() => {
+                    navigate('/home');
+                }, 300);
             } else {
                 setError(submissionError);
             }

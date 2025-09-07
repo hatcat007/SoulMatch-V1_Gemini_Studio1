@@ -59,7 +59,7 @@ const AppContent: React.FC = () => {
     
     const eventsPromise = supabase
         .from('events')
-        .select(`*, organization:organizations(logo_url), event_participants ( count ), category:categories(*)`);
+        .select(`*, organization:organizations(logo_url), event_participants ( count ), category:categories(*), interests:interests(*)`);
     const onlineUsersPromise = supabase
         .from('users').select('*').eq('online', true).limit(10);
     const placesPromise = supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*)');
@@ -92,7 +92,7 @@ const AppContent: React.FC = () => {
       if (!user) return;
 
       const fetchEvents = async () => {
-          const { data: eventsData } = await supabase.from('events').select(`*, organization:organizations(logo_url), event_participants ( count ), category:categories(*)`);
+          const { data: eventsData } = await supabase.from('events').select(`*, organization:organizations(logo_url), event_participants ( count ), category:categories(*), interests:interests(*)`);
           if (eventsData) setEvents(eventsData.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
       };
 
