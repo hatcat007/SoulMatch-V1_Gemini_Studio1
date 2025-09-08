@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Send, Shield, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin, Lock } from 'lucide-react';
+import { ArrowLeft, Send, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin, Lock } from 'lucide-react';
 import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
 import { getAiClient } from '../services/geminiService';
@@ -9,6 +9,7 @@ import ReportUserModal from '../components/ReportUserModal';
 import { fetchPrivateFile } from '../services/s3Service';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from '../components/LoadingScreen';
+import MeetingTimer from '../components/MeetingTimer';
 
 const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -36,24 +37,6 @@ const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({
     if (loading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded-xl`} />;
     if (!imageUrl) return <div className={`${className} bg-gray-100 dark:bg-dark-surface-light rounded-xl`} />;
     return <img src={imageUrl} alt={alt} className={className} />;
-};
-
-const formatMeetingTime = (matchTimestamp?: string): string | null => {
-    if (!matchTimestamp) return null;
-
-    const totalDuration = 3 * 24 * 60 * 60 * 1000; // 3 days in ms
-    const deadline = new Date(matchTimestamp).getTime() + totalDuration;
-    const difference = deadline - Date.now();
-
-    if (difference <= 0) return "Tiden for møde er udløbet";
-    const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (days > 0) return `Møde om ${days} ${days === 1 ? 'dag' : 'dage'}`;
-    if (hours > 0) return `Møde om ${hours} ${hours === 1 ? 'time' : 'timer'}`;
-    if (minutes > 0) return `Møde om ${minutes} ${minutes === 1 ? 'minut' : 'minutter'}`;
-    return `Møde om et øjeblik`;
 };
 
 type FriendshipStatus = 'not_friends' | 'pending_them' | 'pending_me' | 'friends' | 'loading';
@@ -137,7 +120,6 @@ const ChatPage: React.FC = () => {
 
 
     const isAiMentorChat = chatId === 'ai-mentor';
-    const meetingTimeText = useMemo(() => formatMeetingTime(thread?.match_timestamp), [thread]);
     
     useEffect(() => {
         const setupAiChat = () => {
@@ -465,12 +447,16 @@ const ChatPage: React.FC = () => {
                 <div className="flex-1 text-center">
                     <h2 className="font-bold text-lg text-text-primary dark:text-dark-text-primary flex items-center justify-center">
                         {otherUser.name}
-                        {isAiMentorChat ? <BrainCircuit className="w-5 h-5 ml-1 text-accent" strokeWidth={2.5}/> : <Shield className="w-5 h-5 ml-1 text-blue-500" strokeWidth={2.5} />}
+                        {isAiMentorChat ? (
+                            <BrainCircuit className="w-5 h-5 ml-1 text-accent" strokeWidth={2.5}/>
+                        ) : (
+                            <div className="flex items-center ml-2 bg-gray-100 dark:bg-dark-surface-light px-2 py-0.5 rounded-full">
+                                <img src="https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/mitid_logo.svg" alt="MitID logo" className="w-5 h-5" />
+                                <span className="ml-1.5 text-xs font-semibold text-text-secondary dark:text-dark-text-secondary">verificeret</span>
+                            </div>
+                        )}
                     </h2>
                     <p className="text-xs text-text-secondary dark:text-dark-text-secondary">{otherUser.online ? 'Online' : 'Offline'}</p>
-                    {!isAiMentorChat && meetingTimeText && (
-                        <p className="text-xs text-text-secondary dark:text-dark-text-secondary font-semibold mt-1">{meetingTimeText}</p>
-                    )}
                 </div>
                 <div className="min-w-[140px] flex justify-end">
                     {renderHeaderActions()}
@@ -478,6 +464,10 @@ const ChatPage: React.FC = () => {
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
+                {!isAiMentorChat && thread?.match_timestamp && (
+                    <MeetingTimer matchTimestamp={thread.match_timestamp} />
+                )}
+
                 {!isAiMentorChat && (
                     <div className="text-center text-xs text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg my-4 max-w-md mx-auto flex items-center justify-center shadow-sm">
                         <Lock size={14} className="mr-2 flex-shrink-0 text-blue-500" />

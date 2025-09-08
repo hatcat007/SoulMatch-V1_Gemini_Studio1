@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users, Clock } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users, Clock, Sparkles } from 'lucide-react';
 import type { Event, User, Interest, Category } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
@@ -292,13 +292,15 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
 
             <OnlineNowSection users={onlineUsers} />
 
-            <div className="my-6">
-                <img 
-                    src="https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/soulmatch1.png" 
-                    alt="SoulMatch promotional banner" 
-                    className="w-full rounded-2xl shadow-sm object-cover"
-                />
-            </div>
+            <Link to="/soulmatches" className="block my-6 group">
+                <div className="bg-gradient-to-r from-primary to-accent p-6 rounded-2xl shadow-lg text-white flex items-center justify-between group-hover:scale-105 transition-transform duration-300">
+                    <div>
+                        <h3 className="text-xl font-bold">Find dine SoulMatches</h3>
+                        <p className="text-sm opacity-90">AI-drevne forslag til nye venskaber</p>
+                    </div>
+                    <Sparkles size={32} />
+                </div>
+            </Link>
 
       <div className="flex justify-between items-center mb-4">
         <div>

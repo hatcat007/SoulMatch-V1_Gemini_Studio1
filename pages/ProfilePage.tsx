@@ -267,9 +267,9 @@ const ProfilePage: React.FC = () => {
                             <PrivateImage 
                                 src={user.avatar_url} 
                                 alt={user.name} 
-                                className="w-28 h-28 rounded-full object-cover ring-4 ring-white dark:ring-dark-surface" 
+                                className="w-36 h-36 rounded-full object-cover ring-4 ring-white dark:ring-dark-surface" 
                             />
-                            {user.online && <span className="absolute bottom-1 right-1 block h-5 w-5 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface"></span>}
+                            {user.online && <span className="absolute bottom-2 right-2 block h-5 w-5 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface"></span>}
                         </div>
                         <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">{user.name}, {user.age}</h2>
                         {user.location && <p className="text-text-secondary dark:text-dark-text-secondary mt-1 flex items-center"><MapPin size={14} className="mr-1.5"/>{user.location}</p>}

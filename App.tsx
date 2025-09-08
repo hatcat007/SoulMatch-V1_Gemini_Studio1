@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,6 +27,7 @@ import ConfirmOrganizationPage from './pages/ConfirmOrganizationPage';
 import CreateProfilePage from './pages/CreateProfilePage';
 import PersonalityTestPage from './pages/PersonalityTestPage';
 import FriendsPage from './pages/FriendsPage';
+import SoulmatchesPage from './pages/SoulmatchesPage'; // Import the new page
 import AdminPage from './pages/AdminPage';
 import MyEventsPage from './pages/MyEventsPage';
 import EditEventPage from './pages/EditEventPage';
@@ -184,6 +186,7 @@ const AppContent: React.FC = () => {
                       <Route path="/privacy" element={<PrivacyPolicyPage />} />
                       <Route path="/terms" element={<TermsOfServicePage />} />
                       <Route path="/friends" element={<FriendsPage />} />
+                      <Route path="/soulmatches" element={<SoulmatchesPage />} />
                       <Route path="/my-events" element={<MyEventsPage />} />
                       <Route path="/edit-event/:eventId" element={<EditEventPage />} />
                       {user.is_admin && <Route path="/admin" element={<AdminPage />} />}

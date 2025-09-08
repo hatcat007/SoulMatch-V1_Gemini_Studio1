@@ -40,6 +40,88 @@ const questions = [
     { id: 20, text: "Jeg er organiseret og kan lide at have styr på mine omgivelser.", dimension: "JP" },
 ];
 
+const AnalysisAnimation = () => {
+    const dimensions = ["EI", "SN", "TF", "JP"];
+    return (
+        <div className="flex flex-col items-center justify-center p-8 space-y-8">
+            <div className="relative w-40 h-40">
+                {/* Central Orb */}
+                <motion.div
+                    className="absolute top-1/2 left-1/2 w-16 h-16 bg-primary rounded-full -translate-x-1/2 -translate-y-1/2"
+                    animate={{
+                        scale: [1, 1.1, 1],
+                        opacity: [0.8, 1, 0.8],
+                    }}
+                    transition={{
+                        duration: 2.5,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                    }}
+                />
+
+                {/* Orbiting Nodes */}
+                {dimensions.map((dim, i) => (
+                    <motion.div
+                        key={dim}
+                        className="absolute top-1/2 left-1/2 w-8 h-8 -m-4"
+                        animate={{ rotate: 360 }}
+                        transition={{
+                            duration: 10 + i * 2,
+                            repeat: Infinity,
+                            ease: "linear",
+                        }}
+                    >
+                        <motion.div
+                            className="w-8 h-8 bg-primary-light dark:bg-primary/20 rounded-full flex items-center justify-center"
+                            style={{ transform: `translateX(70px)` }}
+                            animate={{ scale: [1, 0.8, 1] }}
+                             transition={{
+                                duration: 3,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: i * 0.5
+                            }}
+                        >
+                            <span className="font-bold text-xs text-primary">{dim}</span>
+                        </motion.div>
+                    </motion.div>
+                ))}
+                 {/* Particles */}
+                {Array.from({ length: 4 }).map((_, i) => (
+                     <motion.div
+                        key={i}
+                        className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-primary rounded-full"
+                        style={{
+                            transformOrigin: '0 0'
+                        }}
+                        animate={{
+                            x: [70, 0, 70],
+                            y: [0, 0, 0],
+                            scale: [1, 0.5, 1],
+                            rotate: [i * 90, i * 90, i * 90]
+                        }}
+                        transition={{
+                            duration: 2.5,
+                            repeat: Infinity,
+                            ease: "linear",
+                            delay: i * 0.6
+                        }}
+                    />
+                ))}
+            </div>
+             <motion.p
+                className="font-semibold text-text-secondary dark:text-dark-text-secondary text-lg"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+            >
+                Analyserer dine svar...
+            </motion.p>
+        </div>
+    );
+};
+
+
 const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => {
     const { user } = useAuth();
     const [answers, setAnswers] = usePersistentState<{[key: number]: number}>('personalityTestAnswers', {});
@@ -217,10 +299,7 @@ const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => 
                     )}
                     {step === 'submitting' && (
                         <motion.div key="submitting" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                            <div className="text-center p-8">
-                                <Loader2 className="animate-spin text-primary mx-auto" size={48} />
-                                <p className="mt-4 font-semibold text-text-secondary dark:text-dark-text-secondary">Analyserer dine svar...</p>
-                            </div>
+                           <AnalysisAnimation />
                         </motion.div>
                     )}
                      {step === 'complete' && (
