@@ -3,18 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '../services/supabase';
-
-// A simple component for the animated avatar graphic, consistent with the onboarding experience.
-const AvatarGraphic: React.FC<{ mainImage: string; orbitingImages: string[] }> = ({ mainImage, orbitingImages }) => (
-    <div className="relative w-48 h-48">
-        <img src={mainImage} alt="Main user" className="rounded-full w-48 h-48 border-4 border-white shadow-lg"/>
-        <img src={orbitingImages[0]} alt="User 1" className="rounded-full w-14 h-14 absolute top-0 left-0 transform -translate-x-4 -translate-y-4 shadow-md"/>
-        <img src={orbitingImages[1]} alt="User 2" className="rounded-full w-12 h-12 absolute top-0 right-0 transform translate-x-4 -translate-y-2 shadow-md"/>
-        <img src={orbitingImages[2]} alt="User 3" className="rounded-full w-10 h-10 absolute bottom-0 right-0 transform translate-x-5 translate-y-3 shadow-md"/>
-        <img src={orbitingImages[3]} alt="User 4" className="rounded-full w-16 h-16 absolute bottom-0 left-0 transform -translate-x-6 translate-y-2 shadow-md"/>
-        <img src={orbitingImages[4]} alt="User 5" className="rounded-full w-8 h-8 absolute top-1/2 -left-10 shadow-md"/>
-    </div>
-);
+import AnimatedAvatarGraphic from '../components/AnimatedAvatarGraphic';
 
 const SignupPage: React.FC = () => {
   const navigate = useNavigate();
@@ -69,13 +58,9 @@ const SignupPage: React.FC = () => {
       {/* Left decorative panel */}
       <div className="hidden lg:flex flex-col items-center justify-center bg-primary-light dark:bg-dark-surface p-12 text-center">
          <h1 className="text-4xl font-bold text-primary mb-8">SoulMatch</h1>
-          <AvatarGraphic mainImage="https://picsum.photos/id/1027/200/200" orbitingImages={[
-            'https://picsum.photos/id/1028/50/50',
-            'https://picsum.photos/id/1029/50/50',
-            'https://picsum.photos/id/1031/50/50',
-            'https://picsum.photos/id/1032/50/50',
-            'https://picsum.photos/id/1033/50/50',
-        ]} />
+          <div className="transform scale-110">
+            <AnimatedAvatarGraphic />
+          </div>
         <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-12">Find din nye SoulMate</h2>
         <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-4 max-w-sm">
           Bliv en del af et fællesskab, der bringer folk sammen og bekæmper ensomhed.
