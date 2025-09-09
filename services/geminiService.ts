@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 // FIX: Import types needed for the new generateProfileDescription function
-import type { Interest, PersonalityTag, UserPersonalityDimension } from '../types';
+import type { Activity, Interest, InterestCategory, PersonalityTag, UserPersonalityDimension } from '../types';
 
 
 let aiClient: GoogleGenAI;
@@ -280,4 +280,84 @@ export async function generateProfileDescription(profile: {
     });
 
     return response.text.trim();
+}
+
+/**
+ * Suggests new activities and interests based on an organization's description.
+ */
+export async function suggestTagsFromDescription(
+    description: string,
+    existingActivities: Activity[],
+    existingInterests: Interest[],
+    interestCategories: InterestCategory[]
+): Promise<{
+    suggested_activities: string[];
+    suggested_interests: { name: string; category_name: string }[];
+}> {
+    const ai = getAiClient();
+    const existingActivityNames = existingActivities.map(a => a.name.toLowerCase());
+    const existingInterestNames = existingInterests.map(i => i.name.toLowerCase());
+    const interestCategoryNames = interestCategories.map(c => c.name);
+
+    const systemInstruction = `Du er en ekspert i at kategorisere organisationer. Din opgave er at læse en organisationsbeskrivelse og foreslå nye, relevante "aktiviteter" og "interesser" som tags.
+- Du MÅ IKKE foreslå tags, der allerede findes på de medfølgende lister over eksisterende tags.
+- Foreslå kun specifikke, håndgribelige aktiviteter og interesser.
+- For hver "interesse" du foreslår, SKAL du vælge den mest passende kategori fra listen: ${interestCategoryNames.join(', ')}.
+- Svaret skal være i JSON format og følge det angivne skema. Returner tomme arrays hvis ingen nye tags kan findes.`;
+
+    const prompt = `
+        Organisationsbeskrivelse: "${description}"
+
+        Eksisterende aktiviteter (undgå disse): ${JSON.stringify(existingActivityNames)}
+        Eksisterende interesser (undgå disse): ${JSON.stringify(existingInterestNames)}
+    `;
+    
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    suggested_activities: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                        description: "En liste af nye, relevante aktivitets-tags."
+                    },
+                    suggested_interests: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: { type: Type.STRING, description: "Navnet på den nye interesse." },
+                                category_name: { type: Type.STRING, description: `Kategorien for interessen. SKAL være en fra listen: ${interestCategoryNames.join(', ')}` }
+                            }
+                        },
+                        description: "En liste af nye interesse-tags med deres kategori."
+                    }
+                }
+            }
+        }
+    });
+
+    try {
+        const jsonText = response.text.trim();
+        const parsed = JSON.parse(jsonText);
+        // Filter out any duplicates suggested by the AI, just in case
+        const uniqueActivities = [...new Set(parsed.suggested_activities.filter((name: string) => !existingActivityNames.includes(name.toLowerCase())))];
+        const uniqueInterests = parsed.suggested_interests.filter((interest: { name: string; category_name: string }) => 
+            !existingInterestNames.includes(interest.name.toLowerCase()) && interestCategoryNames.includes(interest.category_name)
+        );
+        
+        return {
+            suggested_activities: uniqueActivities,
+            suggested_interests: uniqueInterests,
+        };
+
+    } catch (e) {
+        console.error("Failed to parse tag suggestion response:", response.text);
+        throw new Error("Kunne ikke foreslå tags fra beskrivelsen.");
+    }
 }

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabase';
 import type { Organization, Activity, Interest, InterestCategory, PersonalityTag } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
-// FIX: Replaced non-existent lucide-react icons with valid alternatives and added missing FileText import.
-// FIX: Import LucideIcon type to correctly type the icon map and resolve prop errors.
-import { Save, Loader2, Camera, Building, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, Search, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, PenTool, Heart, MoveVertical, FileText, Flag, Flower2, PawPrint, Construction } from 'lucide-react';
+import { suggestTagsFromDescription } from '../../services/geminiService';
+import { Save, Loader2, Camera, Building, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, Search, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, PenTool, Heart, MoveVertical, FileText, Flag, Flower2, PawPrint, Construction, PlusCircle, Sparkles } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import TagSelector from '../../components/TagSelector';
 
@@ -17,10 +16,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; fallba
         let isMounted = true;
 
         const processUrl = async () => {
-            if (!src) {
-                if (isMounted) { setIsLoading(false); setDisplayUrl(''); }
-                return;
-            }
+            if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
             setIsLoading(true);
             if (src.startsWith('blob:') || src.startsWith('http')) {
                 setDisplayUrl(src);
@@ -42,8 +38,6 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; fallba
     return <img src={displayUrl} alt={alt} className={className} />;
 };
 
-// FIX: Updated icon map to match the corrected icon imports.
-// FIX: Use LucideIcon type for the icon map to ensure props like `size` are recognized.
 const iconMap: { [key: string]: LucideIcon } = {
     Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, PenTool, Camera, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical
 };
@@ -61,11 +55,15 @@ const OrganizationSettingsPage: React.FC = () => {
     const [allActivities, setAllActivities] = useState<Activity[]>([]);
     const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isSuggestingActivity, setIsSuggestingActivity] = useState(false);
     
     // Interests State
     const [allInterests, setAllInterests] = useState<Interest[]>([]);
     const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
     const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
+
+    // AI State
+    const [isSuggestingWithAI, setIsSuggestingWithAI] = useState(false);
 
     const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,13 +83,13 @@ const OrganizationSettingsPage: React.FC = () => {
             setOrganization(orgData);
             setFormData(orgData);
 
-            // Fetch activities
+            // Fetch activities (RLS policy will fetch approved + own pending)
             const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
             setAllActivities(activitiesData || []);
             const { data: selectedLinks } = await supabase.from('organization_activities').select('activity_id').eq('organization_id', orgData.id);
             setSelectedActivityIds(selectedLinks?.map(link => link.activity_id) || []);
             
-            // Fetch interests
+            // Fetch interests (RLS policy will fetch approved + own pending)
             const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
             const { data: iData } = await supabase.from('interests').select('*').order('name');
             setInterestCategories(iCatData || []);
@@ -147,6 +145,88 @@ const OrganizationSettingsPage: React.FC = () => {
                 return [...prev, interest];
             }
         });
+    };
+    
+    const handleSuggestActivity = async () => {
+        if (!searchTerm.trim()) return;
+        setIsSuggestingActivity(true);
+        const { data: newActivity, error: rpcError } = await supabase.rpc('suggest_activity', {
+            p_name: searchTerm.trim(), p_icon: 'HelpCircle'
+        });
+        setIsSuggestingActivity(false);
+        if (rpcError) { setError(rpcError.message); } 
+        else if (newActivity) {
+            setAllActivities(prev => [...prev, newActivity]);
+            setSelectedActivityIds(prev => [...prev, newActivity.id]);
+            setSearchTerm('');
+        }
+    };
+
+    const handleSuggestInterest = async (tagName: string, categoryId: number): Promise<Interest | null> => {
+        setError(null);
+        const { data, error: rpcError } = await supabase.rpc('suggest_interest', {
+            p_name: tagName, p_category_id: categoryId,
+        });
+        if (rpcError) { setError(rpcError.message); return null; }
+        setAllInterests(prev => [...prev, data]);
+        return data;
+    };
+
+    const handleAiSuggestTags = async () => {
+        if (!formData.description) {
+            setError("Beskrivelsesfeltet skal være udfyldt for at bruge AI-forslag.");
+            return;
+        }
+        setIsSuggestingWithAI(true);
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            const suggestions = await suggestTagsFromDescription(formData.description, allActivities, allInterests, interestCategories);
+            
+            const activityPromises = suggestions.suggested_activities.map(name =>
+                supabase.rpc('suggest_activity', { p_name: name, p_icon: 'Sparkles' }).then(res => res.data)
+            );
+            
+            const interestPromises = suggestions.suggested_interests.map(interest => {
+                const category = interestCategories.find(c => c.name === interest.category_name);
+                if (!category) return Promise.resolve(null);
+                return supabase.rpc('suggest_interest', { p_name: interest.name, p_category_id: category.id }).then(res => res.data);
+            });
+
+            const [newActivities, newInterests] = await Promise.all([
+                Promise.all(activityPromises),
+                Promise.all(interestPromises),
+            ]);
+            
+            const validNewActivities = newActivities.filter(Boolean);
+            const validNewInterests = newInterests.filter(Boolean);
+
+            if (validNewActivities.length > 0) {
+                setAllActivities(prev => [...prev, ...validNewActivities]);
+                setSelectedActivityIds(prev => [...new Set([...prev, ...validNewActivities.map(a => a.id)])]);
+            }
+            if (validNewInterests.length > 0) {
+                setAllInterests(prev => [...prev, ...validNewInterests]);
+                setSelectedInterests(prev => {
+                    const existingIds = new Set(prev.map(i => i.id));
+                    const uniqueNew = validNewInterests.filter(i => !existingIds.has(i.id));
+                    return [...prev, ...uniqueNew];
+                });
+            }
+            
+            const totalSuggestions = validNewActivities.length + validNewInterests.length;
+            if (totalSuggestions > 0) {
+                 setSuccessMessage(`${totalSuggestions} nye tags blev foreslået og valgt!`);
+            } else {
+                setSuccessMessage("AI fandt ingen nye relevante tags at foreslå.");
+            }
+            setTimeout(() => setSuccessMessage(null), 4000);
+
+        } catch (err: any) {
+            setError(`Fejl ved AI-forslag: ${err.message}`);
+        } finally {
+            setIsSuggestingWithAI(false);
+        }
     };
 
     const handleSave = async () => {
@@ -225,13 +305,21 @@ const OrganizationSettingsPage: React.FC = () => {
                     <div><label>Facebook URL</label><input name="facebook_url" value={formData.facebook_url || ''} onChange={handleInputChange} className="input-style" /></div>
                 </div>
                 <div><label>Beskrivelse</label><textarea name="description" rows={4} value={formData.description || ''} onChange={handleInputChange} className="input-style w-full"></textarea></div>
+                
+                <div className="text-center">
+                    <button type="button" onClick={handleAiSuggestTags} disabled={isSuggestingWithAI} className="inline-flex items-center justify-center bg-accent text-white font-bold py-2 px-5 rounded-full text-sm hover:bg-accent-light transition duration-300 shadow-md disabled:opacity-70">
+                        {isSuggestingWithAI ? <Loader2 className="animate-spin mr-2"/> : <Sparkles size={16} className="mr-2" />}
+                        {isSuggestingWithAI ? 'Analyserer...' : 'AI Forslag'}
+                    </button>
+                </div>
+
 
                 <div>
                     <h3 className="text-lg font-semibold mb-2">Vælg jeres primære aktiviteter</h3>
                      <div className="relative mb-4">
                         <input
                             type="text"
-                            placeholder="Søg i aktiviteter..."
+                            placeholder="Søg eller foreslå en aktivitet..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="input-style w-full pl-10"
@@ -254,6 +342,12 @@ const OrganizationSettingsPage: React.FC = () => {
                                 </button>
                             );
                         })}
+                        {searchTerm.trim() && filteredActivities.length === 0 && (
+                            <button type="button" onClick={handleSuggestActivity} disabled={isSuggestingActivity} className="w-full flex items-center justify-center p-3 rounded-lg bg-green-100 text-green-800 font-semibold hover:bg-green-200 transition-colors disabled:opacity-70">
+                                {isSuggestingActivity ? <Loader2 size={18} className="animate-spin mr-2"/> : <PlusCircle size={18} className="mr-2"/>}
+                                Foreslå "{searchTerm.trim()}"
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -265,6 +359,8 @@ const OrganizationSettingsPage: React.FC = () => {
                         selectedTags={selectedInterests}
                         onToggleTag={handleInterestToggle as (tag: Interest | PersonalityTag) => void}
                         containerHeight="h-auto"
+                        allowSuggestions={true}
+                        onSuggestTag={handleSuggestInterest}
                     />
                 </div>
 

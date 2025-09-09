@@ -1,9 +1,84 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
-import type { User } from '../types';
-import { ArrowLeft, Users, MessageSquare, BarChart2, AlertTriangle, UserCog, Ghost } from 'lucide-react';
+import type { User, Interest, Activity, Organization } from '../types';
+import { ArrowLeft, Users, MessageSquare, BarChart2, AlertTriangle, UserCog, Ghost, Check, X, Building } from 'lucide-react';
 import LoadingScreen from '../components/LoadingScreen';
+
+interface PendingInterest extends Interest {
+    organization: Pick<Organization, 'name'>;
+}
+interface PendingActivity extends Activity {
+    organization: Pick<Organization, 'name'>;
+}
+
+const ApprovalQueue: React.FC = () => {
+    const [pendingInterests, setPendingInterests] = useState<PendingInterest[]>([]);
+    const [pendingActivities, setPendingActivities] = useState<PendingActivity[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchPending = async () => {
+            setLoading(true);
+            const interestsPromise = supabase.from('interests').select('*, organization:organizations(name)').eq('approved', false);
+            const activitiesPromise = supabase.from('activities').select('*, organization:organizations(name)').eq('approved', false);
+
+            const [interestsRes, activitiesRes] = await Promise.all([interestsPromise, activitiesPromise]);
+            
+            if (interestsRes.data) setPendingInterests(interestsRes.data as any);
+            if (activitiesRes.data) setPendingActivities(activitiesRes.data as any);
+            setLoading(false);
+        };
+        fetchPending();
+    }, []);
+
+    const handleApproval = async (id: number, type: 'interests' | 'activities', approve: boolean) => {
+        if (approve) {
+            const { error } = await supabase.from(type).update({ approved: true }).eq('id', id);
+            if (!error) {
+                if (type === 'interests') setPendingInterests(prev => prev.filter(i => i.id !== id));
+                else setPendingActivities(prev => prev.filter(a => a.id !== id));
+            }
+        } else { // Reject
+            const { error } = await supabase.from(type).delete().eq('id', id);
+             if (!error) {
+                if (type === 'interests') setPendingInterests(prev => prev.filter(i => i.id !== id));
+                else setPendingActivities(prev => prev.filter(a => a.id !== id));
+            }
+        }
+    };
+
+    const ListComponent: React.FC<{ title: string, items: (PendingInterest | PendingActivity)[], type: 'interests' | 'activities' }> = ({ title, items, type }) => (
+        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm">
+            <h3 className="font-bold text-text-primary dark:text-dark-text-primary mb-2">{title} ({items.length})</h3>
+            {items.length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {items.map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-dark-surface-light rounded-md">
+                            <div>
+                                <p className="font-semibold">{item.name}</p>
+                                <p className="text-xs text-text-secondary dark:text-dark-text-secondary flex items-center"><Building size={12} className="mr-1"/> Foreslået af: {(item as any).organization?.name || 'Ukendt'}</p>
+                            </div>
+                            <div className="flex space-x-2">
+                                <button onClick={() => handleApproval(item.id, type, true)} className="p-2 bg-green-100 text-green-700 rounded-full hover:bg-green-200"><Check size={16}/></button>
+                                <button onClick={() => handleApproval(item.id, type, false)} className="p-2 bg-red-100 text-red-700 rounded-full hover:bg-red-200"><X size={16}/></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : <p className="text-sm text-text-secondary dark:text-dark-text-secondary">Ingen afventende forslag.</p>}
+        </div>
+    );
+    
+    if (loading) return <div>Indlæser forslag...</div>;
+
+    return (
+        <div className="grid md:grid-cols-2 gap-4">
+            <ListComponent title="Interesser til godkendelse" items={pendingInterests} type="interests" />
+            <ListComponent title="Aktiviteter til godkendelse" items={pendingActivities} type="activities" />
+        </div>
+    );
+};
 
 const AdminPage: React.FC = () => {
     const navigate = useNavigate();
@@ -111,6 +186,12 @@ const AdminPage: React.FC = () => {
                             <p className="text-sm text-text-secondary">Aktive Chats</p>
                         </div>
                     </div>
+                </section>
+
+                 {/* Approvals */}
+                <section>
+                    <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Godkendelser</h2>
+                    <ApprovalQueue />
                 </section>
                 
                 {/* Actions */}

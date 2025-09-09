@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
     ArrowLeft, Camera, Building, Loader2, Search,
-    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, PenTool, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical
+    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, PenTool, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical, PlusCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
@@ -46,10 +46,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; fallba
         let isMounted = true;
 
         const processUrl = async () => {
-            if (!src) {
-                if (isMounted) { setIsLoading(false); setDisplayUrl(''); }
-                return;
-            }
+            if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
             setIsLoading(true);
             if (src.startsWith('blob:') || src.startsWith('http')) {
                 setDisplayUrl(src);
@@ -94,15 +91,18 @@ const ConfirmOrganizationPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  // New state for activity search and pagination
+  // New state for activity search and suggestion
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
-  const [visibleActivityCount, setVisibleActivityCount] = useState(6);
+  const [isSuggestingActivity, setIsSuggestingActivity] = useState(false);
+
+  const fetchActivities = async () => {
+    const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
+    setAllActivities(activitiesData || []);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
-        const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
-        setAllActivities(activitiesData || []);
-        
+        fetchActivities();
         const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
         const { data: iData } = await supabase.from('interests').select('*');
         setInterestCategories(iCatData || []);
@@ -111,19 +111,44 @@ const ConfirmOrganizationPage: React.FC = () => {
     fetchData();
   }, []);
   
-  const handleActivitySearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setActivitySearchTerm(e.target.value);
-    setVisibleActivityCount(6); // Reset pagination on new search
-  };
-
   const filteredActivities = useMemo(() => {
-    if (!activitySearchTerm) {
-        return allActivities;
-    }
+    if (!activitySearchTerm) return allActivities;
     return allActivities.filter(activity =>
         activity.name.toLowerCase().includes(activitySearchTerm.toLowerCase())
     );
   }, [allActivities, activitySearchTerm]);
+
+  const handleSuggestActivity = async () => {
+    if (!activitySearchTerm.trim()) return;
+    setIsSuggestingActivity(true);
+    const { data: newActivity, error: rpcError } = await supabase.rpc('suggest_activity', {
+        p_name: activitySearchTerm.trim(),
+        p_icon: 'HelpCircle', // Default icon for suggested activities
+    });
+    setIsSuggestingActivity(false);
+
+    if (rpcError) {
+        setError(rpcError.message);
+    } else if (newActivity) {
+        setAllActivities(prev => [...prev, newActivity]);
+        setSelectedActivityIds(prev => [...prev, newActivity.id]);
+        setActivitySearchTerm('');
+    }
+  };
+
+  const handleSuggestInterest = async (tagName: string, categoryId: number): Promise<Interest | null> => {
+    setError(null);
+    const { data, error: rpcError } = await supabase.rpc('suggest_interest', {
+        p_name: tagName,
+        p_category_id: categoryId,
+    });
+    if (rpcError) {
+        setError(rpcError.message);
+        return null;
+    }
+    setAllInterests(prev => [...prev, data]);
+    return data;
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -336,15 +361,15 @@ const ConfirmOrganizationPage: React.FC = () => {
                         <div className="relative mb-4">
                             <input
                                 type="text"
-                                placeholder="Søg i aktiviteter..."
+                                placeholder="Søg eller foreslå en aktivitet..."
                                 value={activitySearchTerm}
-                                onChange={handleActivitySearchChange}
+                                onChange={(e) => setActivitySearchTerm(e.target.value)}
                                 className="input-style w-full pl-10"
                             />
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
                         <div className="flex flex-wrap gap-3">
-                           {filteredActivities.slice(0, visibleActivityCount).map(activity => {
+                           {filteredActivities.map(activity => {
                                 const IconComponent = iconMap[activity.icon] || Building;
                                 const isSelected = selectedActivityIds.includes(activity.id);
                                 return (
@@ -355,18 +380,13 @@ const ConfirmOrganizationPage: React.FC = () => {
                                     </button>
                                 );
                            })}
-                        </div>
-                        {visibleActivityCount < filteredActivities.length && (
-                            <div className="text-center mt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setVisibleActivityCount(prev => prev + 6)}
-                                    className="text-primary font-semibold hover:underline"
-                                >
-                                    Vis flere
+                           {activitySearchTerm.trim() && filteredActivities.length === 0 && (
+                                <button type="button" onClick={handleSuggestActivity} disabled={isSuggestingActivity} className="w-full flex items-center justify-center p-3 rounded-lg bg-green-100 text-green-800 font-semibold hover:bg-green-200 transition-colors disabled:opacity-70">
+                                    {isSuggestingActivity ? <Loader2 size={18} className="animate-spin mr-2"/> : <PlusCircle size={18} className="mr-2"/>}
+                                    Foreslå "{activitySearchTerm.trim()}"
                                 </button>
-                            </div>
-                        )}
+                           )}
+                        </div>
                     </section>
 
                     <section>
@@ -377,6 +397,8 @@ const ConfirmOrganizationPage: React.FC = () => {
                             selectedTags={selectedInterests}
                             onToggleTag={handleInterestToggle}
                             containerHeight="h-auto"
+                            allowSuggestions={true}
+                            onSuggestTag={handleSuggestInterest}
                         />
                     </section>
 
