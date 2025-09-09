@@ -183,8 +183,8 @@ const OrganizationSettingsPage: React.FC = () => {
         try {
             const suggestions = await suggestTagsFromDescription(formData.description, allActivities, allInterests, interestCategories);
             
-            const activityPromises = suggestions.suggested_activities.map(name =>
-                supabase.rpc('suggest_activity', { p_name: name, p_icon: 'Sparkles' }).then(res => res.data)
+            const activityPromises = suggestions.suggested_activities.map(activity =>
+                supabase.rpc('suggest_activity', { p_name: activity.name, p_icon: activity.icon }).then(res => res.data)
             );
             
             const interestPromises = suggestions.suggested_interests.map(interest => {

@@ -20,8 +20,8 @@ const ApprovalQueue: React.FC = () => {
     useEffect(() => {
         const fetchPending = async () => {
             setLoading(true);
-            const interestsPromise = supabase.from('interests').select('*, organization:organizations(name)').eq('approved', false);
-            const activitiesPromise = supabase.from('activities').select('*, organization:organizations(name)').eq('approved', false);
+            const interestsPromise = supabase.from('interests').select('*, organization:organizations!created_by_organization_id(name)').eq('approved', false);
+            const activitiesPromise = supabase.from('activities').select('*, organization:organizations!created_by_organization_id(name)').eq('approved', false);
 
             const [interestsRes, activitiesRes] = await Promise.all([interestsPromise, activitiesPromise]);
             

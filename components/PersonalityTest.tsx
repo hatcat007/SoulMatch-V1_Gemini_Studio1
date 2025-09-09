@@ -2,9 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, CheckCircle, Lock, Server } from 'lucide-react';
 import { usePersistentState } from '../hooks/useNotifications';
 import { analyzePersonality } from '../services/geminiService';
+import SecurityPersonalityAnimation from './SecurityPersonalityAnimation';
+
 
 interface PersonalityTestProps {
     onTestComplete: () => void;
@@ -234,10 +236,38 @@ const PersonalityTest: React.FC<PersonalityTestProps> = ({ onTestComplete }) => 
                             exit={{ opacity: 0, scale: 0.9 }}
                         >
                             <div className="bg-white dark:bg-dark-surface p-8 rounded-2xl shadow-xl text-center">
-                                <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Personlighedstest</h1>
-                                <p className="text-text-secondary dark:text-dark-text-secondary mb-6">
-                                    Denne test hjælper os med at finde de bedste matches til dig. Svar ærligt for det bedste resultat. Dine svar er private.
+                                <div className="flex justify-center mb-6">
+                                    <SecurityPersonalityAnimation />
+                                </div>
+                                <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Din Personlighedstest</h1>
+                                <p className="text-text-secondary dark:text-dark-text-secondary mb-8">
+                                    Dine svar hjælper vores AI med at finde de mest meningsfulde venskaber til dig.
                                 </p>
+                                
+                                <div className="space-y-4 text-left text-sm mb-8">
+                                    <div className="flex items-start space-x-3">
+                                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Svar Ærligt</h3>
+                                            <p className="text-text-secondary dark:text-dark-text-secondary">For det mest præcise resultat er det vigtigt, at du svarer ærligt ud fra, hvem du er.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start space-x-3">
+                                        <Lock className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Dine Svar er Private</h3>
+                                            <p className="text-text-secondary dark:text-dark-text-secondary">Dine specifikke svar bliver aldrig delt med andre brugere. Kun det endelige resultat vises på din profil.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start space-x-3">
+                                        <Server className="w-5 h-5 text-gray-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Sikker & Fortrolig Data</h3>
+                                            <p className="text-text-secondary dark:text-dark-text-secondary">Al data gemmes fortroligt på GDPR-venlige servere i Schweiz med militær-grade end-to-end kryptering.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="space-y-3">
                                     <button onClick={() => startTest(false)} className="w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg">
                                         Start Test

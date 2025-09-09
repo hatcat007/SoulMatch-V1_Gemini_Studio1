@@ -293,7 +293,7 @@ export async function generateProfileDescription(profile: {
 }
 
 /**
- * Suggests new activities and interests based on an organization's description by calling a secure Vercel API Route.
+ * Suggests new activities and interests based on an organization's description by calling a secure Supabase Edge Function.
  */
 export async function suggestTagsFromDescription(
     description: string,
@@ -301,30 +301,28 @@ export async function suggestTagsFromDescription(
     existingInterests: Interest[],
     interestCategories: InterestCategory[]
 ): Promise<{
-    suggested_activities: string[];
+    suggested_activities: { name: string; icon: string }[];
     suggested_interests: { name: string; category_name: string }[];
 }> {
     try {
-        const response = await fetch('/api/suggest-tags-ai', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ description, existingActivities, existingInterests, interestCategories }),
+        const { data, error } = await supabase.functions.invoke('suggest-tags-ai', {
+            body: { description, existingActivities, existingInterests, interestCategories },
         });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Unknown error from API route.');
+        if (error) {
+            if (error.context && typeof error.context.error === 'string') {
+                 throw new Error(error.context.error);
+            }
+            throw new Error(error.message || 'Unknown error from AI function.');
         }
 
-        // The data returned from the function should match the expected structure.
-        // We still perform validation on the client as a safeguard.
-        const activitiesFromAI: string[] = (Array.isArray(data.suggested_activities) ? data.suggested_activities : [])
-            .filter((name: unknown): name is string => typeof name === 'string');
+        const activitiesFromAI: { name: string; icon: string }[] = (Array.isArray(data.suggested_activities) ? data.suggested_activities : [])
+            .filter((activity: any): activity is { name: string; icon: string } => 
+                activity && typeof activity.name === 'string' && typeof activity.icon === 'string'
+            );
         const existingActivityNames = existingActivities.map(a => a.name.toLowerCase());
-        const uniqueActivities = [...new Set(activitiesFromAI.filter((name: string) => !existingActivityNames.includes(name.toLowerCase())))];
+        const uniqueActivities = activitiesFromAI.filter(activity => !existingActivityNames.includes(activity.name.toLowerCase()));
+
 
         const interestCategoryNames = interestCategories.map(c => c.name);
         const interestsFromAI: { name: string; category_name: string }[] = (Array.isArray(data.suggested_interests) ? data.suggested_interests : [])
@@ -342,7 +340,7 @@ export async function suggestTagsFromDescription(
         };
 
     } catch (e) {
-        console.error("Failed to fetch from /api/suggest-tags-ai:", e);
+        console.error("Failed to invoke Supabase function 'suggest-tags-ai':", e);
         throw new Error(`Fejl ved AI-forslag: ${e instanceof Error ? e.message : String(e)}`);
     }
 }

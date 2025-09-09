@@ -79,6 +79,11 @@ USING (
   OR
   created_by_organization_id = get_current_organization_id()
 );
+-- Add admin policy for interests
+CREATE POLICY "Admins can see all interests"
+ON public.interests
+FOR SELECT
+USING ( (SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true );
 
 -- For activities
 ALTER TABLE public.activities ENABLE ROW LEVEL SECURITY;
