@@ -16,25 +16,46 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; fallba
         let isMounted = true;
 
         const processUrl = async () => {
-            if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
             setIsLoading(true);
-            if (src.startsWith('blob:') || src.startsWith('http')) {
-                setDisplayUrl(src);
-                setIsLoading(false);
-            } else {
-                try {
-                    const fetchedBlobUrl = await fetchPrivateFile(src);
-                    if (isMounted) { objectUrlToRevoke = fetchedBlobUrl; setDisplayUrl(fetchedBlobUrl); }
-                } catch(e) { console.error("Failed to fetch private image", e); if (isMounted) setDisplayUrl(''); } 
-                finally { if (isMounted) setIsLoading(false); }
+            if (!src) {
+                if(isMounted) {
+                    setDisplayUrl('');
+                    setIsLoading(false);
+                }
+                return;
+            }
+
+            try {
+                const url = await fetchPrivateFile(src);
+                if (isMounted) {
+                    // If fetchPrivateFile returns a new blob URL, we need to track it for cleanup.
+                    // The service returns the original URL if it's already a blob, so this handles both cases.
+                    if (url.startsWith('blob:')) {
+                        objectUrlToRevoke = url;
+                    }
+                    setDisplayUrl(url);
+                }
+            } catch (e) {
+                console.error("Failed to process image source:", e);
+                if(isMounted) setDisplayUrl('');
+            } finally {
+                if(isMounted) setIsLoading(false);
             }
         };
+
         processUrl();
-        return () => { isMounted = false; if (objectUrlToRevoke) { URL.revokeObjectURL(objectUrlToRevoke); } };
+
+        return () => {
+            isMounted = false;
+            // Revoke the blob URL when the component unmounts or the src changes
+            if (objectUrlToRevoke) {
+                URL.revokeObjectURL(objectUrlToRevoke);
+            }
+        };
     }, [src]);
 
     if (isLoading) return <div className={`${className} flex items-center justify-center`}><Loader2 className="animate-spin text-gray-400" /></div>;
-    if (!displayUrl) return <div className={className}>{fallback}</div>;
+    if (!displayUrl) return <div className={`${className} flex items-center justify-center`}>{fallback}</div>;
     return <img src={displayUrl} alt={alt} className={className} />;
 };
 
@@ -123,7 +144,7 @@ const OrganizationSettingsPage: React.FC = () => {
                 setError('Billedupload fejlede. Prøv igen.');
                 setFormData(prev => ({ ...prev, [field]: organization?.[field] || '' }));
             } finally {
-                if (previewUrl) URL.revokeObjectURL(previewUrl);
+                // The SmartImage component will handle revoking the object URL
             }
         }
     };

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Search, Lock } from 'lucide-react';
+import { Search, Lock, Loader2, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { MessageThread, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
@@ -10,14 +11,19 @@ import LoadingScreen from '../components/LoadingScreen';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let objectUrl: string | null = null;
         if (src) {
+            setLoading(true);
             fetchPrivateFile(src).then(url => {
                 objectUrl = url;
                 setImageUrl(url);
+                setLoading(false);
             });
+        } else {
+            setLoading(false);
         }
 
         return () => {
@@ -27,11 +33,14 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
         };
     }, [src]);
 
-    if(!imageUrl && src) {
-        return <div className={`${className} bg-gray-200`} />;
+    if(loading) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light`}><Loader2 className="animate-spin text-gray-400" size={20}/></div>;
+    }
+    if(!imageUrl) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light`}><ImageIcon className="text-gray-400" size={20}/></div>;
     }
 
-    return imageUrl ? <img src={imageUrl} alt={alt} className={className} /> : <img src={src} alt={alt} className={className} />;
+    return <img src={imageUrl} alt={alt} className={className} />;
 };
 
 const ChatListPage: React.FC = () => {
@@ -113,8 +122,8 @@ const ChatListPage: React.FC = () => {
     
     const getOtherParticipant = (thread: MessageThread): User | null => {
         if (thread.id === 'ai-mentor') return thread.participants[0].user;
-        const participant = thread.participants.find(p => p.user && p.user.id !== currentUser?.id);
-        return participant ? participant.user : null;
+        const participant = thread.participants.find(p => p.user?.id && p.user.id !== currentUser?.id);
+        return participant?.user || null;
     }
 
     const allThreads = [aiMentorThread, ...threads];

@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { X, SlidersHorizontal, Sun, Moon, Coffee } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
-import type { Category, Interest } from '../types';
+import type { Category, Interest, Activity } from '../types';
 
 export interface Filters {
     categoryId: number | null;
     date: string | null;
     timeOfDay: 'morning' | 'afternoon' | 'evening' | null;
     interestIds: number[];
+    activityIds: number[];
     creatorType: 'all' | 'user' | 'org';
 }
 
@@ -22,6 +23,7 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
     const [filters, setFilters] = useState<Filters>(currentFilters);
     const [categories, setCategories] = useState<Category[]>([]);
     const [interests, setInterests] = useState<Interest[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
     
     useEffect(() => {
         const fetchData = async () => {
@@ -30,6 +32,9 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
 
             const { data: intData } = await supabase.from('interests').select('*').order('name');
             if (intData) setInterests(intData);
+
+            const { data: actData } = await supabase.from('activities').select('*').eq('approved', true).order('name');
+            if (actData) setActivities(actData);
         };
         fetchData();
     }, []);
@@ -44,6 +49,7 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
             date: null,
             timeOfDay: null,
             interestIds: [],
+            activityIds: [],
             creatorType: 'all' as const
         };
         setFilters(resetFilters);
@@ -56,6 +62,15 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
                 ? prev.interestIds.filter(i => i !== id)
                 : [...prev.interestIds, id];
             return { ...prev, interestIds: newIds };
+        });
+    };
+    
+    const handleActivityToggle = (id: number) => {
+        setFilters(prev => {
+            const newIds = prev.activityIds.includes(id)
+                ? prev.activityIds.filter(i => i !== id)
+                : [...prev.activityIds, id];
+            return { ...prev, activityIds: newIds };
         });
     };
 
@@ -147,6 +162,22 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
                                     className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 ${filters.interestIds.includes(interest.id) ? 'bg-primary border-primary text-white' : 'bg-white dark:bg-dark-surface border-transparent hover:border-gray-300 dark:hover:border-dark-border'}`}
                                 >
                                     {interest.name}
+                                </button>
+                            ))}
+                         </div>
+                    </div>
+                    {/* Activities */}
+                    <div>
+                         <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Aktiviteter</label>
+                         <div className="max-h-40 overflow-y-auto flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-surface-light rounded-lg">
+                            {activities.map(activity => (
+                                <button
+                                    key={activity.id}
+                                    type="button"
+                                    onClick={() => handleActivityToggle(activity.id)}
+                                    className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 ${filters.activityIds.includes(activity.id) ? 'bg-primary border-primary text-white' : 'bg-white dark:bg-dark-surface border-transparent hover:border-gray-300 dark:hover:border-dark-border'}`}
+                                >
+                                    {activity.name}
                                 </button>
                             ))}
                          </div>

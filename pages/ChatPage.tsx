@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Send, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin, Lock } from 'lucide-react';
@@ -168,10 +169,11 @@ const ChatPage: React.FC = () => {
             
             if (threadData) {
                 setThread(threadData as any);
-                const other = threadData.participants.find(p => p.user.id !== currentUser.id)?.user;
-                setOtherUser(other || null);
+                const participant = threadData.participants.find(p => p.user?.id && p.user.id !== currentUser.id);
+                setOtherUser(participant?.user || null);
 
-                if (other) {
+                if (participant?.user) {
+                    const other = participant.user;
                     const u1 = Math.min(currentUser.id, other.id);
                     const u2 = Math.max(currentUser.id, other.id);
                     const { data: friendshipData } = await supabase.from('friends').select('*').eq('user_id_1', u1).eq('user_id_2', u2).single();

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Loader2, Image as ImageIcon } from 'lucide-react';
 import { fetchPrivateFile } from '../services/s3Service';
@@ -39,16 +40,33 @@ const PrivateSlideImage: React.FC<{src: string, alt: string}> = ({ src, alt }) =
          return <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light"><ImageIcon className="text-gray-400" size={32}/></div>;
     }
 
-    return <img src={imageUrl} alt={alt} className="w-full h-full object-cover" />;
+    return <img src={imageUrl} alt={alt} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />;
 };
 
 // FIX: Define a constant for the motion component to help TypeScript resolve types.
 const MotionDiv = motion.div;
 
-const ImageSlideshow: React.FC<{ images?: ImageRecord[], alt: string }> = ({ images, alt }) => {
+interface ImageSlideshowProps {
+    imageUrl?: string;
+    images?: ImageRecord[];
+    alt: string;
+}
+
+const ImageSlideshow: React.FC<ImageSlideshowProps> = ({ imageUrl, images, alt }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
 
-    const validImages = images?.filter(img => img && img.image_url) || [];
+    const validImages = useMemo(() => {
+        const urls = new Set<string>();
+        if (imageUrl) {
+            urls.add(imageUrl);
+        }
+        images?.forEach(img => {
+            if (img && img.image_url) {
+                urls.add(img.image_url);
+            }
+        });
+        return Array.from(urls).map((url, index) => ({ id: index, image_url: url }));
+    }, [imageUrl, images]);
 
     useEffect(() => {
         if (validImages.length <= 1) return;

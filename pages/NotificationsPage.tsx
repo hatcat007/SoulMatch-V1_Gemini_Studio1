@@ -1,11 +1,44 @@
 
-
-
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Info } from 'lucide-react';
+import { ArrowLeft, Trash2, Info, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import type { Notification } from '../types';
+import { fetchPrivateFile } from '../services/s3Service';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            setLoading(true);
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+                setLoading(false);
+            });
+        } else {
+            setLoading(false);
+        }
+
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if(loading) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light`}><Loader2 className="animate-spin text-gray-400" size={20}/></div>;
+    }
+    if(!imageUrl) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light`}><ImageIcon className="text-gray-400" size={20}/></div>;
+    }
+
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
 
 const formatRelativeTime = (createdAt: string): string => {
   const timestamp = new Date(createdAt).getTime();
@@ -53,7 +86,7 @@ const NotificationItem: React.FC<{ notification: Notification }> = ({ notificati
     <div className={`flex items-start space-x-4 py-3 px-2 rounded-lg ${!notification.read ? 'bg-primary-light/50 dark:bg-primary/10' : ''}`}>
       <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center">
         {notification.actor ? (
-          <img src={notification.actor.avatar_url} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200 dark:ring-dark-border" />
+          <PrivateImage src={notification.actor.avatar_url} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200 dark:ring-dark-border" />
         ) : (
           <div className="w-12 h-12 bg-primary-light dark:bg-dark-surface-light rounded-full flex items-center justify-center text-2xl text-primary">
             <Info />

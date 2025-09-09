@@ -56,14 +56,13 @@ const AppContent: React.FC = () => {
   const [places, setPlaces] = useState<Place[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   
+  const eventsQuery = '*, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_participants ( count ), category:categories(*), interests:interests(*), images:event_images(id, image_url)';
+  
   const fetchPageData = useCallback(async () => {
     setDataLoading(true);
     
-    const eventsPromise = supabase
-        .from('events')
-        .select(`*, organization:organizations(logo_url), event_participants ( count ), category:categories(*), interests:interests(*)`);
-    const onlineUsersPromise = supabase
-        .from('users').select('*').eq('online', true).limit(10);
+    const eventsPromise = supabase.from('events').select(eventsQuery);
+    const onlineUsersPromise = supabase.from('users').select('*').eq('online', true).limit(10);
     const placesPromise = supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*)');
 
     const [eventsRes, usersRes, placesRes] = await Promise.all([eventsPromise, onlineUsersPromise, placesPromise]);
@@ -78,7 +77,7 @@ const AppContent: React.FC = () => {
     else setPlaces((placesRes.data || []) as Place[]);
 
     setDataLoading(false);
-  }, []);
+  }, [eventsQuery]);
 
   useEffect(() => {
     if (user && !organization) {
@@ -94,7 +93,7 @@ const AppContent: React.FC = () => {
       if (!user) return;
 
       const fetchEvents = async () => {
-          const { data: eventsData } = await supabase.from('events').select(`*, organization:organizations(logo_url), event_participants ( count ), category:categories(*), interests:interests(*)`);
+          const { data: eventsData } = await supabase.from('events').select(eventsQuery);
           if (eventsData) setEvents(eventsData.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
       };
 
@@ -106,6 +105,7 @@ const AppContent: React.FC = () => {
       const eventsChannel = supabase.channel('realtime events')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, fetchEvents)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, fetchEvents)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'event_images' }, fetchEvents)
           .subscribe();
           
       const placesChannel = supabase.channel('realtime places')
@@ -116,7 +116,7 @@ const AppContent: React.FC = () => {
           supabase.removeChannel(eventsChannel);
           supabase.removeChannel(placesChannel);
       };
-  }, [user]);
+  }, [user, eventsQuery]);
 
   const isUser = session && user;
   const isOrganization = session && organization;

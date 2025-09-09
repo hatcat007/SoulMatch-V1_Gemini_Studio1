@@ -1,20 +1,57 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, UserX, UserMinus, Loader2, UserPlus } from 'lucide-react';
+import { ArrowLeft, UserX, UserMinus, Loader2, UserPlus, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import type { User, Friendship } from '../types';
 import LoadingScreen from '../components/LoadingScreen';
+import { fetchPrivateFile } from '../services/s3Service';
 
 interface FriendshipWithUser extends Friendship {
     friend: User;
 }
 
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            setLoading(true);
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+                setLoading(false);
+            });
+        } else {
+            setLoading(false);
+        }
+
+        return () => {
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [src]);
+
+    if(loading) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light`}><Loader2 className="animate-spin text-gray-400" size={20}/></div>;
+    }
+    if(!imageUrl) {
+        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light`}><ImageIcon className="text-gray-400" size={20}/></div>;
+    }
+
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
+
 const FriendsPage: React.FC = () => {
     const navigate = useNavigate();
-    const [currentTab, setCurrentTab] = useState<'friends' | 'requests'>('friends');
+    const [currentTab, setCurrentTab] = useState<'friends' | 'requests' | 'sent'>('friends');
 
     const [friends, setFriends] = useState<FriendshipWithUser[]>([]);
     const [requests, setRequests] = useState<FriendshipWithUser[]>([]);
+    const [sentRequests, setSentRequests] = useState<FriendshipWithUser[]>([]);
     
     const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState<number | null>(null);
@@ -39,6 +76,7 @@ const FriendsPage: React.FC = () => {
         } else {
             const accepted: FriendshipWithUser[] = [];
             const pending: FriendshipWithUser[] = [];
+            const sent: FriendshipWithUser[] = [];
 
             friendships.forEach((f: any) => {
                 const friendUser = f.user_id_1 === userProfile.id ? f.user2 : f.user1;
@@ -48,13 +86,18 @@ const FriendsPage: React.FC = () => {
 
                 if (f.status === 'accepted') {
                     accepted.push(friendshipWithUser);
-                } else if (f.status === 'pending' && f.action_user_id !== userProfile.id) {
-                    pending.push(friendshipWithUser);
+                } else if (f.status === 'pending') {
+                    if (f.action_user_id !== userProfile.id) {
+                        pending.push(friendshipWithUser);
+                    } else {
+                        sent.push(friendshipWithUser);
+                    }
                 }
             });
 
             setFriends(accepted);
             setRequests(pending);
+            setSentRequests(sent);
         }
         setLoading(false);
     }, [navigate]);
@@ -93,9 +136,14 @@ const FriendsPage: React.FC = () => {
     const renderFriendList = (list: FriendshipWithUser[]) => {
         if (loading) return <LoadingScreen message="Indlæser..." />;
         if (list.length === 0) {
+            const messages = {
+                friends: 'Du har ingen venner endnu.',
+                requests: 'Ingen nye venneanmodninger.',
+                sent: 'Du har ingen sendte anmodninger.'
+            };
             return (
-                <div className="text-center p-8 text-text-secondary">
-                    <p>{currentTab === 'friends' ? 'Du har ingen venner endnu.' : 'Ingen nye venneanmodninger.'}</p>
+                <div className="text-center p-8 text-text-secondary dark:text-dark-text-secondary">
+                    <p>{messages[currentTab]}</p>
                 </div>
             );
         }
@@ -104,7 +152,7 @@ const FriendsPage: React.FC = () => {
                 {list.map(({ id, friend }) => (
                     <div key={id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-dark-surface-light">
                         <div className="flex items-center">
-                            <img src={friend.avatar_url} alt={friend.name} className="w-12 h-12 rounded-full mr-3" />
+                            <PrivateImage src={friend.avatar_url} alt={friend.name} className="w-12 h-12 rounded-full mr-3 object-cover" />
                             <span className="font-semibold text-text-primary dark:text-dark-text-primary">{friend.name}</span>
                         </div>
                         {currentTab === 'requests' ? (
@@ -112,6 +160,10 @@ const FriendsPage: React.FC = () => {
                                 <button onClick={() => handleAcceptRequest(id, friend.id)} className="px-4 py-2 bg-primary text-white rounded-full hover:bg-primary-dark font-semibold text-sm transition-colors">Start match</button>
                                 <button onClick={() => handleDeclineRequest(id)} className="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200" aria-label="Decline"><UserX size={20} /></button>
                             </div>
+                        ) : currentTab === 'sent' ? (
+                            <button onClick={() => handleRemoveFriend(id)} className="px-4 py-2 bg-gray-200 dark:bg-dark-surface-light text-gray-700 dark:text-dark-text-secondary rounded-full hover:bg-red-100 dark:hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400 font-semibold text-sm transition-colors">
+                                Annuller
+                            </button>
                         ) : (
                             <button onClick={() => handleRemoveFriend(id)} className="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 dark:bg-dark-surface-light dark:text-dark-text-secondary" aria-label="Remove friend"><UserMinus size={20} /></button>
                         )}
@@ -131,17 +183,19 @@ const FriendsPage: React.FC = () => {
             
             <nav className="flex-shrink-0 border-b border-gray-200 dark:border-dark-border">
                 <div className="flex justify-around">
-                    <button onClick={() => setCurrentTab('friends')} className={`w-full py-3 text-center font-semibold transition-colors ${currentTab === 'friends' ? 'text-primary border-b-2 border-primary' : 'text-text-secondary dark:text-dark-text-secondary'}`}>Venner ({friends.length})</button>
-                    <button onClick={() => setCurrentTab('requests')} className={`w-full py-3 text-center font-semibold transition-colors relative ${currentTab === 'requests' ? 'text-primary border-b-2 border-primary' : 'text-text-secondary dark:text-dark-text-secondary'}`}>
+                    <button onClick={() => setCurrentTab('friends')} className={`w-full py-3 text-center font-semibold transition-colors text-sm ${currentTab === 'friends' ? 'text-primary border-b-2 border-primary' : 'text-text-secondary dark:text-dark-text-secondary'}`}>Venner ({friends.length})</button>
+                    <button onClick={() => setCurrentTab('requests')} className={`w-full py-3 text-center font-semibold transition-colors relative text-sm ${currentTab === 'requests' ? 'text-primary border-b-2 border-primary' : 'text-text-secondary dark:text-dark-text-secondary'}`}>
                         Anmodninger
                         {requests.length > 0 && <span className="absolute top-2 right-4 bg-primary text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">{requests.length}</span>}
                     </button>
+                    <button onClick={() => setCurrentTab('sent')} className={`w-full py-3 text-center font-semibold transition-colors text-sm ${currentTab === 'sent' ? 'text-primary border-b-2 border-primary' : 'text-text-secondary dark:text-dark-text-secondary'}`}>Sendte ({sentRequests.length})</button>
                 </div>
             </nav>
 
             <main className="flex-1 overflow-y-auto p-4">
                 {currentTab === 'friends' && renderFriendList(friends)}
                 {currentTab === 'requests' && renderFriendList(requests)}
+                {currentTab === 'sent' && renderFriendList(sentRequests)}
             </main>
         </div>
     );

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, Phone, Clock, MapPin, Share2, CheckSquare, ImageIcon, Users } from 'lucide-react';
@@ -90,7 +91,7 @@ const PlaceDetailModal: React.FC<{ place: Place, onClose: () => void, onShare: (
 
         <main className="overflow-y-auto pb-4">
             <div className="mb-4">
-                <ImageSlideshow images={place.images} alt={place.name} />
+                <ImageSlideshow imageUrl={place.image_url} images={place.images} alt={place.name} />
             </div>
 
             <div className="mb-6 space-y-3">

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Info, Ticket, MapPin, Clock, Users, Calendar, Heart, Share2, User as UserIcon } from 'lucide-react';
@@ -228,7 +229,7 @@ const EventDetailPage: React.FC = () => {
             <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
                 {/* Hero Image Section */}
                 <div className="relative">
-                    <ImageSlideshow images={event.images} alt={event.title} />
+                    <ImageSlideshow imageUrl={event.image_url} images={event.images} alt={event.title} />
                     
                     {/* Event Title Overlay */}
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6">

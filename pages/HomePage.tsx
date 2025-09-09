@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, ImageIcon, Loader2, Users, Clock, Sparkles } from 'lucide-react';
-import type { Event, User, Interest, Category } from '../types';
+import type { Event, User, Interest, Category, Activity } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import { AnimatePresence } from 'framer-motion';
 import EventFilterModal, { Filters } from '../components/EventFilterModal';
+import ImageSlideshow from '../components/ImageSlideshow';
 
 interface HomePageProps {
     events: Event[];
@@ -79,10 +80,10 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
 
     return (
         <div className="relative bg-white dark:bg-dark-surface rounded-2xl shadow-sm h-full flex flex-col overflow-hidden group">
-            {event.image_url ? (
+            {event.image_url || (event.images && event.images.length > 0) ? (
                 <div className="aspect-square overflow-hidden relative">
-                    <PrivateImage src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <div className="absolute top-3 left-3">
+                    <ImageSlideshow imageUrl={event.image_url} images={event.images} alt={event.title} />
+                    <div className="absolute top-3 left-3 z-10">
                         <DateDisplay />
                     </div>
                 </div>
@@ -145,6 +146,8 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
     // State to hold names for interests and categories for display
     const [interestMap, setInterestMap] = useState<Map<string, string>>(new Map());
     const [categoryMap, setCategoryMap] = useState<Map<string, string>>(new Map());
+    const [activityMap, setActivityMap] = useState<Map<string, string>>(new Map());
+
 
     useEffect(() => {
         const fetchNames = async () => {
@@ -153,6 +156,9 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
             
             const { data: categories } = await supabase.from('categories').select('id, name');
             if (categories) setCategoryMap(new Map(categories.map(c => [c.id.toString(), c.name])));
+
+            const { data: activities } = await supabase.from('activities').select('id, name');
+            if (activities) setActivityMap(new Map(activities.map(a => [a.id.toString(), a.name])));
         };
         fetchNames();
     }, []);
@@ -160,9 +166,9 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
     const currentFilters = useMemo((): Filters => ({
         categoryId: searchParams.get('categoryId') ? parseInt(searchParams.get('categoryId')!, 10) : null,
         date: searchParams.get('date') || null,
-        // FIX: Cast timeOfDay from search params to the correct string literal union type.
         timeOfDay: (searchParams.get('timeOfDay') as Filters['timeOfDay']) || null,
         interestIds: searchParams.getAll('interests').map(Number),
+        activityIds: searchParams.getAll('activities').map(Number),
         creatorType: (searchParams.get('creatorType') as Filters['creatorType']) || 'all',
     }), [searchParams]);
 
@@ -215,6 +221,12 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
                 const eventInterestIds = new Set(event.interests.map(i => i.id));
                 if (!currentFilters.interestIds.every(id => eventInterestIds.has(id))) return false;
             }
+
+            if (currentFilters.activityIds.length > 0) {
+                if (!event.organization_id || !event.organization?.activities || event.organization.activities.length === 0) return false;
+                const eventActivityIds = new Set(event.organization.activities.map(a => a.activity.id));
+                if (!currentFilters.activityIds.every(id => eventActivityIds.has(id))) return false;
+            }
             
             return true;
         });
@@ -227,6 +239,7 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
         if (filters.timeOfDay) newParams.set('timeOfDay', filters.timeOfDay);
         if (filters.creatorType && filters.creatorType !== 'all') newParams.set('creatorType', filters.creatorType);
         filters.interestIds.forEach(id => newParams.append('interests', id.toString()));
+        filters.activityIds.forEach(id => newParams.append('activities', id.toString()));
         setSearchParams(newParams);
         setIsFilterModalOpen(false);
     };
@@ -258,8 +271,11 @@ const HomePage: React.FC<HomePageProps> = ({ events, onlineUsers }) => {
         currentFilters.interestIds.forEach(id => {
             pills.push({ key: 'interests', value: id.toString(), label: `Interesse: ${interestMap.get(id.toString()) || '...'}` });
         });
+        currentFilters.activityIds.forEach(id => {
+            pills.push({ key: 'activities', value: id.toString(), label: `Aktivitet: ${activityMap.get(id.toString()) || '...'}` });
+        });
         return pills;
-    }, [currentFilters, interestMap, categoryMap]);
+    }, [currentFilters, interestMap, categoryMap, activityMap]);
 
 
     return (

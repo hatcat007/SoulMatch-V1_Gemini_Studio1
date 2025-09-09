@@ -55,6 +55,7 @@ export interface Event {
   organization_id: number | null;
   organization?: {
     logo_url: string;
+    activities?: { activity: Activity }[];
   };
   image_url?: string;
   images?: ImageRecord[];
