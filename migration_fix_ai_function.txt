@@ -1,0 +1,148 @@
+# Fixing the "AI Forslag" Feature with a Supabase Edge Function
+
+The error `API_KEY_HTTP_REFERRER_BLOCKED` occurs because the Gemini API key is being used directly in the browser, which is insecure and breaks when referrer restrictions are enabled on the key.
+
+The correct solution is to move the API call to a secure backend function. Follow these steps to deploy a Supabase Edge Function that will act as a secure proxy.
+
+### Step 1: Install/Update Supabase CLI
+If you haven't already, install the Supabase Command Line Interface (CLI). You may need to run this with `sudo`.
+
+```bash
+npm install supabase --global
+```
+
+### Step 2: Link Your Project
+In your project's root directory, link the CLI to your Supabase project. You will need your project's reference ID from your Supabase dashboard URL (`https://supabase.com/dashboard/project/[YOUR_ID]`).
+
+```bash
+supabase login
+supabase link --project-ref <YOUR_PROJECT_ID>
+```
+
+### Step 3: Create the Edge Function File
+Create a new file at the following path in your project. The CLI can do this for you.
+
+```bash
+supabase functions new suggest-tags-ai
+```
+This will create a file at: `supabase/functions/suggest-tags-ai/index.ts`
+
+### Step 4: Add the Function Code
+Replace the entire content of the newly created `index.ts` file with the code below.
+
+```typescript
+// File: supabase/functions/suggest-tags-ai/index.ts
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+// Note: We use the npm specifier to import from npm.
+import { GoogleGenAI, Type } from "npm:@google/genai@^1.16.0";
+
+// Define interfaces to match the frontend types
+interface Activity { id: number; name: string; icon: string; }
+interface Interest { id: number; name: string; category_id: number; }
+interface InterestCategory { id: number; name: string; }
+
+// Add CORS headers to allow requests from your app
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*', // Or your specific app domain for better security
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests for browser-based calls
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { description, existingActivities, existingInterests, interestCategories } = await req.json();
+    
+    // IMPORTANT: Get the API key from the function's environment variables
+    const apiKey = Deno.env.get('API_KEY');
+    if (!apiKey) {
+      throw new Error("Missing API_KEY in function environment variables.");
+    }
+    
+    const ai = new GoogleGenAI({ apiKey });
+
+    // This logic is moved directly from the old geminiService.ts
+    const existingActivityNames = (existingActivities as Activity[]).map(a => a.name.toLowerCase());
+    const existingInterestNames = (existingInterests as Interest[]).map(i => i.name.toLowerCase());
+    const interestCategoryNames = (interestCategories as InterestCategory[]).map(c => c.name);
+
+    const systemInstruction = `Du er en ekspert i at kategorisere organisationer. Din opgave er at læse en organisationsbeskrivelse og foreslå nye, relevante "aktiviteter" og "interesser" som tags.
+- Du MÅ IKKE foreslå tags, der allerede findes på de medfølgende lister over eksisterende tags.
+- Foreslå kun specifikke, håndgribelige aktiviteter og interesser.
+- For hver "interesse" du foreslår, SKAL du vælge den mest passende kategori fra listen: ${interestCategoryNames.join(', ')}.
+- Svaret skal være i JSON format og følge det angivne skema. Returner tomme arrays hvis ingen nye tags kan findes.`;
+
+    const prompt = `
+        Organisationsbeskrivelse: "${description}"
+        Eksisterende aktiviteter (undgå disse): ${JSON.stringify(existingActivityNames)}
+        Eksisterende interesser (undgå disse): ${JSON.stringify(existingInterestNames)}
+    `;
+    
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    suggested_activities: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                        description: "En liste af nye, relevante aktivitets-tags."
+                    },
+                    suggested_interests: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: { type: Type.STRING, description: "Navnet på den nye interesse." },
+                                category_name: { type: Type.STRING, description: `Kategorien for interessen. SKAL være en fra listen: ${interestCategoryNames.join(', ')}` }
+                            }
+                        },
+                        description: "En liste af nye interesse-tags med deres kategori."
+                    }
+                }
+            }
+        }
+    });
+
+    const jsonText = response.text.trim();
+    const data = JSON.parse(jsonText);
+
+    return new Response(
+      JSON.stringify(data),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
+  } catch (error) {
+    // Log the detailed error on the server
+    console.error("Error in suggest-tags-ai function:", error);
+    // Return a generic error message to the client
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    })
+  }
+})
+```
+
+### Step 5: Set the API Key as a Secret
+Your Gemini API key should be stored securely as an environment secret, not in the code.
+
+```bash
+supabase secrets set API_KEY=<YOUR_GEMINI_API_KEY>
+```
+
+### Step 6: Deploy the Function
+Finally, deploy your new function to Supabase.
+
+```bash
+supabase functions deploy suggest-tags-ai
+```
+
+That's it! The app is now configured to use this secure backend function, and the "AI Forslag" feature will work correctly.

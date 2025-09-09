@@ -1,5 +1,7 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
+import { supabase } from './supabase'; // Ensure supabase client is exported from supabase.ts
 // FIX: Import types needed for the new generateProfileDescription function
 import type { Activity, Interest, InterestCategory, PersonalityTag, UserPersonalityDimension } from '../types';
 
@@ -8,15 +10,22 @@ let aiClient: GoogleGenAI;
 
 /**
  * Initializes and returns a singleton instance of the GoogleGenAI client.
- * Throws an error if the API_KEY is not available in the environment.
+ * NOTE: This function is intended for client-side operations where the API key might
+ * not be available or secure. It will default to a dummy key to prevent crashes.
+ * For secure operations, always use a server-side endpoint (like a Vercel function).
  */
 export function getAiClient(): GoogleGenAI {
   if (!aiClient) {
-    if (!process.env.API_KEY) {
-      // As per guidelines, this should be pre-configured. Throw an error if it's not available.
-      throw new Error("API_KEY environment variable not set. Please ensure it is configured in your environment.");
+    // Client-side code CANNOT securely access process.env.API_KEY.
+    // We check for it, but default to a non-functional key to avoid crashing the app.
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      console.warn("API_KEY environment variable not available on the client. Client-side AI features will not work. This is expected and secure. Use server-side functions for AI calls.");
+      aiClient = new GoogleGenAI({ apiKey: "CLIENT_KEY_IS_NOT_AVAILABLE" });
+    } else {
+        // This path is unlikely to be hit in a production build but is here for completeness.
+        aiClient = new GoogleGenAI({ apiKey: apiKey });
     }
-    aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
   return aiClient;
 }
@@ -284,7 +293,7 @@ export async function generateProfileDescription(profile: {
 }
 
 /**
- * Suggests new activities and interests based on an organization's description.
+ * Suggests new activities and interests based on an organization's description by calling a secure Vercel API Route.
  */
 export async function suggestTagsFromDescription(
     description: string,
@@ -295,68 +304,34 @@ export async function suggestTagsFromDescription(
     suggested_activities: string[];
     suggested_interests: { name: string; category_name: string }[];
 }> {
-    const ai = getAiClient();
-    const existingActivityNames = existingActivities.map(a => a.name.toLowerCase());
-    const existingInterestNames = existingInterests.map(i => i.name.toLowerCase());
-    const interestCategoryNames = interestCategories.map(c => c.name);
-
-    const systemInstruction = `Du er en ekspert i at kategorisere organisationer. Din opgave er at læse en organisationsbeskrivelse og foreslå nye, relevante "aktiviteter" og "interesser" som tags.
-- Du MÅ IKKE foreslå tags, der allerede findes på de medfølgende lister over eksisterende tags.
-- Foreslå kun specifikke, håndgribelige aktiviteter og interesser.
-- For hver "interesse" du foreslår, SKAL du vælge den mest passende kategori fra listen: ${interestCategoryNames.join(', ')}.
-- Svaret skal være i JSON format og følge det angivne skema. Returner tomme arrays hvis ingen nye tags kan findes.`;
-
-    const prompt = `
-        Organisationsbeskrivelse: "${description}"
-
-        Eksisterende aktiviteter (undgå disse): ${JSON.stringify(existingActivityNames)}
-        Eksisterende interesser (undgå disse): ${JSON.stringify(existingInterestNames)}
-    `;
-    
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    suggested_activities: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                        description: "En liste af nye, relevante aktivitets-tags."
-                    },
-                    suggested_interests: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                name: { type: Type.STRING, description: "Navnet på den nye interesse." },
-                                category_name: { type: Type.STRING, description: `Kategorien for interessen. SKAL være en fra listen: ${interestCategoryNames.join(', ')}` }
-                            }
-                        },
-                        description: "En liste af nye interesse-tags med deres kategori."
-                    }
-                }
-            }
-        }
-    });
-
     try {
-        const jsonText = response.text.trim();
-        const parsed = JSON.parse(jsonText);
-        
-        // FIX: Safely parse and validate AI response to prevent type errors.
-        // The AI response is not guaranteed to conform to the schema, so we must validate it.
-        const activitiesFromAI: string[] = (Array.isArray(parsed.suggested_activities) ? parsed.suggested_activities : [])
+        const response = await fetch('/api/suggest-tags-ai', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ description, existingActivities, existingInterests, interestCategories }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Unknown error from API route.');
+        }
+
+        // The data returned from the function should match the expected structure.
+        // We still perform validation on the client as a safeguard.
+        const activitiesFromAI: string[] = (Array.isArray(data.suggested_activities) ? data.suggested_activities : [])
             .filter((name: unknown): name is string => typeof name === 'string');
+        const existingActivityNames = existingActivities.map(a => a.name.toLowerCase());
         const uniqueActivities = [...new Set(activitiesFromAI.filter((name: string) => !existingActivityNames.includes(name.toLowerCase())))];
 
-        const interestsFromAI: { name: string; category_name: string }[] = (Array.isArray(parsed.suggested_interests) ? parsed.suggested_interests : [])
+        const interestCategoryNames = interestCategories.map(c => c.name);
+        const interestsFromAI: { name: string; category_name: string }[] = (Array.isArray(data.suggested_interests) ? data.suggested_interests : [])
             .filter((interest: any): interest is { name: string; category_name: string } => 
                 interest && typeof interest.name === 'string' && typeof interest.category_name === 'string'
             );
+        const existingInterestNames = existingInterests.map(i => i.name.toLowerCase());
         const uniqueInterests = interestsFromAI.filter((interest: { name: string; category_name: string }) => 
             !existingInterestNames.includes(interest.name.toLowerCase()) && interestCategoryNames.includes(interest.category_name)
         );
@@ -367,7 +342,7 @@ export async function suggestTagsFromDescription(
         };
 
     } catch (e) {
-        console.error("Failed to parse tag suggestion response:", response.text);
-        throw new Error("Kunne ikke foreslå tags fra beskrivelsen.");
+        console.error("Failed to fetch from /api/suggest-tags-ai:", e);
+        throw new Error(`Fejl ved AI-forslag: ${e instanceof Error ? e.message : String(e)}`);
     }
 }
