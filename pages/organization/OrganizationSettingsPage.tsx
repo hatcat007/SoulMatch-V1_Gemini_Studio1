@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabase';
-import type { Organization, Activity } from '../../types';
+import type { Organization, Activity, Interest, InterestCategory, PersonalityTag } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 // FIX: Replaced non-existent lucide-react icons with valid alternatives and added missing FileText import.
 // FIX: Import LucideIcon type to correctly type the icon map and resolve prop errors.
 import { Save, Loader2, Camera, Building, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, Search, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, PenTool, Heart, MoveVertical, FileText, Flag, Flower2, PawPrint, Construction } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
+import TagSelector from '../../components/TagSelector';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; fallback: React.ReactNode; }> = ({ src, alt, className, fallback }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -55,10 +56,17 @@ const OrganizationSettingsPage: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     
     const [formData, setFormData] = useState<Partial<Organization>>({});
+    
+    // Activities State
     const [allActivities, setAllActivities] = useState<Activity[]>([]);
     const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Interests State
+    const [allInterests, setAllInterests] = useState<Interest[]>([]);
+    const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
+    const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
+
     const logoInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -66,26 +74,33 @@ const OrganizationSettingsPage: React.FC = () => {
             setLoading(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                setLoading(false);
-                setError('Bruger ikke fundet.');
-                return;
+                setError('Bruger ikke fundet.'); setLoading(false); return;
             }
 
             const { data: orgData, error: orgError } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
             if (orgError || !orgData) {
-                setError('Kunne ikke hente organisationsdata.');
-                setLoading(false);
-                return;
+                setError('Kunne ikke hente organisationsdata.'); setLoading(false); return;
             }
             
             setOrganization(orgData);
             setFormData(orgData);
 
+            // Fetch activities
             const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
             setAllActivities(activitiesData || []);
-
             const { data: selectedLinks } = await supabase.from('organization_activities').select('activity_id').eq('organization_id', orgData.id);
             setSelectedActivityIds(selectedLinks?.map(link => link.activity_id) || []);
+            
+            // Fetch interests
+            const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
+            const { data: iData } = await supabase.from('interests').select('*').order('name');
+            setInterestCategories(iCatData || []);
+            setAllInterests(iData || []);
+
+            if (orgData.emojis && iData) {
+                const initialSelectedInterests = iData.filter(i => (orgData.emojis || []).includes(i.name));
+                setSelectedInterests(initialSelectedInterests);
+            }
             
             setLoading(false);
         };
@@ -122,30 +137,40 @@ const OrganizationSettingsPage: React.FC = () => {
                 : [...prev, activityId]
         );
     };
+    
+    const handleInterestToggle = (interest: Interest) => {
+        setSelectedInterests(prev => {
+            const isSelected = prev.some(i => i.id === interest.id);
+            if (isSelected) {
+                return prev.filter(i => i.id !== interest.id);
+            } else {
+                return [...prev, interest];
+            }
+        });
+    };
 
     const handleSave = async () => {
         if (!organization) return;
         setSaving(true);
         setError(null);
         setSuccessMessage(null);
-
+        
+        const interestNames = selectedInterests.map(i => i.name);
         const { emojis, ...profileData } = formData;
+        const dataToUpdate = { ...profileData, emojis: interestNames };
+
         const { error: updateError } = await supabase
             .from('organizations')
-            .update(profileData)
+            .update(dataToUpdate)
             .eq('id', organization.id);
 
         if (updateError) {
-            setError(updateError.message);
-            setSaving(false);
-            return;
+            setError(updateError.message); setSaving(false); return;
         }
 
         const { error: deleteError } = await supabase.from('organization_activities').delete().eq('organization_id', organization.id);
         if (deleteError) {
-             setError(`Profil opdateret, men kunne ikke opdatere aktiviteter: ${deleteError.message}`);
-             setSaving(false);
-             return;
+             setError(`Profil opdateret, men kunne ikke opdatere aktiviteter: ${deleteError.message}`); setSaving(false); return;
         }
 
         if (selectedActivityIds.length > 0) {
@@ -155,9 +180,7 @@ const OrganizationSettingsPage: React.FC = () => {
             }));
             const { error: insertError } = await supabase.from('organization_activities').insert(linksToInsert);
             if (insertError) {
-                setError(`Profil opdateret, men kunne ikke gemme nye aktiviteter: ${insertError.message}`);
-                setSaving(false);
-                return;
+                setError(`Profil opdateret, men kunne ikke gemme nye aktiviteter: ${insertError.message}`); setSaving(false); return;
             }
         }
         
@@ -232,6 +255,17 @@ const OrganizationSettingsPage: React.FC = () => {
                             );
                         })}
                     </div>
+                </div>
+
+                <div>
+                    <TagSelector
+                        title="Vælg interesser der beskriver jer"
+                        categories={interestCategories}
+                        allTags={allInterests}
+                        selectedTags={selectedInterests}
+                        onToggleTag={handleInterestToggle as (tag: Interest | PersonalityTag) => void}
+                        containerHeight="h-auto"
+                    />
                 </div>
 
                 <div className="pt-4 flex justify-end">
