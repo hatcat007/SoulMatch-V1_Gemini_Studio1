@@ -1,11 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
-    ArrowLeft, Camera, Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, 
-    Building, Loader2
+    ArrowLeft, Camera, Building, Loader2, Search,
+    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, PenTool, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
+import TagSelector from '../components/TagSelector';
+import type { Activity, Interest, InterestCategory } from '../types';
 
 const prefilledData = {
   name: 'SIND Ungdom Aalborg',
@@ -31,10 +33,9 @@ const emptyData = {
   host_name: '',
 };
 
-const emojiChoices = [
-    { name: 'Fællesspisning', icon: Utensils }, { name: 'Brætspil', icon: Dice5 }, { name: 'Fælles snak', icon: MessagesSquare },
-    { name: 'Musik', icon: Music }, { name: 'Kreativt', icon: Paintbrush }, { name: 'Gåtur', icon: Footprints },
-];
+const iconMap: { [key: string]: LucideIcon } = {
+    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, PenTool, Camera, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical
+};
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; fallback: React.ReactNode; }> = ({ src, alt, className, fallback }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -77,7 +78,13 @@ const ConfirmOrganizationPage: React.FC = () => {
   const isManual = !!location.state?.manual;
 
   const [formData, setFormData] = useState(isManual ? emptyData : prefilledData);
-  const [selectedEmojis, setSelectedEmojis] = useState<string[]>(isManual ? [] : ['Fællesspisning', 'Brætspil', 'Fælles snak']);
+  
+  // State for activities and interests
+  const [allActivities, setAllActivities] = useState<Activity[]>([]);
+  const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
+  const [allInterests, setAllInterests] = useState<Interest[]>([]);
+  const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
+  const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
   
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +93,37 @@ const ConfirmOrganizationPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  // New state for activity search and pagination
+  const [activitySearchTerm, setActivitySearchTerm] = useState('');
+  const [visibleActivityCount, setVisibleActivityCount] = useState(6);
+
+  useEffect(() => {
+    const fetchData = async () => {
+        const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
+        setAllActivities(activitiesData || []);
+        
+        const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
+        const { data: iData } = await supabase.from('interests').select('*');
+        setInterestCategories(iCatData || []);
+        setAllInterests(iData || []);
+    };
+    fetchData();
+  }, []);
+  
+  const handleActivitySearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setActivitySearchTerm(e.target.value);
+    setVisibleActivityCount(6); // Reset pagination on new search
+  };
+
+  const filteredActivities = useMemo(() => {
+    if (!activitySearchTerm) {
+        return allActivities;
+    }
+    return allActivities.filter(activity =>
+        activity.name.toLowerCase().includes(activitySearchTerm.toLowerCase())
+    );
+  }, [allActivities, activitySearchTerm]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -110,9 +148,19 @@ const ConfirmOrganizationPage: React.FC = () => {
     }
   };
 
-  const handleEmojiSelect = (emojiName: string) => {
-    setSelectedEmojis(prev => 
-        prev.includes(emojiName) ? prev.filter(name => name !== emojiName) : (prev.length < 3 ? [...prev, emojiName] : prev)
+  const handleActivitySelect = (activityId: number) => {
+    setSelectedActivityIds(prev =>
+        prev.includes(activityId)
+            ? prev.filter(id => id !== activityId)
+            : [...prev, activityId]
+    );
+  };
+
+  const handleInterestToggle = (interest: Interest) => {
+    setSelectedInterests(prev =>
+        prev.some(i => i.id === interest.id)
+            ? prev.filter(i => i.id !== interest.id)
+            : [...prev, interest]
     );
   };
 
@@ -132,15 +180,46 @@ const ConfirmOrganizationPage: React.FC = () => {
     if (signUpData.user && signUpData.user.identities?.length === 0) { setMessage('User exists. Please log in.'); setLoading(false); return; }
 
     if (signUpData.user) {
-        const { error: updateError } = await supabase.from('organizations').update({
-            ...formData,
-            emojis: selectedEmojis,
-        }).eq('auth_id', signUpData.user.id);
+        // Fetch the organization ID that the trigger created
+        const { data: orgProfile, error: orgFetchError } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('auth_id', signUpData.user.id)
+            .single();
 
-        if (updateError) {
-            setError(`Account created, but failed to update profile: ${updateError.message}`);
+        if (orgFetchError || !orgProfile) {
+            setError(`Account created, but could not find organization profile: ${orgFetchError?.message}`);
             setLoading(false);
             return;
+        }
+        const organizationId = orgProfile.id;
+
+        // Update profile, repurposing `emojis` column for interest names
+        const { error: updateError } = await supabase.from('organizations').update({
+            name: formData.name,
+            logo_url: formData.logo_url,
+            address: formData.address,
+            description: formData.description,
+            phone: formData.phone,
+            email: email,
+            website: formData.website,
+            host_name: formData.host_name,
+            organization_type: formData.organization_type,
+            facebook_url: formData.facebook_url,
+            emojis: selectedInterests.map(i => i.name),
+        }).eq('id', organizationId);
+
+        if (updateError) {
+             setError(`Account created, but failed to update profile: ${updateError.message}`);
+             setLoading(false);
+             return;
+        }
+
+        // Sync activities
+        await supabase.from('organization_activities').delete().eq('organization_id', organizationId);
+        if (selectedActivityIds.length > 0) {
+            const linksToInsert = selectedActivityIds.map(id => ({ organization_id: organizationId, activity_id: id }));
+            await supabase.from('organization_activities').insert(linksToInsert);
         }
     }
     
@@ -253,16 +332,52 @@ const ConfirmOrganizationPage: React.FC = () => {
                     </section>
 
                     <section>
-                        <h3 className="text-xl font-bold border-b pb-2 dark:border-dark-border text-text-primary dark:text-dark-text-primary mb-3">Vælg op til 3 aktiviteter</h3>
-                        <div className="flex flex-wrap gap-3">
-                            {emojiChoices.map(emoji => (
-                                <button type="button" key={emoji.name} onClick={() => handleEmojiSelect(emoji.name)}
-                                    className={`flex items-center px-4 py-2 rounded-full border-2 transition-transform duration-200 active:scale-95 ${selectedEmojis.includes(emoji.name) ? 'bg-primary-light dark:bg-primary/20 border-primary font-semibold' : 'bg-gray-100 dark:bg-dark-surface-light border-transparent hover:border-gray-300'}`}>
-                                    <emoji.icon size={18} className="mr-2" />
-                                    {emoji.name}
-                                </button>
-                            ))}
+                        <h3 className="text-xl font-bold border-b pb-2 dark:border-dark-border text-text-primary dark:text-dark-text-primary mb-3">Vælg jeres primære aktiviteter</h3>
+                        <div className="relative mb-4">
+                            <input
+                                type="text"
+                                placeholder="Søg i aktiviteter..."
+                                value={activitySearchTerm}
+                                onChange={handleActivitySearchChange}
+                                className="input-style w-full pl-10"
+                            />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
+                        <div className="flex flex-wrap gap-3">
+                           {filteredActivities.slice(0, visibleActivityCount).map(activity => {
+                                const IconComponent = iconMap[activity.icon] || Building;
+                                const isSelected = selectedActivityIds.includes(activity.id);
+                                return (
+                                    <button type="button" key={activity.id} onClick={() => handleActivitySelect(activity.id)}
+                                        className={`flex items-center px-4 py-2 rounded-full border-2 transition-transform duration-200 active:scale-95 ${isSelected ? 'bg-primary-light dark:bg-primary/20 border-primary font-semibold' : 'bg-gray-100 dark:bg-dark-surface-light border-transparent hover:border-gray-300'}`}>
+                                        <IconComponent size={18} className="mr-2" />
+                                        {activity.name}
+                                    </button>
+                                );
+                           })}
+                        </div>
+                        {visibleActivityCount < filteredActivities.length && (
+                            <div className="text-center mt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setVisibleActivityCount(prev => prev + 6)}
+                                    className="text-primary font-semibold hover:underline"
+                                >
+                                    Vis flere
+                                </button>
+                            </div>
+                        )}
+                    </section>
+
+                    <section>
+                        <TagSelector
+                            title="Vælg interesser der beskriver jer"
+                            categories={interestCategories}
+                            allTags={allInterests}
+                            selectedTags={selectedInterests}
+                            onToggleTag={handleInterestToggle}
+                            containerHeight="h-auto"
+                        />
                     </section>
 
                     <hr className="dark:border-dark-border" />

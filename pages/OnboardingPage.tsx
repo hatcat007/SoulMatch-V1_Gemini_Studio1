@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield } from 'lucide-react';
+import { Shield, User, Building } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AnimatedAvatarGraphic from '../components/AnimatedAvatarGraphic';
 
@@ -19,6 +19,10 @@ const onboardingTextSteps = [
     title: "Sikkerhed er utrolig vigtigt",
     description: "For at bruge vores app, skal du verificeres via. dit MitID. Derefter ansigts godkendelse.",
   },
+  {
+    title: "Vælg din profiltype",
+    description: "Fortæl os, hvordan du vil bruge SoulMatch, så vi kan skræddersy din oplevelse."
+  }
 ];
 
 const OnboardingPage: React.FC = () => {
@@ -28,9 +32,6 @@ const OnboardingPage: React.FC = () => {
   const handleNext = () => {
     if (step < onboardingTextSteps.length - 1) {
       setStep(prevStep => prevStep + 1);
-    } else {
-      // Last step, navigate to signup
-      navigate('/signup');
     }
   };
 
@@ -54,8 +55,25 @@ const OnboardingPage: React.FC = () => {
           );
       }
       
+      // For all other steps (0, 1, and the new choice step 3), show the animated avatars
       return <AnimatedAvatarGraphic key="avatar-graphic" />;
   };
+
+  const ChoiceCard: React.FC<{ icon: React.ReactNode, title: string, description: string, to: string }> = ({ icon, title, description, to }) => (
+      <Link to={to} className="block w-full">
+          <motion.div
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.98 }}
+              className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-lg border border-gray-200 dark:border-dark-border text-center flex flex-col items-center h-full"
+          >
+              <div className="bg-primary-light dark:bg-primary/20 text-primary p-4 rounded-full mb-4">
+                  {icon}
+              </div>
+              <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-2">{title}</h3>
+              <p className="text-text-secondary dark:text-dark-text-secondary text-sm">{description}</p>
+          </motion.div>
+      </Link>
+  );
 
   return (
     <div className="min-h-screen w-full bg-gray-50 dark:bg-dark-background flex flex-col">
@@ -89,18 +107,37 @@ const OnboardingPage: React.FC = () => {
                 </div>
 
                 <div className="w-full flex-shrink-0">
-                    <div className="flex justify-center space-x-2 mb-8">
-                        {onboardingTextSteps.map((_, index) => (
-                            <div key={index} className={`w-2.5 h-2.5 rounded-full transition-colors duration-300 ${step === index ? 'bg-primary' : 'bg-gray-300 dark:bg-dark-border'}`}></div>
-                        ))}
-                    </div>
-                    <button
-                        onClick={handleNext}
-                        className="block w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
-                    >
-                        Fortsæt
-                    </button>
-                    <p className="mt-4 text-text-secondary dark:text-dark-text-secondary">
+                    {step === 3 ? (
+                        <div className="space-y-4 sm:space-y-0 sm:flex sm:gap-4">
+                             <ChoiceCard
+                                to="/signup"
+                                icon={<User size={32} strokeWidth={2}/>}
+                                title="Jeg er en Bruger"
+                                description="Jeg vil finde nye venner og deltage i events."
+                            />
+                             <ChoiceCard
+                                to="/create-organization"
+                                icon={<Building size={32} strokeWidth={2}/>}
+                                title="Jeg er en Organisation"
+                                description="Jeg vil oprette events og tilbud for fællesskabet."
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="flex justify-center space-x-2 mb-8">
+                                {onboardingTextSteps.map((_, index) => (
+                                    <div key={index} className={`w-2.5 h-2.5 rounded-full transition-colors duration-300 ${step === index ? 'bg-primary' : 'bg-gray-300 dark:bg-dark-border'}`}></div>
+                                ))}
+                            </div>
+                            <button
+                                onClick={handleNext}
+                                className="block w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+                            >
+                                Fortsæt
+                            </button>
+                        </>
+                    )}
+                    <p className="mt-6 text-text-secondary dark:text-dark-text-secondary">
                         Har du allerede en bruger? <Link to="/login" className="font-bold text-primary hover:underline">Log ind</Link>
                     </p>
                 </div>

@@ -1,21 +1,61 @@
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BrainCircuit, Building } from 'lucide-react';
+import { ArrowLeft, BrainCircuit, Building, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const CreateOrganizationPage: React.FC = () => {
   const navigate = useNavigate();
   const [facebookUrl, setFacebookUrl] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you would pass the URL to the next page,
-    // possibly via state or query params, to fetch data.
-    // For this mock, we just navigate.
-    navigate('/confirm-organization');
+    if (facebookUrl.trim()) {
+        setIsModalOpen(true);
+    }
   };
 
+  const FeatureNoticeModal: React.FC = () => (
+    <motion.div
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={() => setIsModalOpen(false)}
+    >
+        <motion.div
+            className="bg-white dark:bg-dark-surface rounded-2xl p-6 w-full max-w-sm text-center relative"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <button onClick={() => setIsModalOpen(false)} className="absolute top-3 right-3 p-1 text-gray-500 hover:text-gray-800 dark:text-dark-text-secondary dark:hover:text-dark-text-primary rounded-full">
+                <X size={24} />
+            </button>
+            <div className="mx-auto inline-block bg-primary-light dark:bg-primary/20 text-primary p-3 rounded-full mb-4">
+                <BrainCircuit size={32} strokeWidth={2} />
+            </div>
+            <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-2">Funktion Under Udvikling</h3>
+            <p className="text-text-secondary dark:text-dark-text-secondary text-sm mb-6">
+                Vores AI-import funktion er ikke helt klar endnu. Du kan i stedet oprette din profil manuelt.
+            </p>
+            <button
+                onClick={() => navigate('/confirm-organization', { state: { manual: true } })}
+                className="w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+            >
+                Opret Manuelt
+            </button>
+        </motion.div>
+    </motion.div>
+  );
+
   return (
+    <>
+     <AnimatePresence>
+        {isModalOpen && <FeatureNoticeModal />}
+     </AnimatePresence>
+
      <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-gray-50 dark:bg-dark-background">
       {/* Left decorative panel */}
       <div className="hidden lg:flex flex-col items-center justify-center bg-primary-light dark:bg-dark-surface p-12 text-center">
@@ -34,7 +74,7 @@ const CreateOrganizationPage: React.FC = () => {
       <div className="flex flex-col justify-center items-center p-6 sm:p-8">
         <div className="w-full max-w-sm">
           <div className="flex justify-between items-center mb-8">
-            <button onClick={() => navigate('/signup')} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary">
+            <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary">
               <ArrowLeft size={24} />
             </button>
             <h1 className="text-2xl font-bold text-primary lg:hidden">SoulMatch</h1>
@@ -84,6 +124,7 @@ const CreateOrganizationPage: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
