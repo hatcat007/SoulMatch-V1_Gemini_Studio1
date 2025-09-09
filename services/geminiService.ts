@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 // FIX: Import types needed for the new generateProfileDescription function
 import type { Activity, Interest, InterestCategory, PersonalityTag, UserPersonalityDimension } from '../types';
@@ -345,9 +346,18 @@ export async function suggestTagsFromDescription(
     try {
         const jsonText = response.text.trim();
         const parsed = JSON.parse(jsonText);
-        // Filter out any duplicates suggested by the AI, just in case
-        const uniqueActivities = [...new Set(parsed.suggested_activities.filter((name: string) => !existingActivityNames.includes(name.toLowerCase())))];
-        const uniqueInterests = parsed.suggested_interests.filter((interest: { name: string; category_name: string }) => 
+        
+        // FIX: Safely parse and validate AI response to prevent type errors.
+        // The AI response is not guaranteed to conform to the schema, so we must validate it.
+        const activitiesFromAI: string[] = (Array.isArray(parsed.suggested_activities) ? parsed.suggested_activities : [])
+            .filter((name: unknown): name is string => typeof name === 'string');
+        const uniqueActivities = [...new Set(activitiesFromAI.filter((name: string) => !existingActivityNames.includes(name.toLowerCase())))];
+
+        const interestsFromAI: { name: string; category_name: string }[] = (Array.isArray(parsed.suggested_interests) ? parsed.suggested_interests : [])
+            .filter((interest: any): interest is { name: string; category_name: string } => 
+                interest && typeof interest.name === 'string' && typeof interest.category_name === 'string'
+            );
+        const uniqueInterests = interestsFromAI.filter((interest: { name: string; category_name: string }) => 
             !existingInterestNames.includes(interest.name.toLowerCase()) && interestCategoryNames.includes(interest.category_name)
         );
         
