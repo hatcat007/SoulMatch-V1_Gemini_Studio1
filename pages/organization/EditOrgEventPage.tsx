@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
-import type { Event, ImageRecord, Activity } from '../../types';
+import type { Event, ImageRecord, Activity, Interest, InterestCategory } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
-import { Loader2, Plus, X, Ticket } from 'lucide-react';
+import { Loader2, Plus, X, Ticket, Smile } from 'lucide-react';
 import CategorySelector from '../../components/CategorySelector';
 import LoadingScreen from '../../components/LoadingScreen';
 import TagSelector from '../../components/TagSelector';
@@ -20,9 +19,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
 
         const processUrl = async () => {
             if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
-            
             setIsLoading(true);
-
             if (src.startsWith('blob:') || src.startsWith('data:')) {
                 setDisplayUrl(src);
                 setIsLoading(false);
@@ -52,6 +49,20 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
     );
 };
 
+const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
+    const formatText = (inputText: string) => {
+        if (!inputText) return '';
+        let formatted = inputText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        formatted = formatted.replace(/^\s*[-*]\s+(.*)/gm, '<li class="ml-4 list-disc">$1</li>');
+        formatted = formatted.replace(/(<li.*?>.*?<\/li>)+/gs, '<ul>$&</ul>');
+        formatted = formatted.replace(/<\/ul>\n/g, '</ul><br/>').replace(/\n/g, '<br />');
+        return formatted;
+    };
+    return <div dangerouslySetInnerHTML={{ __html: formatText(text) }} className="prose prose-sm dark:prose-invert max-w-none break-words whitespace-pre-wrap leading-relaxed" />;
+};
+
+
 const EditOrgEventPage: React.FC = () => {
     const navigate = useNavigate();
     const { eventId } = useParams<{ eventId: string }>();
@@ -62,12 +73,18 @@ const EditOrgEventPage: React.FC = () => {
 
     // Form state
     const [formData, setFormData] = useState({
-        title: '', description: '', time: '', end_time: '', is_sponsored: false, offer: '', category_id: null as number | null, address: '', icon: '🎉', color: 'bg-blue-100'
+        title: '', description: '', time: '', end_time: '', is_sponsored: false, offer: '', category_id: null as number | null, address: '', icon: '🎉', color: 'bg-blue-100', is_diagnosis_friendly: false,
     });
     const [images, setImages] = useState<ImageRecord[]>([]);
     
     const [allActivities, setAllActivities] = useState<Activity[]>([]);
     const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
+
+    const [allInterests, setAllInterests] = useState<Interest[]>([]);
+    const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
+    const [selectedInterestIds, setSelectedInterestIds] = useState<number[]>([]);
+    
+    const [isEditingDescription, setIsEditingDescription] = useState(false);
 
     const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +108,7 @@ const EditOrgEventPage: React.FC = () => {
                     address: data.address || '',
                     icon: data.icon || '🎉',
                     color: data.color || 'bg-blue-100',
+                    is_diagnosis_friendly: data.is_diagnosis_friendly || false,
                 });
                 setImages(data.images || []);
             }
@@ -100,6 +118,14 @@ const EditOrgEventPage: React.FC = () => {
             
             const { data: activityLinks } = await supabase.from('event_activities').select('activity_id').eq('event_id', eventId);
             if (activityLinks) setSelectedActivityIds(activityLinks.map(link => link.activity_id));
+            
+            const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
+            const { data: iData } = await supabase.from('interests').select('*').eq('approved', true).order('name');
+            if (iCatData) setInterestCategories(iCatData);
+            if (iData) setAllInterests(iData);
+
+            const { data: interestLinks } = await supabase.from('event_interests').select('interest_id').eq('event_id', eventId);
+            if(interestLinks) setSelectedInterestIds(interestLinks.map(link => link.interest_id));
 
             setLoading(false);
         };
@@ -114,7 +140,6 @@ const EditOrgEventPage: React.FC = () => {
         setError(null);
         try {
             const url = await uploadFile(file);
-            // Create a temporary ID for the key, DB will assign real one
             setImages(prev => [...prev, { id: Date.now(), image_url: url }]);
         } catch (uploadError) {
             setError('Billedupload fejlede.');
@@ -142,9 +167,19 @@ const EditOrgEventPage: React.FC = () => {
         setSelectedActivityIds(newSelectedIds);
     };
     
-    const selectedActivities = useMemo(() => {
-        return allActivities.filter(a => selectedActivityIds.includes(a.id));
-    }, [allActivities, selectedActivityIds]);
+    const handleInterestToggle = (interest: Interest) => {
+        const newSelectedIds = selectedInterestIds.includes(interest.id)
+            ? selectedInterestIds.filter(id => id !== interest.id)
+            : [...selectedInterestIds, interest.id];
+        setSelectedInterestIds(newSelectedIds);
+    };
+    
+    const selectedActivities = useMemo(() => allActivities.filter(a => selectedActivityIds.includes(a.id)), [allActivities, selectedActivityIds]);
+    const allActivitiesForSelector = useMemo(() => allActivities.map(a => ({ ...a, category_id: 0 })), [allActivities]);
+    const selectedActivitiesForSelector = useMemo(() => selectedActivities.map(a => ({ ...a, category_id: 0 })), [selectedActivities]);
+
+    const selectedInterests = useMemo(() => allInterests.filter(i => selectedInterestIds.includes(i.id)), [allInterests, selectedInterestIds]);
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -155,61 +190,35 @@ const EditOrgEventPage: React.FC = () => {
         setIsSubmitting(true);
         setError(null);
         
-        // 1. Update main event details
         const { error: updateError } = await supabase
             .from('events')
             .update({
-                title: formData.title,
-                description: formData.description,
-                time: new Date(formData.time).toISOString(),
+                title: formData.title, description: formData.description,
+                time: formData.time ? new Date(formData.time).toISOString() : null,
                 end_time: formData.end_time ? new Date(formData.end_time).toISOString() : null,
-                is_sponsored: formData.is_sponsored,
-                offer: formData.is_sponsored ? formData.offer : '',
-                category_id: formData.category_id,
-                address: formData.address,
-                icon: formData.icon,
-                color: formData.color,
+                is_sponsored: formData.is_sponsored, offer: formData.is_sponsored ? formData.offer : '',
+                category_id: formData.category_id, address: formData.address,
+                icon: formData.icon, color: formData.color,
                 image_url: images.length > 0 ? images[0].image_url : null,
-            })
-            .eq('id', eventId);
+                is_diagnosis_friendly: formData.is_diagnosis_friendly,
+            }).eq('id', eventId);
 
-        if (updateError) {
-            setError(updateError.message);
-            setIsSubmitting(false);
-            return;
-        }
+        if (updateError) { setError(updateError.message); setIsSubmitting(false); return; }
 
-        // 2. Sync images
         await supabase.from('event_images').delete().eq('event_id', eventId);
         if (images.length > 0) {
-            const imageRecords = images.map(({ image_url }) => ({
-                event_id: Number(eventId),
-                image_url: image_url,
-            }));
-            const { error: insertImagesError } = await supabase.from('event_images').insert(imageRecords);
-            if (insertImagesError) {
-                setError(`Event opdateret, men billeder kunne ikke gemmes: ${insertImagesError.message}`);
-                setIsSubmitting(false);
-                return;
-            }
+            const imageRecords = images.map(({ image_url }) => ({ event_id: Number(eventId), image_url: image_url }));
+            await supabase.from('event_images').insert(imageRecords);
         }
 
-        // 3. Sync activities
-        const { error: activityError } = await supabase.rpc('add_activities_to_event', {
-            p_event_id: Number(eventId),
-            p_activity_ids: selectedActivityIds,
-        });
-        if (activityError) {
-             setError(`Event opdateret, men aktiviteter kunne ikke gemmes: ${activityError.message}`);
-             setIsSubmitting(false);
-             return;
-        }
+        const { error: activityError } = await supabase.rpc('add_activities_to_event', { p_event_id: Number(eventId), p_activity_ids: selectedActivityIds });
+        if (activityError) { setError(`Event opdateret, men aktiviteter kunne ikke gemmes: ${activityError.message}`); setIsSubmitting(false); return; }
+
+        const { error: interestError } = await supabase.rpc('add_interests_to_event', { p_event_id: Number(eventId), p_interest_ids: selectedInterestIds });
+        if (interestError) { setError(`Event opdateret, men interesser kunne ikke gemmes: ${interestError.message}`); setIsSubmitting(false); return; }
 
         navigate('/dashboard');
     };
-
-    const allActivitiesForSelector = useMemo(() => allActivities.map(a => ({ ...a, category_id: 0 })), [allActivities]);
-    const selectedActivitiesForSelector = useMemo(() => selectedActivities.map(a => ({ ...a, category_id: 0 })), [selectedActivities]);
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
     const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100'];
@@ -228,14 +237,7 @@ const EditOrgEventPage: React.FC = () => {
                 
                 <div className="space-y-2">
                     <label className="block text-lg font-semibold text-gray-800 dark:text-dark-text-primary">Ikon (emoji)</label>
-                    <div className="flex items-center space-x-4">
-                        <div className="text-5xl p-2 bg-gray-100 dark:bg-dark-surface-light rounded-lg">{formData.icon}</div>
-                        <div className="grid grid-cols-6 gap-2 flex-1">
-                            {emojiOptions.map(e => (
-                                <button key={e} type="button" onClick={() => setFormData(p => ({...p, icon: e}))} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light dark:bg-primary/20 scale-110' : 'hover:bg-gray-100 dark:hover:bg-dark-surface-light'}`}>{e}</button>
-                            ))}
-                        </div>
-                    </div>
+                    <div className="flex items-center space-x-4"><div className="text-5xl p-2 bg-gray-100 dark:bg-dark-surface-light rounded-lg">{formData.icon}</div><div className="grid grid-cols-6 gap-2 flex-1">{emojiOptions.map(e => (<button key={e} type="button" onClick={() => setFormData(p => ({...p, icon: e}))} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light dark:bg-primary/20 scale-110' : 'hover:bg-gray-100 dark:hover:bg-dark-surface-light'}`}>{e}</button>))}</div></div>
                 </div>
                 
                 <div>
@@ -245,83 +247,53 @@ const EditOrgEventPage: React.FC = () => {
                  <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Event Billeder</label>
                     <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                        {images.map(image => (
-                            <SmartImage key={image.id} src={image.image_url} alt="Event billede" className="w-full h-full object-cover rounded-lg" onRemove={() => removeImage(image.id)} />
-                        ))}
-                        {images.length < 6 && (
-                            <div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
-                                <Plus size={32} className="text-gray-400"/>
-                            </div>
-                        )}
+                        {images.map(image => (<SmartImage key={image.id} src={image.image_url} alt="Event billede" className="w-full h-full object-cover rounded-lg" onRemove={() => removeImage(image.id)} />))}
+                        {images.length < 6 && (<div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100"><Plus size={32} className="text-gray-400"/></div>)}
                     </div>
                     <input type="file" ref={imageInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                 </div>
                 <div>
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Beskrivelse</label>
-                    <textarea id="description" name="description" rows={4} value={formData.description} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required></textarea>
+                    <div className="flex justify-between items-center mb-1"><label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Beskrivelse</label><button type="button" onClick={() => setIsEditingDescription(!isEditingDescription)} className="text-xs font-semibold text-primary hover:underline">{isEditingDescription ? 'Vis formatering' : 'Rediger'}</button></div>
+                    {isEditingDescription ? (<textarea id="description" name="description" rows={4} value={formData.description} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required></textarea>) : (<div className="w-full p-3 min-h-[120px] bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg"><MarkdownRenderer text={formData.description} /></div>)}
                 </div>
                 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                       <label htmlFor="time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Start tidspunkt</label>
-                       <input type="datetime-local" id="time" name="time" value={formData.time} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
-                    </div>
-                     <div>
-                       <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Slut tidspunkt</label>
-                       <input type="datetime-local" id="end_time" name="end_time" value={formData.end_time} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"/>
-                    </div>
-                     <div>
-                        <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Adresse</label>
-                        <input type="text" id="address" name="address" value={formData.address} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
-                    </div>
+                    <div><label htmlFor="time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Start tidspunkt</label><input type="datetime-local" id="time" name="time" value={formData.time} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/></div>
+                    <div><label htmlFor="end_time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Slut tidspunkt</label><input type="datetime-local" id="end_time" name="end_time" value={formData.end_time} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"/></div>
+                    <div><label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Adresse</label><input type="text" id="address" name="address" value={formData.address} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-surface-light border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required /></div>
                  </div>
 
-                 <CategorySelector 
-                    value={formData.category_id}
-                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
-                    type="event"
+                 <CategorySelector value={formData.category_id} onChange={(id) => setFormData(p => ({...p, category_id: id}))} type="event" />
+                
+                 <TagSelector 
+                    title="Vælg aktiviteter" 
+                    categories={[]} 
+                    allTags={allActivitiesForSelector} 
+                    selectedTags={selectedActivitiesForSelector} 
+                    onToggleTag={(tag) => {
+                        // FIX: Find the original activity object from the allActivities list
+                        // to prevent type casting issues, as TagSelector expects Interest or PersonalityTag.
+                        const activity = allActivities.find(a => a.id === tag.id);
+                        if (activity) {
+                            handleActivityToggle(activity);
+                        }
+                    }} 
+                    containerHeight="h-auto"
                 />
-
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <TagSelector
-                        title="Vælg aktiviteter for dit event"
-                        categories={[]}
-                        allTags={allActivitiesForSelector}
-                        selectedTags={selectedActivitiesForSelector}
-                        onToggleTag={(tag) => {
-                            const activity = allActivities.find(a => a.id === tag.id);
-                            if (activity) handleActivityToggle(activity);
-                        }}
-                        containerHeight="h-auto"
-                    />
-                </div>
+                 <TagSelector title="Vælg interesser" categories={interestCategories} allTags={allInterests} selectedTags={selectedInterests} onToggleTag={(tag) => handleInterestToggle(tag as Interest)} containerHeight="h-auto" />
 
                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
-                     <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>
-                     <div className="flex items-center justify-between">
-                         <p className="text-sm text-gray-600 dark:text-dark-text-secondary flex-1 mr-4">Er dette event sponsoreret med et tilbud?</p>
-                         <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
-                            <input type="checkbox" id="toggle-sponsored" name="is_sponsored" checked={formData.is_sponsored} onChange={handleInputChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
-                            <label htmlFor="toggle-sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                        </div>
-                     </div>
-                     {formData.is_sponsored && (
-                        <div className="mt-4">
-                            <label htmlFor="offer" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Tilbud / Rabat</label>
-                            <input type="text" id="offer" name="offer" value={formData.offer} onChange={handleInputChange}
-                                placeholder="F.eks. 'Gratis kaffe'"
-                                className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
-                        </div>
-                     )}
+                     <div className="flex items-center justify-between"><label htmlFor="toggle-sponsored" className="text-sm font-semibold text-gray-800 dark:text-dark-text-primary">Sponsoreret?</label><div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle"><input type="checkbox" id="toggle-sponsored" name="is_sponsored" checked={formData.is_sponsored} onChange={handleInputChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/><label htmlFor="toggle-sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label></div></div>
+                     {formData.is_sponsored && (<div className="mt-4"><label htmlFor="offer" className="block text-sm font-medium mb-1">Tilbud</label><input type="text" id="offer" name="offer" value={formData.offer} onChange={handleInputChange} className="w-full px-4 py-3 bg-white dark:bg-dark-surface border rounded-lg" required /></div>)}
+                </div>
+
+                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+                    <div className="flex items-center justify-between"><label htmlFor="toggle-diagnosis" className="text-sm font-semibold text-gray-800 dark:text-dark-text-primary">Diagnosevenligt?</label><div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle"><input type="checkbox" id="toggle-diagnosis" name="is_diagnosis_friendly" checked={formData.is_diagnosis_friendly} onChange={handleInputChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/><label htmlFor="toggle-diagnosis" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label></div></div>
                 </div>
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Kort farve</label>
-                     <div className="flex space-x-2">
-                        {colorOptions.map(c => (
-                            <button key={c} type="button" onClick={() => setFormData(p => ({...p, color: c}))} className={`w-10 h-10 rounded-full ${c} border-2 ${formData.color === c ? 'border-primary' : 'border-transparent'}`}></button>
-                        ))}
-                    </div>
+                     <div className="flex space-x-2">{colorOptions.map(c => (<button key={c} type="button" onClick={() => setFormData(p => ({...p, color: c}))} className={`w-10 h-10 rounded-full ${c} border-2 ${formData.color === c ? 'border-primary' : 'border-transparent'}`}></button>))}</div>
                 </div>
                 
                 <div>

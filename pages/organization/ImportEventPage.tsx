@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
@@ -6,7 +5,7 @@ import { generateEventImageFromText, importEventFromMultimodal } from '../../ser
 import { fetchPrivateFile } from '../../services/s3Service';
 import type { Organization, Category, Activity, Interest, InterestCategory } from '../../types';
 import type { ImportedEventData } from '../../services/geminiService';
-import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X, FileText, UploadCloud, Palette, XCircle, CheckCircle } from 'lucide-react';
+import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X, FileText, UploadCloud, Palette, XCircle, CheckCircle, Ticket, Smile } from 'lucide-react';
 import { usePersistentState } from '../../hooks/useNotifications';
 import CategorySelector from '../../components/CategorySelector';
 import TagSelector from '../../components/TagSelector';
@@ -35,18 +34,46 @@ const PrivateImage: React.FC<{src: string, onRemove?: () => void, className?: st
 
     useEffect(() => {
         let objectUrl: string | null = null;
-        setIsLoading(true);
-        fetchPrivateFile(src).then(url => {
-            objectUrl = url;
-            setImageUrl(url);
-            setIsLoading(false);
-        });
+        let isMounted = true;
+        
+        const processUrl = async () => {
+            if (!isMounted) return;
+            setIsLoading(true);
+
+            // Directly handle data and blob URLs
+            if (src.startsWith('data:') || src.startsWith('blob:')) {
+                setImageUrl(src);
+                setIsLoading(false);
+                return;
+            }
+            
+            // Handle S3 URLs
+            try {
+                const url = await fetchPrivateFile(src);
+                if (isMounted) {
+                    if (url.startsWith('blob:')) objectUrl = url;
+                    setImageUrl(url);
+                }
+            } catch (e) {
+                console.error("Failed to fetch private file:", e);
+                if (isMounted) setImageUrl('');
+            } finally {
+                if (isMounted) setIsLoading(false);
+            }
+        };
+
+        processUrl();
+        
         return () => {
-            if (objectUrl && objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl);
+            isMounted = false;
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
         };
     }, [src]);
 
     if (isLoading) return <div className={`aspect-square bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded-lg ${className}`} />;
+    if (!imageUrl) return <div className={`aspect-square bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center ${className}`}><ImageIcon className="text-gray-400" /></div>;
     
     return (
         <div className={`relative group aspect-square ${className}`}>
@@ -56,12 +83,28 @@ const PrivateImage: React.FC<{src: string, onRemove?: () => void, className?: st
     );
 };
 
+const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
+    const formatText = (inputText: string) => {
+        if (!inputText) return '';
+        let formatted = inputText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        formatted = formatted.replace(/^\s*[-*]\s+(.*)/gm, '<li class="ml-4 list-disc">$1</li>');
+        formatted = formatted.replace(/(<li.*?>.*?<\/li>)+/gs, '<ul>$&</ul>');
+        formatted = formatted.replace(/<\/ul>\n/g, '</ul><br/>').replace(/\n/g, '<br />');
+        return formatted;
+    };
+    return <div dangerouslySetInnerHTML={{ __html: formatText(text) }} className="prose prose-sm dark:prose-invert max-w-none break-words whitespace-pre-wrap leading-relaxed" />;
+};
+
 const initialFormData = { 
     title: '', description: '', time: '', end_time: '', address: '', 
     category_id: null as number | null, emoji: '🎉', color: 'bg-blue-100', 
     image_urls: [] as string[],
     selectedActivityIds: [] as number[],
     selectedInterestIds: [] as number[],
+    is_sponsored: false,
+    offer: '',
+    is_diagnosis_friendly: false,
 };
 type FileObject = { name: string; type: string; data: string; preview: string };
 type BatchResult = { success: boolean; data?: ImportedEventData & { image_urls?: string[] }; error?: string; sourceFileName: string; }
@@ -86,6 +129,8 @@ const ImportEventPage: React.FC = () => {
         dateTimeOptions: [] as string[],
         pendingImportData: null as ImportedEventData | null,
     });
+    const [isEditingDescription, setIsEditingDescription] = useState(false);
+    const [isRegenerating, setIsRegenerating] = useState(false);
 
     const updateState = (newState: Partial<typeof state>) => {
         setState(prev => ({ ...prev, ...newState }));
@@ -179,6 +224,7 @@ const ImportEventPage: React.FC = () => {
         const activityIds = data.suggested_activity_names ? allActivities.filter(a => data.suggested_activity_names!.includes(a.name)).map(a => a.id) : [];
         const interestIds = data.suggested_interest_names ? allInterests.filter(i => data.suggested_interest_names!.includes(i.name)).map(i => i.id) : [];
         
+        setIsEditingDescription(false); // Default to showing formatted preview
         updateState({
             formData: {
                 title: data.title || '',
@@ -192,9 +238,47 @@ const ImportEventPage: React.FC = () => {
                 color: 'bg-blue-100',
                 selectedActivityIds: activityIds,
                 selectedInterestIds: interestIds,
+                is_sponsored: data.is_sponsored || false,
+                offer: data.offer || '',
+                is_diagnosis_friendly: data.is_diagnosis_friendly || false,
             },
             step: 'form', dateTimeOptions: [], pendingImportData: null
         });
+    };
+    
+    const handleRegenerateImages = async () => {
+        if (!state.formData.title || !state.formData.description || imageGenerationStyle === 'none') {
+            setError("Titel og beskrivelse skal være udfyldt for at regenerere billeder.");
+            return;
+        }
+        if (state.formData.image_urls.length === 0) {
+            setError("Der er ingen AI-genererede billeder at regenerere.");
+            return;
+        }
+
+        setIsRegenerating(true);
+        setError(null);
+        try {
+            const numToRegen = state.formData.image_urls.length;
+            const base64Images = await generateEventImageFromText(
+                state.formData.description,
+                imageGenerationStyle as 'realistic' | 'illustration',
+                state.formData.title,
+                includeTitleOnImage,
+                numToRegen
+            );
+            const newDataUrls = base64Images.map(base64 => `data:image/jpeg;base64,${base64}`);
+            updateState({
+                formData: {
+                    ...state.formData,
+                    image_urls: newDataUrls,
+                }
+            });
+        } catch (err: any) {
+            setError(`Fejl ved regenerering af billeder: ${err.message}`);
+        } finally {
+            setIsRegenerating(false);
+        }
     };
 
     const handleBatchImport = async () => {
@@ -249,6 +333,9 @@ const ImportEventPage: React.FC = () => {
                     color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
                     image_url: data.image_urls?.[0] || null,
                     organization_id: organization.id, host_name: organization.name, host_avatar_url: organization.logo_url,
+                    is_sponsored: data.is_sponsored || false,
+                    offer: data.is_sponsored ? data.offer || '' : '',
+                    is_diagnosis_friendly: data.is_diagnosis_friendly || false,
                 };
             });
             const eventsToInsert = await Promise.all(eventsToInsertPromises);
@@ -321,8 +408,9 @@ const ImportEventPage: React.FC = () => {
                 description: state.formData.description,
                 time: new Date(state.formData.time).toISOString(),
                 end_time: state.formData.end_time ? new Date(state.formData.end_time).toISOString() : null,
-                is_sponsored: false,
-                offer: '',
+                is_sponsored: state.formData.is_sponsored,
+                offer: state.formData.is_sponsored ? state.formData.offer : '',
+                is_diagnosis_friendly: state.formData.is_diagnosis_friendly,
                 category_id: state.formData.category_id,
                 address: state.formData.address,
                 image_url: state.formData.image_urls.length > 0 ? state.formData.image_urls[0] : null,
@@ -501,9 +589,47 @@ const ImportEventPage: React.FC = () => {
         return (
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">Bekræft Event Detaljer</h2><button type="button" onClick={handleReset} className="flex items-center text-sm font-semibold text-primary hover:underline"><ArrowLeft size={16} className="mr-1" /> Start forfra</button></div>
-                {state.formData.image_urls.length > 0 && <div><label className="block text-sm font-medium mb-1">AI-genererede billeder</label><div className="grid grid-cols-2 gap-2">{state.formData.image_urls.map((url, i) => (<PrivateImage key={i} src={url} onRemove={() => updateState({ formData: {...state.formData, image_urls: state.formData.image_urls.filter((_, idx) => i !== idx)} })} className="aspect-square"/>))}</div></div>}
+                {state.formData.image_urls.length > 0 && (
+                    <div>
+                        <label className="block text-sm font-medium mb-1">AI-genererede billeder</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            {state.formData.image_urls.map((url, i) => (<PrivateImage key={i} src={url} onRemove={() => updateState({ formData: {...state.formData, image_urls: state.formData.image_urls.filter((_, idx) => i !== idx)} })} className="aspect-square"/>))}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleRegenerateImages}
+                            disabled={isRegenerating || imageGenerationStyle === 'none'}
+                            className="w-full mt-2 bg-primary-light text-primary font-bold py-2 px-4 rounded-full text-sm hover:bg-primary/20 flex items-center justify-center disabled:opacity-60"
+                        >
+                            {isRegenerating ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2" size={16}/>}
+                            {isRegenerating ? 'Genererer...' : 'Generer Billeder Igen'}
+                        </button>
+                    </div>
+                )}
                 <div><label htmlFor="title" className="block text-sm font-medium mb-1">Navn</label><input type="text" id="title" name="title" value={state.formData.title} onChange={e => updateState({ formData: {...state.formData, title: e.target.value} })} className="w-full input-style" required /></div>
-                <div><label htmlFor="description" className="block text-sm font-medium mb-1">Beskrivelse</label><textarea id="description" name="description" rows={5} value={state.formData.description} onChange={e => updateState({ formData: {...state.formData, description: e.target.value} })} className="w-full input-style" required /></div>
+                <div>
+                    <div className="flex justify-between items-center mb-1">
+                        <label htmlFor="description" className="block text-sm font-medium">Beskrivelse</label>
+                        <button type="button" onClick={() => setIsEditingDescription(!isEditingDescription)} className="text-xs font-semibold text-primary hover:underline">
+                            {isEditingDescription ? 'Vis formatering' : 'Rediger'}
+                        </button>
+                    </div>
+                    {isEditingDescription ? (
+                        <textarea
+                            id="description"
+                            name="description"
+                            rows={8}
+                            value={state.formData.description}
+                            onChange={e => updateState({ formData: {...state.formData, description: e.target.value} })}
+                            className="w-full input-style"
+                            required
+                        />
+                    ) : (
+                        <div className="w-full p-3 min-h-[216px] bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-lg">
+                            <MarkdownRenderer text={state.formData.description} />
+                        </div>
+                    )}
+                </div>
                 <CategorySelector value={state.formData.category_id} onChange={(id) => updateState({ formData: {...state.formData, category_id: id} })} type="event" />
                 <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm -m-4 mt-4">
                     <TagSelector
@@ -545,6 +671,15 @@ const ImportEventPage: React.FC = () => {
                     <label htmlFor="address" className="block text-sm font-medium mb-1">Adresse</label>
                     <input type="text" id="address" name="address" value={state.formData.address} onChange={e => updateState({ formData: {...state.formData, address: e.target.value} })} className="w-full input-style" placeholder="F.eks. Gade 123, 9000 Aalborg" />
                 </div>
+                <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+                    <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3"><Ticket className="inline mr-2" size={16}/> Sponsorering</label>
+                    <div className="flex items-center justify-between"><p className="text-sm text-gray-600 dark:text-dark-text-secondary flex-1 mr-4">Er dette event sponsoreret?</p><div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle"><input type="checkbox" id="toggle-sponsored" name="is_sponsored" checked={state.formData.is_sponsored} onChange={e => updateState({ formData: {...state.formData, is_sponsored: e.target.checked} })} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/><label htmlFor="toggle-sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label></div></div>
+                    {state.formData.is_sponsored && (<div className="mt-4"><label htmlFor="offer" className="block text-sm font-medium mb-1">Tilbud</label><input type="text" id="offer" name="offer" value={state.formData.offer} onChange={e => updateState({ formData: {...state.formData, offer: e.target.value} })} className="w-full input-style" /></div>)}
+                </div>
+                <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
+                    <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3"><Smile className="inline mr-2" size={16}/> Diagnosevenligt</label>
+                    <div className="flex items-center justify-between"><p className="text-sm text-gray-600 dark:text-dark-text-secondary flex-1 mr-4">Er dette event designet til at være hensynsfuldt over for deltagere med diagnoser?</p><div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle"><input type="checkbox" id="toggle-diagnosis" name="is_diagnosis_friendly" checked={state.formData.is_diagnosis_friendly} onChange={e => updateState({ formData: {...state.formData, is_diagnosis_friendly: e.target.checked} })} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/><label htmlFor="toggle-diagnosis" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label></div></div>
+                </div>
                 <button type="submit" className="w-full bg-primary text-white font-bold py-3 rounded-full text-lg">Opret Event</button>
             </form>
         );
@@ -556,7 +691,7 @@ const ImportEventPage: React.FC = () => {
         <div className="p-6 md:p-8 h-full overflow-y-auto">
             <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-1">Importer Event med AI</h1>
             <p className="text-text-secondary dark:text-dark-text-secondary mb-6">Spar tid ved at lade vores AI oprette dine events for dig.</p>
-            <style>{`.input-style { display: block; width: 100%; padding: 0.75rem 1rem; color: #212529; background-color: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 0.5rem; outline: none; } .dark .input-style { background-color: #2a3343; border-color: #3c465b; color: #e2e8f0; } .input-style:focus { --tw-ring-color: #006B76; border-color: #006B76; box-shadow: 0 0 0 2px var(--tw-ring-color); }`}</style>
+            <style>{`.input-style { display: block; width: 100%; padding: 0.75rem 1rem; color: #212529; background-color: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 0.5rem; outline: none; } .dark .input-style { background-color: #2a3343; border-color: #3c465b; color: #e2e8f0; } .input-style:focus { --tw-ring-color: #006B76; border-color: #006B76; box-shadow: 0 0 0 2px var(--tw-ring-color); } .toggle-checkbox:checked { right: 0; border-color: #006B76; } .toggle-checkbox:checked + .toggle-label { background-color: #006B76; }`}</style>
 
             <div className="max-w-2xl mx-auto bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm">
                 {error && <p className="text-red-500 text-center bg-red-100 dark:bg-red-900/20 dark:text-red-400 p-3 rounded-lg text-sm mb-4">{error}</p>}

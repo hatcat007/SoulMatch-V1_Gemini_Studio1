@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { supabase } from './supabase'; // Ensure supabase client is exported from supabase.ts
 // FIX: Import types needed for the new generateProfileDescription function
@@ -44,6 +43,9 @@ export type ImportedEventData = {
     datetime_options?: string[];
     suggested_activity_names?: string[];
     suggested_interest_names?: string[];
+    is_sponsored?: boolean;
+    offer?: string;
+    is_diagnosis_friendly?: boolean;
 };
 
 /**
@@ -98,7 +100,10 @@ export async function importEventFromMultimodal(
     const interestNames = allInterests.map(i => i.name);
 
     const systemInstruction = `You are an expert event creator. Your task is to extract event details from the provided text and images. Be concise and accurate. Today is ${new Date().toISOString()}.
-    The response must be in JSON format. The JSON schema is provided. 
+    The response must be in JSON format. The JSON schema is provided.
+    **Title Field Rules:**
+    - The "title" is the most important field. You MUST extract the correct and official name of the event from the provided text or images.
+    - If no explicit title is found, create a short, descriptive, and appealing title based on the event's main activity. For example, if the text is about a "workshop where we will make collages", a good title would be "Kreativt Kollageværksted".
     ${descriptionInstruction}
     ${emojiInstruction}
     The "category" must be one of the following values: ${categoryOptions.join(', ')}.
@@ -106,6 +111,8 @@ export async function importEventFromMultimodal(
     Based on the event's title and description, select the most relevant activities from this list: ${activityNames.join(', ')}.
     Also, select the most relevant interests from this list: ${interestNames.join(', ')}.
     Do not invent new activities or interests; only use the ones provided.
+    If the event mentions sponsors, a special deal, or free items, set 'is_sponsored' to true and extract the deal text into the 'offer' field.
+    Analyze the text for clues about accessibility or being diagnosis-friendly (e.g., mentions of quiet spaces, sensory considerations, small groups). If found, set 'is_diagnosis_friendly' to true.
     If there are multiple possible dates/times, list them in the 'datetime_options' array. Otherwise, put the single best date/time in 'datetime' and leave 'datetime_options' empty.
     If you cannot find a required field, provide a sensible empty value, but set an 'error' field with a description of what is missing.
     `;
@@ -128,6 +135,9 @@ export async function importEventFromMultimodal(
                     emoji: { type: Type.STRING, description: `An emoji for the event. Must be one of: ${emojiOptions.join(', ')}` },
                     suggested_activity_names: { type: Type.ARRAY, items: { type: Type.STRING }, description: `A list of relevant activity names from the provided list.` },
                     suggested_interest_names: { type: Type.ARRAY, items: { type: Type.STRING }, description: `A list of relevant interest names from the provided list.` },
+                    is_sponsored: { type: Type.BOOLEAN, description: 'True if the event is sponsored or offers a special deal.' },
+                    offer: { type: Type.STRING, description: 'The text of the sponsorship deal or offer, if any.' },
+                    is_diagnosis_friendly: { type: Type.BOOLEAN, description: 'True if the event is described as being diagnosis-friendly or having similar considerations.' },
                     error: { type: Type.STRING, description: 'An error message if any required information is missing.' },
                     datetime_options: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'A list of possible date/time options if ambiguous.' },
                 },
