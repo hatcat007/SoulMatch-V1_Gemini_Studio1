@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-// FIX: Import Variants type from framer-motion to correctly type the variants object.
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { ArrowRight, Heart, Lock, Zap } from 'lucide-react';
+import { ArrowRight, Lock, Zap } from 'lucide-react';
 
 interface AnimatedTextCycleProps {
   words: string[];
@@ -25,8 +24,6 @@ const AnimatedTextCycle: React.FC<AnimatedTextCycleProps> = ({
     return () => clearInterval(timer);
   }, [interval, words.length]);
 
-  // FIX: Explicitly type the variants object with Variants from framer-motion.
-  // This resolves the TypeScript error where string literals for 'ease' were not being accepted.
   const containerVariants: Variants = {
     hidden: { y: -15, opacity: 0, filter: "blur(5px)" },
     visible: { y: 0, opacity: 1, filter: "blur(0px)", transition: { duration: 0.4, ease: "easeOut" } },
@@ -118,13 +115,13 @@ const PublicAuthModal: React.FC = () => {
     const personalityWords = ["din personlighed", "de bedste matches", "nye oplevelser", "et stærkt fællesskab"];
     
     const containerVariants: Variants = {
-        hidden: { opacity: 0, y: 50 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.8, staggerChildren: 0.2 } }
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { duration: 0.5, staggerChildren: 0.15 } }
     };
 
     const itemVariants: Variants = {
-        hidden: { opacity: 0, y: 30 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } }
+        hidden: { opacity: 0, y: 20 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
     };
     
     const handleNavigation = () => {
@@ -132,25 +129,20 @@ const PublicAuthModal: React.FC = () => {
     }
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-dark-background dark:via-dark-surface dark:to-[#1a2035] relative overflow-hidden">
+    <div className="fixed inset-0 bg-gray-50/80 dark:bg-dark-background/90 backdrop-blur-md relative overflow-hidden">
       <FloatingElements />
       
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <motion.div
-          className="w-full max-w-2xl"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
+        <div className="w-full max-w-2xl">
           <AnimatePresence mode="wait">
-            {currentStep === 0 ? (
+            {currentStep === 0 && (
               <motion.div
                 key="login"
-                className="text-center space-y-6"
-                variants={itemVariants}
+                variants={containerVariants}
                 initial="hidden"
                 animate="visible"
-                exit={{ opacity: 0, x: -100, transition: { duration: 0.4 } }}
+                exit={{ opacity: 0, x: -100, transition: { duration: 0.4, ease: 'easeInOut' } }}
+                className="text-center space-y-6"
               >
                 <motion.div variants={itemVariants} className="inline-block bg-primary-light dark:bg-primary/20 p-4 rounded-2xl"><Lock className="text-primary" size={32}/></motion.div>
                 
@@ -163,39 +155,40 @@ const PublicAuthModal: React.FC = () => {
                   variants={itemVariants}
                 >
                   <div className="space-y-4 text-text-secondary dark:text-dark-text-secondary">
-                    <motion.p variants={itemVariants} className="text-lg leading-relaxed">
+                    <p className="text-lg leading-relaxed">
                       For din og alles{" "}
                       <AnimatedTextCycle 
                         words={loginWords}
                         className="font-bold text-primary bg-primary-light dark:bg-primary/20 px-3 py-1 rounded-lg"
                       />
                       {" "}❤️
-                    </motion.p>
+                    </p>
                     
-                    <motion.p variants={itemVariants} className="opacity-90">
+                    <p className="opacity-90">
                       I kampen mod ensomhed og for trygge møder i virkeligheden.
-                    </motion.p>
+                    </p>
                     
-                    <motion.div variants={itemVariants} className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
+                    <div className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
                         👉 Et klik, et login – og du er klar til fællesskabet 🚀✨
-                    </motion.div>
+                    </div>
                   </div>
 
-                  <motion.div className="mt-8" variants={itemVariants}>
+                  <motion.div className="mt-8">
                     <AnimatedButton onClick={() => setCurrentStep(1)} variant="primary">
                       Fortsæt
                     </AnimatedButton>
                   </motion.div>
                 </motion.div>
               </motion.div>
-            ) : (
+            )}
+
+            {currentStep === 1 && (
               <motion.div
                 key="personality"
-                className="text-center space-y-6"
-                variants={itemVariants}
                 initial={{ opacity: 0, x: 100 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4 }}
+                animate={{ opacity: 1, x: 0, transition: { duration: 0.4, ease: 'easeInOut', staggerChildren: 0.15 } }}
+                exit={{ opacity: 0, x: 100, transition: { duration: 0.4, ease: 'easeInOut' } }}
+                className="text-center space-y-6"
               >
                  <motion.div variants={itemVariants} className="inline-block bg-accent/10 p-4 rounded-2xl"><Zap className="text-accent" size={32}/></motion.div>
 
@@ -208,34 +201,37 @@ const PublicAuthModal: React.FC = () => {
                   variants={itemVariants}
                 >
                   <div className="space-y-4 text-text-secondary dark:text-dark-text-secondary">
-                    <motion.p variants={itemVariants} className="text-lg leading-relaxed">
+                    <p className="text-lg leading-relaxed">
                       Lær dig selv bedre at kende – og find ud af, hvordan du matcher med{" "}
                       <AnimatedTextCycle 
                         words={personalityWords}
                         className="font-bold text-accent bg-accent/10 px-3 py-1 rounded-lg"
                       />
                       , der giver mening for dig.
-                    </motion.p>
+                    </p>
                     
-                    <motion.p variants={itemVariants} className="opacity-90">
+                    <p className="opacity-90">
                       💡 Det tager kun få minutter, men kan åbne døren til venskaber, oplevelser og fællesskab i kampen mod ensomhed.
-                    </motion.p>
+                    </p>
                     
-                    <motion.div variants={itemVariants} className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
+                    <div className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
                       👉 Klar? Lad os finde din vibe 🎯
-                    </motion.div>
+                    </div>
                   </div>
 
-                  <motion.div className="mt-8" variants={itemVariants}>
+                  <motion.div className="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-center">
                     <AnimatedButton onClick={handleNavigation} variant="primary">
                       Kom i gang
                     </AnimatedButton>
+                     <button onClick={() => setCurrentStep(0)} className="font-bold text-sm text-text-secondary dark:text-dark-text-secondary hover:underline px-4 py-2">
+                        Tilbage
+                    </button>
                   </motion.div>
                 </motion.div>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
