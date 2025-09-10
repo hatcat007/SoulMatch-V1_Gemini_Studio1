@@ -5,8 +5,7 @@ import type { Organization, Activity, Interest, InterestCategory } from '../../t
 import { useAuth } from '../../contexts/AuthContext';
 import { usePersistentState } from '../../hooks/useNotifications';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
-import { generateEventImageFromText } from '../../services/geminiService';
-import { Loader2, Plus, X, Sparkles, Image as ImageIcon, Ticket, Smile } from 'lucide-react';
+import { Loader2, Plus, X, Image as ImageIcon, Ticket, Smile } from 'lucide-react';
 import CategorySelector from '../../components/CategorySelector';
 import LoadingScreen from '../../components/LoadingScreen';
 import TagSelector from '../../components/TagSelector';
@@ -24,7 +23,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
             if (!src) { if (isMounted) setIsLoading(false); return; }
             setIsLoading(true);
 
-            if (src.startsWith('blob:') || src.startsWith('http') || src.startsWith('data:')) {
+            if (src.startsWith('blob:') || src.startsWith('data:')) {
                 setDisplayUrl(src);
                 setIsLoading(false);
             } else {
@@ -85,11 +84,6 @@ const CreateOrgEventPage: React.FC = () => {
     const navigate = useNavigate();
     const { organization, loading: authLoading } = useAuth();
     const [formData, setFormData] = usePersistentState('createOrgEventForm', initialFormState);
-
-    // AI State
-    const [aiImageStyle, setAiImageStyle] = useState<'realistic' | 'illustration'>('realistic');
-    const [aiNumberOfImages, setAiNumberOfImages] = useState(1);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     const [isUploading, setIsUploading] = useState(false);
     const imageInputRef = useRef<HTMLInputElement>(null);
@@ -159,24 +153,6 @@ const CreateOrgEventPage: React.FC = () => {
         if (imageToRemove.startsWith('blob:')) {
             URL.revokeObjectURL(imageToRemove);
         }
-    };
-
-    const handleGenerateImages = async () => {
-        if (!formData.title || !formData.description) {
-            setError("Udfyld venligst titel og beskrivelse for at generere billeder.");
-            return;
-        }
-         if (formData.images.length + aiNumberOfImages > 6) {
-             setError(`Du kan højst have 6 billeder.`);
-             return;
-        }
-        setIsGenerating(true); setError(null);
-        try {
-            const base64Images = await generateEventImageFromText(formData.description, aiImageStyle, formData.title, false, aiNumberOfImages);
-            const dataUrls = base64Images.map(base64 => `data:image/jpeg;base64,${base64}`);
-            setFormData(p => ({...p, images: [...p.images, ...dataUrls]}));
-        } catch (err: any) { setError(`Fejl ved billedgenerering: ${err.message}`); } 
-        finally { setIsGenerating(false); }
     };
     
     const handleActivityToggle = (activity: Activity) => {
@@ -288,8 +264,6 @@ const CreateOrgEventPage: React.FC = () => {
                     allTags={allActivitiesForSelector} 
                     selectedTags={selectedActivitiesForSelector} 
                     onToggleTag={(tag) => {
-                        // FIX: Find the original activity object from the allActivities list
-                        // to prevent type casting issues, as TagSelector expects Interest or PersonalityTag.
                         const activity = allActivities.find(a => a.id === tag.id);
                         if (activity) {
                             handleActivityToggle(activity);
@@ -320,14 +294,7 @@ const CreateOrgEventPage: React.FC = () => {
                     <input type="file" ref={imageInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" multiple />
                 </div>
                 
-                <div className="p-4 bg-primary-light/50 dark:bg-dark-surface-light rounded-lg space-y-3">
-                    <h3 className="font-bold text-primary dark:text-dark-text-primary">Generer billeder med AI</h3>
-                    <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setAiImageStyle('realistic')} className={`p-2 rounded-md text-sm font-semibold border-2 ${aiImageStyle === 'realistic' ? 'border-primary bg-primary/10' : 'border-gray-300 dark:border-dark-border'}`}>Realistisk</button><button type="button" onClick={() => setAiImageStyle('illustration')} className={`p-2 rounded-md text-sm font-semibold border-2 ${aiImageStyle === 'illustration' ? 'border-primary bg-primary/10' : 'border-gray-300 dark:border-dark-border'}`}>Illustration</button></div>
-                    <div><label className="block text-sm font-medium mb-1">Antal</label><div className="flex justify-between items-center bg-white dark:bg-dark-surface p-1 rounded-lg">{[1, 2, 3, 4].map(num => (<button key={num} type="button" onClick={() => setAiNumberOfImages(num)} className={`w-full py-1 rounded-md font-bold text-sm transition ${aiNumberOfImages === num ? 'bg-primary text-white' : 'hover:bg-gray-200 dark:hover:bg-dark-border'}`}>{num}</button>))}</div></div>
-                    <button type="button" onClick={handleGenerateImages} disabled={isGenerating || isUploading} className="w-full bg-primary text-white font-bold py-2 px-4 rounded-full text-sm hover:bg-primary-dark flex items-center justify-center disabled:opacity-60">{isGenerating ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2" size={16}/>}{isGenerating ? 'Genererer...' : `Generer ${aiNumberOfImages} Billede(r)`}</button>
-                </div>
-
-                <div className="pt-2"><button type="submit" disabled={isSubmitting || isUploading || isGenerating} className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition shadow-lg disabled:opacity-50">{isSubmitting ? 'Opretter...' : 'Opret Event'}</button></div>
+                <div className="pt-2"><button type="submit" disabled={isSubmitting || isUploading} className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition shadow-lg disabled:opacity-50">{isSubmitting ? 'Opretter...' : 'Opret Event'}</button></div>
             </form>
         </div>
     );
