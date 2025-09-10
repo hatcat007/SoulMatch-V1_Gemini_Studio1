@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { ArrowRight, Lock, Zap } from 'lucide-react';
+import { ArrowRight, Lock, Puzzle } from 'lucide-react';
 
 interface AnimatedTextCycleProps {
   words: string[];
@@ -90,7 +90,7 @@ const FloatingElements: React.FC = () => {
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -bottom-40 -right-40 w-96 h-96 bg-accent/20 rounded-full blur-3xl"
+        className="absolute -bottom-40 -right-40 w-96 h-96 bg-primary/20 rounded-full blur-3xl"
         animate={{ scale: [1.2, 1, 1.2], opacity: [0.4, 0.6, 0.4] }}
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
       />
@@ -129,109 +129,107 @@ const PublicAuthModal: React.FC = () => {
     }
 
   return (
-    <div className="fixed inset-0 bg-gray-50/80 dark:bg-dark-background/90 backdrop-blur-md relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm overflow-hidden">
       <FloatingElements />
       
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl">
-          <AnimatePresence mode="wait">
-            {currentStep === 0 && (
+      <div className="relative z-10 w-full max-w-2xl">
+        <AnimatePresence mode="wait">
+          {currentStep === 0 && (
+            <motion.div
+              key="login"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              exit={{ opacity: 0, x: -100, transition: { duration: 0.4, ease: 'easeInOut' } }}
+              className="text-center space-y-6"
+            >
+              <motion.div variants={itemVariants} className="inline-block bg-primary-light dark:bg-primary/20 p-4 rounded-2xl"><Lock className="text-primary" size={32}/></motion.div>
+              
+              <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-text-primary dark:text-dark-text-primary">
+                  Login som alle andre – med MitID
+              </motion.h1>
+
               <motion.div
-                key="login"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit={{ opacity: 0, x: -100, transition: { duration: 0.4, ease: 'easeInOut' } }}
-                className="text-center space-y-6"
+                className="bg-white dark:bg-dark-surface rounded-2xl p-6 md:p-8 border border-gray-200 dark:border-dark-border shadow-lg"
+                variants={itemVariants}
               >
-                <motion.div variants={itemVariants} className="inline-block bg-primary-light dark:bg-primary/20 p-4 rounded-2xl"><Lock className="text-primary" size={32}/></motion.div>
-                
-                <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-text-primary dark:text-dark-text-primary">
-                    Login som alle andre – med MitID 🙌
-                </motion.h1>
-
-                <motion.div
-                  className="bg-white dark:bg-dark-surface rounded-2xl p-6 md:p-8 border border-gray-200 dark:border-dark-border shadow-lg"
-                  variants={itemVariants}
-                >
-                  <div className="space-y-4 text-text-secondary dark:text-dark-text-secondary">
-                    <p className="text-lg leading-relaxed">
-                      For din og alles{" "}
-                      <AnimatedTextCycle 
-                        words={loginWords}
-                        className="font-bold text-primary bg-primary-light dark:bg-primary/20 px-3 py-1 rounded-lg"
-                      />
-                      {" "}❤️
-                    </p>
-                    
-                    <p className="opacity-90">
-                      I kampen mod ensomhed og for trygge møder i virkeligheden.
-                    </p>
-                    
-                    <div className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
-                        👉 Et klik, et login – og du er klar til fællesskabet 🚀✨
-                    </div>
+                <div className="space-y-4 text-text-secondary dark:text-dark-text-secondary">
+                  <p className="text-lg leading-relaxed">
+                    For din og alles{" "}
+                    <AnimatedTextCycle 
+                      words={loginWords}
+                      className="font-bold text-primary bg-primary-light dark:bg-primary/20 px-3 py-1 rounded-lg"
+                    />
+                    {" "}
+                  </p>
+                  
+                  <p className="opacity-90">
+                    I kampen mod ensomhed og for trygge møder i virkeligheden.
+                  </p>
+                  
+                  <div className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
+                      👉 Et klik, et login – og du er klar til fællesskabet 🚀✨
                   </div>
+                </div>
 
-                  <motion.div className="mt-8">
-                    <AnimatedButton onClick={() => setCurrentStep(1)} variant="primary">
-                      Fortsæt
-                    </AnimatedButton>
-                  </motion.div>
+                <motion.div className="mt-8">
+                  <AnimatedButton onClick={() => setCurrentStep(1)} variant="primary">
+                    Fortsæt
+                  </AnimatedButton>
                 </motion.div>
               </motion.div>
-            )}
+            </motion.div>
+          )}
 
-            {currentStep === 1 && (
+          {currentStep === 1 && (
+            <motion.div
+              key="personality"
+              initial={{ opacity: 0, x: 100 }}
+              animate={{ opacity: 1, x: 0, transition: { duration: 0.4, ease: 'easeInOut', staggerChildren: 0.15 } }}
+              exit={{ opacity: 0, x: 100, transition: { duration: 0.4, ease: 'easeInOut' } }}
+              className="text-center space-y-6"
+            >
+               <motion.div variants={itemVariants} className="inline-block bg-primary-light dark:bg-primary/20 p-4 rounded-2xl"><Puzzle className="text-primary" size={32}/></motion.div>
+
+              <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-text-primary dark:text-dark-text-primary">
+                  Tag AI personlighedstesten ✨
+              </motion.h1>
+
               <motion.div
-                key="personality"
-                initial={{ opacity: 0, x: 100 }}
-                animate={{ opacity: 1, x: 0, transition: { duration: 0.4, ease: 'easeInOut', staggerChildren: 0.15 } }}
-                exit={{ opacity: 0, x: 100, transition: { duration: 0.4, ease: 'easeInOut' } }}
-                className="text-center space-y-6"
+                className="bg-white dark:bg-dark-surface rounded-2xl p-6 md:p-8 border border-gray-200 dark:border-dark-border shadow-lg"
+                variants={itemVariants}
               >
-                 <motion.div variants={itemVariants} className="inline-block bg-accent/10 p-4 rounded-2xl"><Zap className="text-accent" size={32}/></motion.div>
-
-                <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-text-primary dark:text-dark-text-primary">
-                    🧩 Tag personlighedstesten ✨
-                </motion.h1>
-
-                <motion.div
-                  className="bg-white dark:bg-dark-surface rounded-2xl p-6 md:p-8 border border-gray-200 dark:border-dark-border shadow-lg"
-                  variants={itemVariants}
-                >
-                  <div className="space-y-4 text-text-secondary dark:text-dark-text-secondary">
-                    <p className="text-lg leading-relaxed">
-                      Lær dig selv bedre at kende – og find ud af, hvordan du matcher med{" "}
-                      <AnimatedTextCycle 
-                        words={personalityWords}
-                        className="font-bold text-accent bg-accent/10 px-3 py-1 rounded-lg"
-                      />
-                      , der giver mening for dig.
-                    </p>
-                    
-                    <p className="opacity-90">
-                      💡 Det tager kun få minutter, men kan åbne døren til venskaber, oplevelser og fællesskab i kampen mod ensomhed.
-                    </p>
-                    
-                    <div className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
-                      👉 Klar? Lad os finde din vibe 🎯
-                    </div>
+                <div className="space-y-4 text-text-secondary dark:text-dark-text-secondary">
+                  <p className="text-lg leading-relaxed">
+                    Lær dig selv bedre at kende – og find ud af, hvordan du Soul matcher med{" "}
+                    <AnimatedTextCycle 
+                      words={personalityWords}
+                      className="font-bold text-primary bg-primary-light dark:bg-primary/20 px-3 py-1 rounded-lg"
+                    />
+                    , der giver mening for dig.
+                  </p>
+                  
+                  <p className="opacity-90">
+                    💡 Det tager kun få minutter, men kan åbne døren til venskaber, oplevelser og fællesskab i kampen mod ensomhed.
+                  </p>
+                  
+                  <div className="font-semibold text-text-primary dark:text-dark-text-primary pt-2">
+                    👉 Klar? Lad os finde din vibe 🎯
                   </div>
+                </div>
 
-                  <motion.div className="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-center">
-                    <AnimatedButton onClick={handleNavigation} variant="primary">
-                      Kom i gang
-                    </AnimatedButton>
-                     <button onClick={() => setCurrentStep(0)} className="font-bold text-sm text-text-secondary dark:text-dark-text-secondary hover:underline px-4 py-2">
-                        Tilbage
-                    </button>
-                  </motion.div>
+                <motion.div className="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-center">
+                  <AnimatedButton onClick={handleNavigation} variant="primary">
+                    Kom i gang
+                  </AnimatedButton>
+                   <button onClick={() => setCurrentStep(0)} className="font-bold text-sm text-text-secondary dark:text-dark-text-secondary hover:underline px-4 py-2">
+                      Tilbage
+                  </button>
                 </motion.div>
               </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
