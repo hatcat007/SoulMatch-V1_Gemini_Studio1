@@ -145,8 +145,8 @@ const PublicAuthModal: React.FC = () => {
             >
               <motion.div variants={itemVariants} className="inline-block bg-primary-light dark:bg-primary/20 p-4 rounded-2xl"><Lock className="text-primary" size={32}/></motion.div>
               
-              <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-text-primary dark:text-dark-text-primary">
-                  Login som alle andre – med MitID
+              <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-white">
+                  Login som alle andre – med MitID 🙌
               </motion.h1>
 
               <motion.div
@@ -191,7 +191,7 @@ const PublicAuthModal: React.FC = () => {
             >
                <motion.div variants={itemVariants} className="inline-block bg-primary-light dark:bg-primary/20 p-4 rounded-2xl"><Puzzle className="text-primary" size={32}/></motion.div>
 
-              <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-text-primary dark:text-dark-text-primary">
+              <motion.h1 variants={itemVariants} className="text-3xl md:text-4xl font-bold text-white">
                   Tag AI personlighedstesten ✨
               </motion.h1>
 
