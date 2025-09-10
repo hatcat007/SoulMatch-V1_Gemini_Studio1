@@ -118,6 +118,18 @@ const PlaceDetailPage: React.FC = () => {
         setTimeout(() => setShareConfirmation(''), 3000);
     };
 
+    const handlePublicShare = () => {
+        const publicUrl = `${window.location.origin}/#/place/public/${placeId}`;
+        navigator.clipboard.writeText(publicUrl).then(() => {
+            setShareConfirmation('Offentligt link kopieret!');
+            setTimeout(() => setShareConfirmation(''), 3000);
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            setShareConfirmation('Kunne ikke kopiere link.');
+            setTimeout(() => setShareConfirmation(''), 3000);
+        });
+    };
+
     if (authLoading || loading) return <LoadingScreen message="Indlæser mødested..." />;
     if (!place) return <div className="p-4 text-center"><p>Mødested ikke fundet.</p><button onClick={() => navigate('/places')} className="text-primary mt-4">Tilbage til steder</button></div>;
     
@@ -131,7 +143,7 @@ const PlaceDetailPage: React.FC = () => {
                 <div className="max-w-4xl mx-auto flex items-center justify-between p-4">
                     <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-text-primary dark:text-dark-text-primary hover:bg-primary-light dark:hover:bg-dark-surface-light rounded-full transition-colors"><ArrowLeft size={24} /></button>
                     <h1 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Mødested</h1>
-                    <div className="w-8"></div>
+                    <button onClick={handlePublicShare} className="p-2 -mr-2 text-text-primary dark:text-dark-text-primary hover:bg-primary-light dark:hover:bg-dark-surface-light rounded-full transition-colors" aria-label="Del mødested"><Share2 size={20} /></button>
                 </div>
             </header>
 
@@ -196,7 +208,7 @@ const PlaceDetailPage: React.FC = () => {
             </footer>
              
             {showShareModal && (<ShareModal title="Del sted med en Soulmate" soulmates={soulmates} onShare={handleShare} onClose={() => setShowShareModal(false)} />)}
-            {shareConfirmation && (<div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-full z-50">{shareConfirmation}</div>)}
+            {shareConfirmation && (<div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm font-bold py-2 px-4 rounded-full z-50">{shareConfirmation}</div>)}
         </div>
     );
 };

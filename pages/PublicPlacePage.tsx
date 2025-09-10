@@ -1,0 +1,99 @@
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { MapPin, Loader2, ImageIcon, Ticket } from 'lucide-react';
+import type { Place } from '../types';
+import { supabase } from '../services/supabase';
+import { fetchPrivateFile } from '../services/s3Service';
+import PublicAuthModal from '../components/PublicAuthModal';
+
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => { objectUrl = url; setImageUrl(url); });
+        }
+        return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    }, [src]);
+
+    if (!imageUrl) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse flex items-center justify-center`}><ImageIcon className="text-gray-400" size={48}/></div>;
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
+
+const PublicPlacePage: React.FC = () => {
+    const { placeId } = useParams<{ placeId: string }>();
+    const [place, setPlace] = useState<Partial<Place> | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchPlaceData = async () => {
+            if (!placeId) {
+                setLoading(false);
+                return;
+            }
+            const { data, error } = await supabase
+                .from('places')
+                .select('name, description, address, image_url, icon, offer, is_sponsored')
+                .eq('id', placeId)
+                .single();
+
+            if (data) {
+                setPlace(data);
+            }
+            setLoading(false);
+        };
+        fetchPlaceData();
+    }, [placeId]);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 dark:bg-dark-background flex items-center justify-center">
+                <Loader2 className="animate-spin text-primary" size={48} />
+            </div>
+        );
+    }
+    
+    if (!place) {
+        return (
+             <div className="min-h-screen bg-gray-50 dark:bg-dark-background flex flex-col items-center justify-center text-center p-4">
+                <h1 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Mødested ikke fundet</h1>
+                <p className="text-text-secondary dark:text-dark-text-secondary mt-2">Det mødested, du leder efter, findes ikke eller er blevet fjernet.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50 dark:bg-dark-background">
+            <PublicAuthModal />
+            <div className="max-w-3xl mx-auto p-4 md:p-8 blur-sm">
+                 <div className="mb-4">
+                    <span className="text-4xl">{place.icon}</span>
+                 </div>
+                 <h1 className="text-4xl font-bold text-text-primary dark:text-dark-text-primary mb-4">{place.name}</h1>
+                 
+                 <div className="w-full aspect-[16/9] rounded-2xl overflow-hidden shadow-lg mb-6">
+                    <PrivateImage src={place.image_url} alt={place.name || 'Mødested'} className="w-full h-full object-cover" />
+                 </div>
+
+                 <div className="space-y-4 text-lg">
+                    {place.is_sponsored && place.offer && (
+                         <div className="flex items-center text-green-600 font-semibold">
+                            <Ticket size={20} className="mr-3" />
+                            <span>{place.offer}</span>
+                        </div>
+                    )}
+                     <div className="flex items-center text-text-secondary dark:text-dark-text-secondary">
+                        <MapPin size={20} className="mr-3 text-primary" />
+                        <span>{place.address || 'Adresse ikke angivet'}</span>
+                    </div>
+                 </div>
+
+                 <div className="mt-8 prose dark:prose-invert max-w-none">
+                    <p>{place.description}</p>
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+export default PublicPlacePage;

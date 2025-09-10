@@ -45,6 +45,8 @@ import ImportEventPage from './pages/organization/ImportEventPage';
 import OrganizationSettingsPage from './pages/organization/OrganizationSettingsPage';
 import EditOrgEventPage from './pages/organization/EditOrgEventPage';
 import EditPlacePage from './pages/organization/EditPlacePage';
+import PublicEventPage from './pages/PublicEventPage';
+import PublicPlacePage from './pages/PublicPlacePage';
 
 const AppContent: React.FC = () => {
   const { session, user, organization, loading: authLoading, refetchUserProfile } = useAuth();
@@ -211,6 +213,8 @@ const AppContent: React.FC = () => {
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/create-organization" element={<CreateOrganizationPage />} />
                 <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
+                <Route path="/event/public/:eventId" element={<PublicEventPage />} />
+                <Route path="/place/public/:placeId" element={<PublicPlacePage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             );
