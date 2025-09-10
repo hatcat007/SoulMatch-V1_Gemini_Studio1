@@ -73,6 +73,7 @@ const initialFormState = {
     color: 'bg-blue-100',
     address: '',
     images: [] as string[],
+    isDiagnosisFriendly: false,
 };
 
 const CreateOrgEventPage: React.FC = () => {
@@ -193,6 +194,7 @@ const CreateOrgEventPage: React.FC = () => {
             organization_id: organization.id,
             host_name: organization.name,
             host_avatar_url: organization.logo_url,
+            is_diagnosis_friendly: formData.isDiagnosisFriendly,
         }).select().single();
 
         if (insertError || !newEvent) {
@@ -345,6 +347,17 @@ const CreateOrgEventPage: React.FC = () => {
                                 className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required />
                         </div>
                      )}
+                </div>
+
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Smile size={20} className="mr-2 text-primary"/> Diagnose venligt?</label>
+                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                         <p className="text-sm text-gray-600 flex-1 mr-4">Er dette event designet til at være hensynsfuldt over for deltagere med diagnoser?</p>
+                         <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" id="toggle" name="isDiagnosisFriendly" checked={formData.isDiagnosisFriendly} onChange={handleFormChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label htmlFor="toggle" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                        </div>
+                     </div>
                 </div>
 
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, SlidersHorizontal, Sun, Moon, Coffee } from 'lucide-react';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, SlidersHorizontal, Sun, Moon, Coffee, Search } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import type { Category, Interest, Activity } from '../types';
@@ -24,6 +25,8 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
     const [categories, setCategories] = useState<Category[]>([]);
     const [interests, setInterests] = useState<Interest[]>([]);
     const [activities, setActivities] = useState<Activity[]>([]);
+    const [interestSearch, setInterestSearch] = useState('');
+    const [activitySearch, setActivitySearch] = useState('');
     
     useEffect(() => {
         const fetchData = async () => {
@@ -53,7 +56,6 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
             creatorType: 'all' as const
         };
         setFilters(resetFilters);
-        onApplyFilter(resetFilters);
     };
 
     const handleInterestToggle = (id: number) => {
@@ -73,6 +75,16 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
             return { ...prev, activityIds: newIds };
         });
     };
+
+    const filteredInterests = useMemo(() => {
+        if (!interestSearch) return interests;
+        return interests.filter(i => i.name.toLowerCase().includes(interestSearch.toLowerCase()));
+    }, [interests, interestSearch]);
+
+    const filteredActivities = useMemo(() => {
+        if (!activitySearch) return activities;
+        return activities.filter(a => a.name.toLowerCase().includes(activitySearch.toLowerCase()));
+    }, [activities, activitySearch]);
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -153,8 +165,12 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
                     {/* Interests */}
                     <div>
                          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Interesser</label>
+                         <div className="relative mb-2">
+                            <input type="text" placeholder="Søg i interesser..." value={interestSearch} onChange={(e) => setInterestSearch(e.target.value)} className="w-full text-sm pl-8 pr-2 py-1.5 border border-gray-300 dark:border-dark-border rounded-md bg-white dark:bg-dark-surface-light focus:outline-none focus:ring-1 focus:ring-primary" />
+                            <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/>
+                         </div>
                          <div className="max-h-40 overflow-y-auto flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-surface-light rounded-lg">
-                            {interests.map(interest => (
+                            {filteredInterests.map(interest => (
                                 <button
                                     key={interest.id}
                                     type="button"
@@ -169,8 +185,12 @@ const EventFilterModal: React.FC<EventFilterModalProps> = ({ onClose, onApplyFil
                     {/* Activities */}
                     <div>
                          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text-secondary mb-2">Aktiviteter</label>
+                         <div className="relative mb-2">
+                            <input type="text" placeholder="Søg i aktiviteter..." value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)} className="w-full text-sm pl-8 pr-2 py-1.5 border border-gray-300 dark:border-dark-border rounded-md bg-white dark:bg-dark-surface-light focus:outline-none focus:ring-1 focus:ring-primary" />
+                            <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/>
+                         </div>
                          <div className="max-h-40 overflow-y-auto flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-surface-light rounded-lg">
-                            {activities.map(activity => (
+                            {filteredActivities.map(activity => (
                                 <button
                                     key={activity.id}
                                     type="button"

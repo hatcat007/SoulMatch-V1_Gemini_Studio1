@@ -65,8 +65,10 @@ export interface Event {
   category: Category;
   category_id: number;
   creator_user_id?: number;
-  interests?: Interest[];
+  interests?: { interest: Interest }[];
+  user_activities?: { activity: Activity }[];
   message_thread?: { id: number };
+  is_diagnosis_friendly?: boolean;
 }
 
 export interface Place {

@@ -1,0 +1,5 @@
+-- Migration 22: Add diagnosis-friendly flag to events
+
+-- 1. Add the is_diagnosis_friendly column to the events table
+ALTER TABLE "public"."events"
+ADD COLUMN IF NOT EXISTS "is_diagnosis_friendly" boolean DEFAULT false NOT NULL;

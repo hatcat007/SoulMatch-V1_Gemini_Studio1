@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Info, Ticket, MapPin, Clock, Users, Calendar, Heart, Share2, User as UserIcon, MessageSquare } from 'lucide-react';
-import type { Event, User, MessageThread } from '../types';
+import { ArrowLeft, Info, Ticket, MapPin, Clock, Users, Calendar, Heart, Share2, User as UserIcon, MessageSquare, Smile } from 'lucide-react';
+import type { Event, User, MessageThread, Activity, Interest } from '../types';
 import ShareModal from '../components/ShareModal';
 import ImageSlideshow from '../components/ImageSlideshow';
 import { supabase } from '../services/supabase';
@@ -51,6 +51,66 @@ const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
 
     return <div dangerouslySetInnerHTML={{ __html: formatText(text) }} className="break-words whitespace-pre-wrap leading-relaxed" />;
 };
+
+const EventCountdownTimer: React.FC<{ startTime: string }> = ({ startTime }) => {
+    const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 });
+
+    useEffect(() => {
+        const calculateTimeLeft = () => {
+            const difference = new Date(startTime).getTime() - new Date().getTime();
+            let timeLeftObject = { days: 0, hours: 0, minutes: 0, seconds: 0, total: difference };
+
+            if (difference > 0) {
+                timeLeftObject = {
+                    days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+                    hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+                    minutes: Math.floor((difference / 1000 / 60) % 60),
+                    seconds: Math.floor((difference / 1000) % 60),
+                    total: difference,
+                };
+            }
+            return timeLeftObject;
+        };
+
+        const timer = setInterval(() => {
+            setTimeLeft(calculateTimeLeft());
+        }, 1000);
+        
+        // Set initial value
+        setTimeLeft(calculateTimeLeft());
+
+        return () => clearInterval(timer);
+    }, [startTime]);
+
+    if (timeLeft.total <= 0) {
+        return null; // Don't show the timer if the event has started
+    }
+
+    return (
+        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border mb-4">
+            <h3 className="text-center font-bold text-text-primary dark:text-dark-text-primary mb-4">Eventet starter om</h3>
+            <div className="flex justify-center space-x-4 sm:space-x-6">
+                <div className="text-center">
+                    <p className="text-3xl font-bold text-primary">{String(timeLeft.days).padStart(2, '0')}</p>
+                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary uppercase">Dage</p>
+                </div>
+                <div className="text-center">
+                    <p className="text-3xl font-bold text-primary">{String(timeLeft.hours).padStart(2, '0')}</p>
+                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary uppercase">Timer</p>
+                </div>
+                <div className="text-center">
+                    <p className="text-3xl font-bold text-primary">{String(timeLeft.minutes).padStart(2, '0')}</p>
+                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary uppercase">Minutter</p>
+                </div>
+                <div className="text-center">
+                    <p className="text-3xl font-bold text-primary">{String(timeLeft.seconds).padStart(2, '0')}</p>
+                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary uppercase">Sekunder</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const EventDetailPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
@@ -106,6 +166,25 @@ const EventDetailPage: React.FC = () => {
         }
     }, [event]);
 
+    const allActivities = useMemo(() => {
+        if (!event) return [];
+        const orgActivities = event.organization?.activities?.map(a => a.activity) || [];
+        const userActivities = event.user_activities?.map(a => a.activity) || [];
+        const activityMap = new Map<number, Activity>();
+        [...orgActivities, ...userActivities].forEach(activity => {
+            if (activity) {
+                activityMap.set(activity.id, activity);
+            }
+        });
+        return Array.from(activityMap.values());
+    }, [event]);
+
+    const eventInterests = useMemo(() => {
+        if (!event) return [];
+        return event.interests?.map(i => i.interest).filter((i): i is Interest => i !== null && i !== undefined) || [];
+    }, [event]);
+
+
     useEffect(() => {
         const fetchInitialData = async () => {
             if (!eventId) return;
@@ -117,7 +196,7 @@ const EventDetailPage: React.FC = () => {
 
             const { data, error } = await supabase
                 .from('events')
-                .select('*, participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*), message_thread:message_threads(id)')
+                .select('*, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), user_activities:event_activities(activity:activities(id, name, icon)), participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*), interests:event_interests(interest:interests(*)), message_thread:message_threads(id)')
                 .eq('id', eventId)
                 .single();
             
@@ -225,7 +304,7 @@ const EventDetailPage: React.FC = () => {
     const EventChatButton: React.FC = () => {
         const [now, setNow] = useState(Date.now());
 
-        const activationTime = useMemo(() => event ? new Date(event.time).getTime() - 12 * 60 * 60 * 1000 : 0, [event]);
+        const activationTime = useMemo(() => event ? new Date(event.time).getTime() - 48 * 60 * 60 * 1000 : 0, [event]);
         const endTime = useMemo(() => event ? new Date(event.end_time || event.time).getTime() : 0, [event]);
 
         useEffect(() => {
@@ -237,11 +316,17 @@ const EventDetailPage: React.FC = () => {
 
         if (now < activationTime) {
             const diff = activationTime - now;
-            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
             const seconds = Math.floor((diff % (1000 * 60)) / 1000);
             
-            const countdownText = `Gruppechat åbner om ${hours}t ${minutes}m ${seconds}s`;
+            let countdownText;
+            if (days > 0) {
+                countdownText = `Gruppechat åbner om ${days}d ${hours}t ${minutes}m ${seconds}s`;
+            } else {
+                countdownText = `Gruppechat åbner om ${hours}t ${minutes}m ${seconds}s`;
+            }
 
             return (
                 <button disabled className="w-full bg-gray-300 text-gray-500 font-bold py-3 px-4 rounded-full text-lg flex items-center justify-center">
@@ -341,182 +426,42 @@ const EventDetailPage: React.FC = () => {
                 </div>
 
                 <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-                    {/* Quick Info Cards */}
+                    <EventCountdownTimer startTime={event.time} />
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Time & Date Card */}
                         <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
-                                    <Calendar className="text-primary" size={20} />
-                                </div>
-                                <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Tidspunkt</h3>
-                            </div>
+                            <div className="flex items-center gap-3 mb-3"><div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full"><Calendar className="text-primary" size={20} /></div><h3 className="font-bold text-text-primary dark:text-dark-text-primary">Tidspunkt</h3></div>
                             <p className="text-text-secondary dark:text-dark-text-secondary font-medium">{formattedTimeRange}</p>
                         </div>
-
-                        {/* Location Card */}
-                        {event.address && (
-                            <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
-                                        <MapPin className="text-primary" size={20} />
-                                    </div>
-                                    <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Lokation</h3>
-                                </div>
-                                <p className="text-text-secondary dark:text-dark-text-secondary font-medium">{event.address}</p>
-                            </div>
-                        )}
+                        {event.address && (<div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border"><div className="flex items-center gap-3 mb-3"><div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full"><MapPin className="text-primary" size={20} /></div><h3 className="font-bold text-text-primary dark:text-dark-text-primary">Lokation</h3></div><p className="text-text-secondary dark:text-dark-text-secondary font-medium">{event.address}</p></div>)}
                     </div>
 
-                    {/* Sponsored Offer */}
-                    {event.is_sponsored && event.offer && (
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-6">
-                            <div className="flex items-start gap-4">
-                                <div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-full">
-                                    <Ticket className="text-green-600 dark:text-green-400" size={24} />
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-green-800 dark:text-green-300 text-lg mb-2">🎁 Sponsoreret Tilbud</h3>
-                                    <p className="text-green-700 dark:text-green-200 font-medium">{event.offer}</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    {event.is_sponsored && event.offer && (<div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-6"><div className="flex items-start gap-4"><div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-full"><Ticket className="text-green-600 dark:text-green-400" size={24} /></div><div className="flex-1"><h3 className="font-bold text-green-800 dark:text-green-300 text-lg mb-2">🎁 Sponsoreret Tilbud</h3><p className="text-green-700 dark:text-green-200 font-medium">{event.offer}</p></div></div></div>)}
+                    {event.is_diagnosis_friendly && (<div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-6"><div className="flex items-start gap-4"><div className="p-3 bg-blue-100 dark:bg-blue-900/40 rounded-full"><Smile className="text-blue-600 dark:text-blue-400" size={24} /></div><div className="flex-1"><h3 className="font-bold text-blue-800 dark:text-blue-300 text-lg mb-1">Diagnosevenligt Event</h3><p className="text-blue-700 dark:text-blue-200 font-medium text-sm">Dette event er designet til at være hensynsfuldt over for deltagere med diagnoser.</p></div></div></div>)}
 
-                    {/* Organization Info */}
-                    {event.organization_id && (
+                    {event.organization_id && (<div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full"><Info className="text-primary" size={20} /></div><div><h3 className="font-bold text-text-primary dark:text-dark-text-primary">Arrangør</h3><p className="text-text-secondary dark:text-dark-text-secondary text-sm">Se mere om organisationen</p></div></div><Link to={`/organization/${event.organization_id}`} className="bg-primary text-white px-4 py-2 rounded-full font-semibold hover:bg-primary-dark transition-colors">Se profil</Link></div></div>)}
+                    
+                    {(allActivities.length > 0 || eventInterests.length > 0) && (
                         <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
-                                        <Info className="text-primary" size={20} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-text-primary dark:text-dark-text-primary">Arrangør</h3>
-                                        <p className="text-text-secondary dark:text-dark-text-secondary text-sm">Se mere om organisationen</p>
-                                    </div>
-                                </div>
-                                <Link 
-                                    to={`/organization/${event.organization_id}`} 
-                                    className="bg-primary text-white px-4 py-2 rounded-full font-semibold hover:bg-primary-dark transition-colors"
-                                >
-                                    Se profil
-                                </Link>
-                            </div>
+                            {allActivities.length > 0 && (<div className={eventInterests.length > 0 ? 'mb-6' : ''}><h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Aktiviteter</h3><div className="flex flex-wrap gap-2">{allActivities.map(activity => (<span key={`act-${activity.id}`} className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 px-3 py-1.5 rounded-full text-sm font-medium">{activity.name}</span>))}</div></div>)}
+                            {eventInterests.length > 0 && (<div><h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Interesser</h3><div className="flex flex-wrap gap-2">{eventInterests.map(interest => (<span key={`int-${interest.id}`} className="bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light px-3 py-1.5 rounded-full text-sm font-medium">{interest.name}</span>))}</div></div>)}
                         </div>
                     )}
 
-                    {/* Participants Section */}
-                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full">
-                                <Users className="text-primary" size={20} />
-                            </div>
-                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl">
-                                Deltagere ({event.participants?.length || 0})
-                            </h3>
-                        </div>
-                        
-                        {participantsToShow.length > 0 ? (
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                                {participantsToShow.map(user => (
-                                    <div key={user.id} className="text-center group">
-                                        <div className="relative">
-                                            <PrivateImage 
-                                                src={user.avatar_url} 
-                                                alt={user.name} 
-                                                className="w-16 h-16 rounded-full mx-auto object-cover border-2 border-gray-100 dark:border-dark-border group-hover:border-primary transition-colors" 
-                                            />
-                                            {user.online && (
-                                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-white dark:border-dark-surface rounded-full"></div>
-                                            )}
-                                        </div>
-                                        <p className="text-sm mt-2 truncate font-semibold text-text-secondary dark:text-dark-text-secondary group-hover:text-primary transition-colors">
-                                            {user.name}
-                                        </p>
-                                    </div>
-                                ))}
-                                {remainingParticipants > 0 && (
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 rounded-full bg-primary-light dark:bg-primary/20 flex items-center justify-center mx-auto border-2 border-primary/30">
-                                            <span className="font-bold text-primary text-sm">+{remainingParticipants}</span>
-                                        </div>
-                                        <p className="text-sm mt-2 font-semibold text-text-secondary dark:text-dark-text-secondary">flere</p>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="text-center py-8">
-                                <div className="w-16 h-16 bg-gray-100 dark:bg-dark-surface-light rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <Users className="text-gray-400" size={24} />
-                                </div>
-                                <p className="text-text-secondary dark:text-dark-text-secondary">Ingen deltagere endnu</p>
-                                <p className="text-text-secondary dark:text-dark-text-secondary text-sm mt-1">Vær den første til at tilmelde dig! 🎉</p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Description Section */}
-                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
-                        <h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Om eventet</h3>
-                        <div className="prose prose-gray dark:prose-invert max-w-none">
-                            <MarkdownRenderer text={event.description || 'Ingen beskrivelse tilgængelig.'} />
-                        </div>
-                    </div>
-
-                    {/* Interests Section */}
-                    {event.interests && event.interests.length > 0 && (
-                        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border">
-                            <h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Interesser</h3>
-                            <div className="flex flex-wrap gap-2">
-                                {event.interests.map(interest => (
-                                    <span 
-                                        key={interest.id}
-                                        className="bg-primary-light dark:bg-primary/20 text-primary px-3 py-1 rounded-full text-sm font-medium"
-                                    >
-                                        {interest.name}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border"><div className="flex items-center gap-3 mb-6"><div className="p-2 bg-primary-light dark:bg-primary/20 rounded-full"><Users className="text-primary" size={20} /></div><h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl">Deltagere ({event.participants?.length || 0})</h3></div>{participantsToShow.length > 0 ? (<div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">{participantsToShow.map(user => (<div key={user.id} className="text-center group"><div className="relative"><PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full mx-auto object-cover border-2 border-gray-100 dark:border-dark-border group-hover:border-primary transition-colors" />{user.online && (<div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-white dark:border-dark-surface rounded-full"></div>)}</div><p className="text-sm mt-2 truncate font-semibold text-text-secondary dark:text-dark-text-secondary group-hover:text-primary transition-colors">{user.name}</p></div>))}{remainingParticipants > 0 && (<div className="text-center"><div className="w-16 h-16 rounded-full bg-primary-light dark:bg-primary/20 flex items-center justify-center mx-auto border-2 border-primary/30"><span className="font-bold text-primary text-sm">+{remainingParticipants}</span></div><p className="text-sm mt-2 font-semibold text-text-secondary dark:text-dark-text-secondary">flere</p></div>)}</div>) : (<div className="text-center py-8"><div className="w-16 h-16 bg-gray-100 dark:bg-dark-surface-light rounded-full flex items-center justify-center mx-auto mb-3"><Users className="text-gray-400" size={24} /></div><p className="text-text-secondary dark:text-dark-text-secondary">Ingen deltagere endnu</p><p className="text-text-secondary dark:text-dark-text-secondary text-sm mt-1">Vær den første til at tilmelde dig! 🎉</p></div>)}</div>
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-dark-border"><h3 className="font-bold text-text-primary dark:text-dark-text-primary text-xl mb-4">Om eventet</h3><div className="prose prose-gray dark:prose-invert max-w-none"><MarkdownRenderer text={event.description || 'Ingen beskrivelse tilgængelig.'} /></div></div>
                 </div>
             </main>
             
             <footer className="sticky bottom-0 bg-white dark:bg-dark-surface border-t border-gray-200 dark:border-dark-border p-4 z-10">
                 <div className="max-w-4xl mx-auto md:flex md:space-x-4 space-y-3 md:space-y-0">
-                    {isJoined ? (
-                        <EventChatButton />
-                    ) : (
-                        <button
-                            onClick={() => setShowShareModal(true)}
-                            className="w-full md:w-auto md:flex-1 bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg transition duration-300 hover:bg-primary/20 dark:hover:bg-dark-border"
-                        >
-                            Del med soulmate 😎
-                        </button>
-                    )}
-                    <button
-                        onClick={handleToggleJoin}
-                        className={`w-full md:w-auto md:flex-1 text-white font-bold py-3 px-4 rounded-full text-lg transition duration-300 shadow-lg ${isJoined ? 'bg-gray-500 hover:bg-gray-600' : 'bg-primary hover:bg-primary-dark'}`}
-                    >
-                        {isJoined ? 'Tilmeldt' : 'Deltag'}
-                    </button>
+                    {isJoined ? (<EventChatButton />) : (<button onClick={() => setShowShareModal(true)} className="w-full md:w-auto md:flex-1 bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg transition duration-300 hover:bg-primary/20 dark:hover:bg-dark-border">Del med soulmate 😎</button>)}
+                    <button onClick={handleToggleJoin} className={`w-full md:w-auto md:flex-1 text-white font-bold py-3 px-4 rounded-full text-lg transition duration-300 shadow-lg ${isJoined ? 'bg-gray-500 hover:bg-gray-600' : 'bg-primary hover:bg-primary-dark'}`}>{isJoined ? 'Tilmeldt' : 'Deltag'}</button>
                 </div>
             </footer>
              
-            {showShareModal && (
-                <ShareModal 
-                    title="Del event med en Soulmate"
-                    soulmates={soulmates}
-                    onShare={handleShare}
-                    onClose={() => setShowShareModal(false)}
-                />
-            )}
-             {shareConfirmation && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-full z-50">
-                    {shareConfirmation}
-                </div>
-            )}
+            {showShareModal && (<ShareModal title="Del event med en Soulmate" soulmates={soulmates} onShare={handleShare} onClose={() => setShowShareModal(false)} />)}
+            {shareConfirmation && (<div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-full z-50">{shareConfirmation}</div>)}
         </div>
     );
 };

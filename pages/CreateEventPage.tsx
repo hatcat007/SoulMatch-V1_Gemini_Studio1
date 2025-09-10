@@ -1,12 +1,12 @@
 
-import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
+import React, { useState, useRef, ChangeEvent, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket } from 'lucide-react';
+import { Info, X, UploadCloud, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, Ticket, Activity as ActivityIcon } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../services/s3Service';
 import { usePersistentState } from '../hooks/useNotifications';
 import CategorySelector from '../components/CategorySelector';
 import TagSelector from '../components/TagSelector';
-import type { Interest, InterestCategory } from '../types';
+import type { Interest, InterestCategory, Activity } from '../types';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -93,6 +93,7 @@ const initialFormState = {
     offer: '',
     category_id: null as number | null,
     selectedInterestIds: [] as number[],
+    selectedActivityIds: [] as number[],
 };
 
 const CreateEventPage: React.FC = () => {
@@ -108,6 +109,14 @@ const CreateEventPage: React.FC = () => {
     const [allInterests, setAllInterests] = useState<Interest[]>([]);
     const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
 
+    // State for activities
+    const [allActivities, setAllActivities] = useState<Activity[]>([]);
+    const [selectedActivities, setSelectedActivities] = useState<Activity[]>([]);
+
+    // FIX: Adapt activities to be compatible with TagSelector, which expects a `category_id`.
+    // We add a dummy category_id to satisfy the type requirement.
+    const allActivitiesForSelector = useMemo(() => allActivities.map(a => ({ ...a, category_id: 0 })), [allActivities]);
+    const selectedActivitiesForSelector = useMemo(() => selectedActivities.map(a => ({ ...a, category_id: 0 })), [selectedActivities]);
 
     const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -118,13 +127,19 @@ const CreateEventPage: React.FC = () => {
             if (iCatData) setInterestCategories(iCatData);
             if (iData) {
                 setAllInterests(iData);
-                // Hydrate selectedInterests from persisted IDs
                 const hydratedInterests = iData.filter(i => formData.selectedInterestIds.includes(i.id));
                 setSelectedInterests(hydratedInterests);
             }
+            
+            const { data: actData } = await supabase.from('activities').select('*').order('name');
+            if(actData) {
+                setAllActivities(actData);
+                const hydratedActivities = actData.filter(a => formData.selectedActivityIds.includes(a.id));
+                setSelectedActivities(hydratedActivities);
+            }
         };
         fetchTagData();
-    }, []); // formData.selectedInterestIds is not included to prevent re-fetching on every selection
+    }, []); // formData dependencies removed to prevent re-fetching on every selection
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -146,6 +161,14 @@ const CreateEventPage: React.FC = () => {
             : [...selectedInterests, interest];
         setSelectedInterests(newSelected);
         setFormData(p => ({ ...p, selectedInterestIds: newSelected.map(i => i.id) }));
+    };
+    
+    const handleActivityToggle = (activity: Activity) => {
+        const newSelected = selectedActivities.some(a => a.id === activity.id) 
+            ? selectedActivities.filter(a => a.id !== activity.id)
+            : [...selectedActivities, activity];
+        setSelectedActivities(newSelected);
+        setFormData(p => ({ ...p, selectedActivityIds: newSelected.map(a => a.id) }));
     };
 
     const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -218,6 +241,7 @@ const CreateEventPage: React.FC = () => {
                 is_sponsored: formData.is_sponsored,
                 offer: formData.offer,
                 category_id: formData.category_id,
+                is_diagnosis_friendly: formData.isDiagnosisFriendly,
             }).select().single();
 
             if (eventError) throw eventError;
@@ -233,16 +257,23 @@ const CreateEventPage: React.FC = () => {
             }
 
             // 3. Link interests
-            if (selectedInterests.length > 0) {
-                const interestIds = selectedInterests.map(interest => interest.id);
-                const { error: interestError } = await supabase.rpc('add_interests_to_event', { p_event_id: newEvent.id, p_interest_ids: interestIds });
+            if (formData.selectedInterestIds.length > 0) {
+                const { error: interestError } = await supabase.rpc('add_interests_to_event', { p_event_id: newEvent.id, p_interest_ids: formData.selectedInterestIds });
                 if (interestError) {
                     submissionError = (submissionError ? submissionError + "\n" : "") + `Fejl ved linkning af interesser: ${interestError.message}`;
                 }
             }
             
+            // 4. Link activities
+            if (formData.selectedActivityIds.length > 0) {
+                const { error: activityError } = await supabase.rpc('add_activities_to_event', { p_event_id: newEvent.id, p_activity_ids: formData.selectedActivityIds });
+                if (activityError) {
+                    submissionError = (submissionError ? submissionError + "\n" : "") + `Fejl ved linkning af aktiviteter: ${activityError.message}`;
+                }
+            }
+            
             if (!submissionError) {
-                 // 4. Create notification
+                 // 5. Create notification
                 const notificationMessage = `Du oprettede event "${formData.eventName}", SÅDAN!, den er nu online på SoulMatch!🌍🤩`;
                 const { error: notificationError } = await supabase.from('notifications').insert({
                     user_id: user.id,
@@ -256,9 +287,10 @@ const CreateEventPage: React.FC = () => {
                     console.warn("Could not create success notification:", notificationError);
                 }
                 
-                // 5. Clean up and navigate with a delay
+                // 6. Clean up and navigate with a delay
                 setFormData(initialFormState);
                 setSelectedInterests([]);
+                setSelectedActivities([]);
                 // Add a short delay to allow the toast notification to appear before navigating.
                 setTimeout(() => {
                     navigate('/home');
@@ -346,6 +378,23 @@ const CreateEventPage: React.FC = () => {
                      </div>
                 </div>
 
+                {/* Activities */}
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                    {/* FIX: The `allTags` and `selectedTags` props are now correctly typed by mapping the Activity arrays. The `onToggleTag` handler now safely finds the original activity object. */}
+                    <TagSelector
+                        title="Vælg aktiviteter for dit event"
+                        categories={[]}
+                        allTags={allActivitiesForSelector}
+                        selectedTags={selectedActivitiesForSelector}
+                        onToggleTag={(tag) => {
+                            const activity = allActivities.find(a => a.id === tag.id);
+                            if (activity) {
+                                handleActivityToggle(activity);
+                            }
+                        }}
+                    />
+                </div>
+
                 {/* Interests */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                     <TagSelector
@@ -353,7 +402,7 @@ const CreateEventPage: React.FC = () => {
                         categories={interestCategories}
                         allTags={allInterests}
                         selectedTags={selectedInterests}
-                        onToggleTag={handleInterestToggle}
+                        onToggleTag={(tag) => handleInterestToggle(tag as Interest)}
                     />
                 </div>
                 
