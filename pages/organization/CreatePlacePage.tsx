@@ -1,14 +1,14 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
-import type { Organization } from '../../types';
+import type { Organization, Activity, Interest, InterestCategory } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { generatePlaceImageFromText } from '../../services/geminiService';
 import { Loader2, Plus, X, Sparkles } from 'lucide-react';
 import { usePersistentState } from '../../hooks/useNotifications';
 import CategorySelector from '../../components/CategorySelector';
 import LoadingScreen from '../../components/LoadingScreen';
+import TagSelector from '../../components/TagSelector';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -22,7 +22,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
             if (!src) { if (isMounted) setIsLoading(false); return; }
             setIsLoading(true);
 
-            if (src.startsWith('blob:') || src.startsWith('http') || src.startsWith('data:')) {
+            if (src.startsWith('blob:') || src.startsWith('data:')) {
                 setDisplayUrl(src);
                 setIsLoading(false);
             } else {
@@ -38,7 +38,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
 
         return () => {
             isMounted = false;
-            if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
+            if (objectUrlToRevoke) { URL.revokeObjectURL(objectUrlToRevoke); }
         };
     }, [src]);
 
@@ -73,6 +73,8 @@ const initialFormState = {
     isSponsored: false,
     userCount: '',
     images: [] as string[],
+    selectedActivityIds: [] as number[],
+    selectedInterestIds: [] as number[],
 };
 
 const CreatePlacePage: React.FC = () => {
@@ -81,7 +83,10 @@ const CreatePlacePage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [formData, setFormData] = usePersistentState('createPlaceForm', initialFormState);
     
-    // AI State
+    const [allActivities, setAllActivities] = useState<Activity[]>([]);
+    const [allInterests, setAllInterests] = useState<Interest[]>([]);
+    const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
+    
     const [aiImageStyle, setAiImageStyle] = useState<'realistic' | 'illustration'>('realistic');
     const [aiNumberOfImages, setAiNumberOfImages] = useState(1);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -93,15 +98,21 @@ const CreatePlacePage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchOrg = async () => {
+        const fetchOrgAndTags = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data: orgData } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
                 setOrganization(orgData);
             }
+            const { data: actData } = await supabase.from('activities').select('*').eq('approved', true).order('name');
+            setAllActivities(actData || []);
+            const { data: intCatData } = await supabase.from('interest_categories').select('*').order('name');
+            setInterestCategories(intCatData || []);
+            const { data: intData } = await supabase.from('interests').select('*').eq('approved', true).order('name');
+            setAllInterests(intData || []);
             setLoading(false);
         };
-        fetchOrg();
+        fetchOrgAndTags();
     }, []);
     
     useEffect(() => {
@@ -170,6 +181,24 @@ const CreatePlacePage: React.FC = () => {
         }
     };
 
+    const handleActivityToggle = (activity: Activity) => {
+        const newIds = formData.selectedActivityIds.includes(activity.id)
+            ? formData.selectedActivityIds.filter(id => id !== activity.id)
+            : [...formData.selectedActivityIds, activity.id];
+        setFormData(p => ({ ...p, selectedActivityIds: newIds }));
+    };
+    
+    const handleInterestToggle = (interest: Interest) => {
+        const newIds = formData.selectedInterestIds.includes(interest.id)
+            ? formData.selectedInterestIds.filter(id => id !== interest.id)
+            : [...formData.selectedInterestIds, interest.id];
+        setFormData(p => ({ ...p, selectedInterestIds: newIds }));
+    };
+    
+    const selectedActivities = useMemo(() => allActivities.filter(a => formData.selectedActivityIds.includes(a.id)), [allActivities, formData.selectedActivityIds]);
+    const allActivitiesForSelector = useMemo(() => allActivities.map(a => ({ ...a, category_id: 0 })), [allActivities]);
+    const selectedActivitiesForSelector = useMemo(() => selectedActivities.map(a => ({ ...a, category_id: 0 })), [selectedActivities]);
+    const selectedInterests = useMemo(() => allInterests.filter(i => formData.selectedInterestIds.includes(i.id)), [allInterests, formData.selectedInterestIds]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -209,6 +238,13 @@ const CreatePlacePage: React.FC = () => {
             setIsSubmitting(false);
             return;
         }
+        
+        if (formData.selectedActivityIds.length > 0) {
+            await supabase.rpc('add_activities_to_place', { p_place_id: newPlace.id, p_activity_ids: formData.selectedActivityIds });
+        }
+        if (formData.selectedInterestIds.length > 0) {
+            await supabase.rpc('add_interests_to_place', { p_place_id: newPlace.id, p_interest_ids: formData.selectedInterestIds });
+        }
 
         if (formData.images.length > 0) {
             const imageRecords = formData.images.map(url => ({ place_id: newPlace.id, image_url: url }));
@@ -240,9 +276,7 @@ const CreatePlacePage: React.FC = () => {
                         <div className="text-5xl p-2 bg-gray-100 dark:bg-dark-surface-light rounded-lg">{formData.icon}</div>
                         <div className="grid grid-cols-5 sm:grid-cols-9 gap-2 flex-1">
                             {emojiOptions.map(e => (
-                                <button key={e} type="button" onClick={() => setFormData(p => ({...p, icon: e}))} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light dark:bg-primary/20 scale-110' : 'hover:bg-gray-100 dark:hover:bg-dark-surface-light'}`}>
-                                    {e}
-                                </button>
+                                <button key={e} type="button" onClick={() => setFormData(p => ({...p, icon: e}))} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light dark:bg-primary/20 scale-110' : 'hover:bg-gray-100 dark:hover:bg-dark-surface-light'}`}>{e}</button>
                             ))}
                         </div>
                     </div>
@@ -270,6 +304,27 @@ const CreatePlacePage: React.FC = () => {
                     type="place"
                 />
 
+                <TagSelector 
+                    title="Vælg aktiviteter" 
+                    categories={[]} 
+                    allTags={allActivitiesForSelector} 
+                    selectedTags={selectedActivitiesForSelector} 
+                    onToggleTag={(tag) => {
+                        const activity = allActivities.find(a => a.id === tag.id);
+                        if (activity) handleActivityToggle(activity);
+                    }}
+                    containerHeight="h-auto"
+                />
+                
+                <TagSelector 
+                    title="Vælg interesser" 
+                    categories={interestCategories} 
+                    allTags={allInterests} 
+                    selectedTags={selectedInterests} 
+                    onToggleTag={(tag) => handleInterestToggle(tag as Interest)} 
+                    containerHeight="h-auto"
+                />
+
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Billeder af Mødested (op til 6)</label>
                     <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
@@ -277,9 +332,7 @@ const CreatePlacePage: React.FC = () => {
                             <SmartImage key={img} src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg" onRemove={() => removeImage(img)} />
                         ))}
                         {formData.images.length < 6 && (
-                            <div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
-                                <Plus size={32} className="text-gray-400"/>
-                            </div>
+                            <div onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100"><Plus size={32} className="text-gray-400"/></div>
                         )}
                     </div>
                     <input type="file" ref={imageInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" multiple />
@@ -304,7 +357,6 @@ const CreatePlacePage: React.FC = () => {
                          {isGenerating ? 'Genererer...' : `Generer ${aiNumberOfImages} Billede(r)`}
                     </button>
                 </div>
-
 
                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
                      <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>

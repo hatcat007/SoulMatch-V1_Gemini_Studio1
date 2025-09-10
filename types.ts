@@ -92,6 +92,9 @@ export interface Place {
   images?: ImageRecord[];
   category: Category;
   category_id: number;
+  place_activities?: { activity: Activity }[];
+  place_interests?: { interest: Interest }[];
+  is_certified?: boolean;
 }
 
 export interface MessageThread {

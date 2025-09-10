@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,6 +12,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ChatPage from './pages/ChatPage';
 import EventDetailPage from './pages/EventDetailPage';
+import PlaceDetailPage from './pages/PlaceDetailPage'; // Import the new page
 import PlacesFilterPage from './pages/PlacesFilterPage';
 import CheckinPage from './pages/CheckinPage';
 import OrganizationProfilePage from './pages/OrganizationProfilePage';
@@ -59,13 +56,14 @@ const AppContent: React.FC = () => {
   const [dataLoading, setDataLoading] = useState(true);
   
   const eventsQuery = '*, is_diagnosis_friendly, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), event_participants ( count ), category:categories(*), interests:event_interests(interest:interests(*)), images:event_images(id, image_url)';
+  const placesQuery = '*, is_certified, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*), place_activities:place_activities(activity:activities(*)), place_interests:place_interests(interest:interests(*))';
   
   const fetchPageData = useCallback(async () => {
     setDataLoading(true);
     
     const eventsPromise = supabase.from('events').select(eventsQuery);
     const onlineUsersPromise = supabase.from('users').select('*').eq('online', true).limit(10);
-    const placesPromise = supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*)');
+    const placesPromise = supabase.from('places').select(placesQuery);
 
     const [eventsRes, usersRes, placesRes] = await Promise.all([eventsPromise, onlineUsersPromise, placesPromise]);
 
@@ -79,7 +77,7 @@ const AppContent: React.FC = () => {
     else setPlaces((placesRes.data || []) as Place[]);
 
     setDataLoading(false);
-  }, [eventsQuery]);
+  }, [eventsQuery, placesQuery]);
 
   useEffect(() => {
     if (user && !organization) {
@@ -100,7 +98,7 @@ const AppContent: React.FC = () => {
       };
 
       const fetchPlaces = async () => {
-          const { data: placesData } = await supabase.from('places').select('*, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*)');
+          const { data: placesData } = await supabase.from('places').select(placesQuery);
           if (placesData) setPlaces((placesData || []) as Place[]);
       };
       
@@ -118,7 +116,7 @@ const AppContent: React.FC = () => {
           supabase.removeChannel(eventsChannel);
           supabase.removeChannel(placesChannel);
       };
-  }, [user, eventsQuery]);
+  }, [user, eventsQuery, placesQuery]);
 
   const isUser = session && user;
   const isOrganization = session && organization;
@@ -179,6 +177,7 @@ const AppContent: React.FC = () => {
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/chat/:chatId" element={<ChatPage />} />
                       <Route path="/event/:eventId" element={<EventDetailPage />} />
+                      <Route path="/place/:placeId" element={<PlaceDetailPage />} />
                       <Route path="/places/filter" element={<PlacesFilterPage />} />
                       <Route path="/checkin" element={<CheckinPage />} />
                       <Route path="/organization/:organizationId" element={<OrganizationProfilePage />} />
