@@ -1,14 +1,15 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { Info, X, Calendar, Tag, MapPin, Smile, Image as ImageIcon, Loader2, UploadCloud, Plus, Sparkles, Ticket } from 'lucide-react';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { generateEventImageFromText } from '../../services/geminiService';
-import type { Organization } from '../../types';
+import type { Organization, Activity } from '../../types';
 import { usePersistentState } from '../../hooks/useNotifications';
 import CategorySelector from '../../components/CategorySelector';
 import LoadingScreen from '../../components/LoadingScreen';
+import TagSelector from '../../components/TagSelector';
 
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
     const [displayUrl, setDisplayUrl] = useState('');
@@ -74,6 +75,7 @@ const initialFormState = {
     address: '',
     images: [] as string[],
     isDiagnosisFriendly: false,
+    selectedActivityIds: [] as number[],
 };
 
 const CreateOrgEventPage: React.FC = () => {
@@ -92,18 +94,26 @@ const CreateOrgEventPage: React.FC = () => {
     
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    
+    const [allActivities, setAllActivities] = useState<Activity[]>([]);
 
     useEffect(() => {
-        const fetchOrg = async () => {
+        const fetchOrgAndActivities = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data: orgData } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
                 setOrganization(orgData);
             }
+            const { data: activitiesData } = await supabase.from('activities').select('*').eq('approved', true).order('name');
+            if (activitiesData) setAllActivities(activitiesData);
             setLoading(false);
         };
-        fetchOrg();
+        fetchOrgAndActivities();
     }, []);
+    
+    const selectedActivities = useMemo(() => {
+        return allActivities.filter(a => formData.selectedActivityIds.includes(a.id));
+    }, [allActivities, formData.selectedActivityIds]);
     
     useEffect(() => {
         const currentlyUploading = formData.images.some(img => img.startsWith('blob:'));
@@ -182,8 +192,8 @@ const CreateOrgEventPage: React.FC = () => {
         const { data: newEvent, error: insertError } = await supabase.from('events').insert({
             title: formData.title, 
             description: formData.description, 
-            time: formData.time, 
-            end_time: formData.end_time || null,
+            time: new Date(formData.time).toISOString(), 
+            end_time: formData.end_time ? new Date(formData.end_time).toISOString() : null,
             is_sponsored: formData.is_sponsored,
             offer: formData.is_sponsored ? formData.offer : '',
             category_id: formData.category_id, 
@@ -208,6 +218,16 @@ const CreateOrgEventPage: React.FC = () => {
             await supabase.from('event_images').insert(imageRecords);
         }
         
+        if (formData.selectedActivityIds.length > 0) {
+            const { error: activityError } = await supabase.rpc('add_activities_to_event', {
+                p_event_id: newEvent.id,
+                p_activity_ids: formData.selectedActivityIds,
+            });
+            if (activityError) {
+                console.warn('Event oprettet, men aktiviteter kunne ikke linkes:', activityError.message);
+            }
+        }
+        
         setFormData(initialFormState); // Clear form and sessionStorage on submit
         navigate('/dashboard');
     };
@@ -221,6 +241,16 @@ const CreateOrgEventPage: React.FC = () => {
             setFormData(prev => ({...prev, [name]: value}));
         }
     };
+
+    const handleActivityToggle = (activity: Activity) => {
+        const newSelectedIds = formData.selectedActivityIds.includes(activity.id)
+            ? formData.selectedActivityIds.filter(id => id !== activity.id)
+            : [...formData.selectedActivityIds, activity.id];
+        setFormData(p => ({ ...p, selectedActivityIds: newSelectedIds }));
+    };
+
+    const allActivitiesForSelector = useMemo(() => allActivities.map(a => ({ ...a, category_id: 0 })), [allActivities]);
+    const selectedActivitiesForSelector = useMemo(() => selectedActivities.map(a => ({ ...a, category_id: 0 })), [selectedActivities]);
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
     const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100'];
@@ -303,6 +333,26 @@ const CreateOrgEventPage: React.FC = () => {
                     </button>
                 </div>
 
+                <CategorySelector 
+                    value={formData.category_id}
+                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
+                    type="event"
+                />
+
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                    <TagSelector
+                        title="Vælg aktiviteter for dit event"
+                        categories={[]}
+                        allTags={allActivitiesForSelector}
+                        selectedTags={selectedActivitiesForSelector}
+                        onToggleTag={(tag) => {
+                            const activity = allActivities.find(a => a.id === tag.id);
+                            if (activity) handleActivityToggle(activity);
+                        }}
+                        containerHeight="h-auto"
+                    />
+                </div>
+
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                        <label htmlFor="time" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Start tidspunkt</label>
@@ -323,12 +373,6 @@ const CreateOrgEventPage: React.FC = () => {
                         />
                     </div>
                  </div>
-
-                <CategorySelector 
-                    value={formData.category_id}
-                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
-                    type="event"
-                />
 
                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
                      <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>

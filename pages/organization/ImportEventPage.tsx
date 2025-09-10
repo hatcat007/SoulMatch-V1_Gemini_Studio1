@@ -1,15 +1,15 @@
 
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { generateEventImageFromText, importEventFromMultimodal } from '../../services/geminiService';
 import { fetchPrivateFile } from '../../services/s3Service';
-import type { Organization, Category } from '../../types';
+import type { Organization, Category, Activity, Interest, InterestCategory } from '../../types';
 import type { ImportedEventData } from '../../services/geminiService';
 import { Sparkles, Loader2, ArrowLeft, Image as ImageIcon, X, FileText, UploadCloud, Palette, XCircle, CheckCircle } from 'lucide-react';
 import { usePersistentState } from '../../hooks/useNotifications';
 import CategorySelector from '../../components/CategorySelector';
+import TagSelector from '../../components/TagSelector';
 
 const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
 const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-indigo-100', 'bg-pink-100', 'bg-teal-100', 'bg-orange-100', 'bg-cyan-100'];
@@ -56,7 +56,13 @@ const PrivateImage: React.FC<{src: string, onRemove?: () => void, className?: st
     );
 };
 
-const initialFormData = { title: '', description: '', time: '', end_time: '', address: '', category_id: null as number | null, emoji: '🎉', color: 'bg-blue-100', image_urls: [] as string[] };
+const initialFormData = { 
+    title: '', description: '', time: '', end_time: '', address: '', 
+    category_id: null as number | null, emoji: '🎉', color: 'bg-blue-100', 
+    image_urls: [] as string[],
+    selectedActivityIds: [] as number[],
+    selectedInterestIds: [] as number[],
+};
 type FileObject = { name: string; type: string; data: string; preview: string };
 type BatchResult = { success: boolean; data?: ImportedEventData & { image_urls?: string[] }; error?: string; sourceFileName: string; }
 
@@ -65,6 +71,10 @@ const ImportEventPage: React.FC = () => {
     const [organization, setOrganization] = useState<Organization | null>(null);
     const [pageLoading, setPageLoading] = useState(true);
     const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+    
+    const [allActivities, setAllActivities] = useState<Activity[]>([]);
+    const [allInterests, setAllInterests] = useState<Interest[]>([]);
+    const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
     
     const [state, setState] = usePersistentState('importEventState', {
         mode: 'choice' as 'choice' | 'single' | 'batch',
@@ -87,7 +97,8 @@ const ImportEventPage: React.FC = () => {
     const [includeTitleOnImage, setIncludeTitleOnImage] = useState(true);
     const [emojiLevel, setEmojiLevel] = useState<'ai' | 'none' | 'some' | 'many'>('ai');
     const [numberOfImages, setNumberOfImages] = useState(1);
-    
+    const [descriptionBehavior, setDescriptionBehavior] = useState<'improve' | 'format_only'>('improve');
+
     useEffect(() => {
         const fetchInitialData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -97,6 +108,16 @@ const ImportEventPage: React.FC = () => {
             }
             const { data: categoryData } = await supabase.from('categories').select('id, name').eq('type', 'event').not('parent_id', 'is', null);
             if (categoryData) setCategoryOptions(categoryData.map(c => c.name));
+
+            const { data: activitiesData } = await supabase.from('activities').select('*').eq('approved', true);
+            if (activitiesData) setAllActivities(activitiesData);
+
+            const { data: interestsData } = await supabase.from('interests').select('*').eq('approved', true);
+            if (interestsData) setAllInterests(interestsData);
+
+            const { data: interestCatData } = await supabase.from('interest_categories').select('*');
+            if (interestCatData) setInterestCategories(interestCatData);
+
             setPageLoading(false);
         };
         fetchInitialData();
@@ -124,7 +145,7 @@ const ImportEventPage: React.FC = () => {
         try {
             setImportStatus('Analyserer indhold...');
             const filesToProcess = state.files.map(f => ({ mimeType: f.type, data: f.data }));
-            const importedData = await importEventFromMultimodal(state.eventText, filesToProcess, categoryOptions, emojiOptions, emojiLevel);
+            const importedData = await importEventFromMultimodal(state.eventText, filesToProcess, categoryOptions, emojiOptions, emojiLevel, allActivities, allInterests, descriptionBehavior);
             if (importedData.error) throw new Error(importedData.error);
             
             if (importedData.datetime_options && importedData.datetime_options.length > 1) {
@@ -155,6 +176,9 @@ const ImportEventPage: React.FC = () => {
             imageUrls = base64Images.map(base64 => `data:image/jpeg;base64,${base64}`);
         }
         
+        const activityIds = data.suggested_activity_names ? allActivities.filter(a => data.suggested_activity_names!.includes(a.name)).map(a => a.id) : [];
+        const interestIds = data.suggested_interest_names ? allInterests.filter(i => data.suggested_interest_names!.includes(i.name)).map(i => i.id) : [];
+        
         updateState({
             formData: {
                 title: data.title || '',
@@ -166,6 +190,8 @@ const ImportEventPage: React.FC = () => {
                 emoji: data.emoji || '🎉',
                 image_urls: imageUrls,
                 color: 'bg-blue-100',
+                selectedActivityIds: activityIds,
+                selectedInterestIds: interestIds,
             },
             step: 'form', dateTimeOptions: [], pendingImportData: null
         });
@@ -181,7 +207,7 @@ const ImportEventPage: React.FC = () => {
             const file = state.files[i];
             try {
                 setImportStatus(`Behandler fil ${i + 1} af ${state.files.length}: ${file.name}`);
-                const importedData = await importEventFromMultimodal('', [{ mimeType: file.type, data: file.data }], categoryOptions, emojiOptions, emojiLevel);
+                const importedData = await importEventFromMultimodal('', [{ mimeType: file.type, data: file.data }], categoryOptions, emojiOptions, emojiLevel, allActivities, allInterests, descriptionBehavior);
                 if (importedData.error) {
                     throw new Error(importedData.error);
                 }
@@ -240,6 +266,24 @@ const ImportEventPage: React.FC = () => {
 
             if (imageRecords.length > 0) await supabase.from('event_images').insert(imageRecords);
 
+            const rpcPromises = newEvents.flatMap((event, i) => {
+                const resultData = successfulResultsWithCategory[i].data;
+                const promises = [];
+
+                if (resultData?.suggested_activity_names && resultData.suggested_activity_names.length > 0) {
+                    const activityIds = allActivities.filter(a => resultData.suggested_activity_names!.includes(a.name)).map(a => a.id);
+                    if (activityIds.length > 0) promises.push(supabase.rpc('add_activities_to_event', { p_event_id: event.id, p_activity_ids: activityIds }));
+                }
+
+                if (resultData?.suggested_interest_names && resultData.suggested_interest_names.length > 0) {
+                    const interestIds = allInterests.filter(i => resultData.suggested_interest_names!.includes(i.name)).map(i => i.id);
+                    if (interestIds.length > 0) promises.push(supabase.rpc('add_interests_to_event', { p_event_id: event.id, p_interest_ids: interestIds }));
+                }
+                return promises;
+            });
+
+            await Promise.all(rpcPromises);
+
             handleReset();
             navigate('/dashboard');
         } catch (err: any) {
@@ -275,8 +319,8 @@ const ImportEventPage: React.FC = () => {
             const { data: newEvent, error: insertError } = await supabase.from('events').insert({
                 title: state.formData.title,
                 description: state.formData.description,
-                time: state.formData.time,
-                end_time: state.formData.end_time || null,
+                time: new Date(state.formData.time).toISOString(),
+                end_time: state.formData.end_time ? new Date(state.formData.end_time).toISOString() : null,
                 is_sponsored: false,
                 offer: '',
                 category_id: state.formData.category_id,
@@ -298,6 +342,13 @@ const ImportEventPage: React.FC = () => {
                 if (imageError) {
                     console.warn('Event oprettet, men billeder kunne ikke gemmes:', imageError.message);
                 }
+            }
+            
+            if (state.formData.selectedActivityIds.length > 0) {
+                await supabase.rpc('add_activities_to_event', { p_event_id: newEvent.id, p_activity_ids: state.formData.selectedActivityIds });
+            }
+            if (state.formData.selectedInterestIds.length > 0) {
+                await supabase.rpc('add_interests_to_event', { p_event_id: newEvent.id, p_interest_ids: state.formData.selectedInterestIds });
             }
 
             handleReset();
@@ -363,6 +414,17 @@ const ImportEventPage: React.FC = () => {
 
     const renderAISettings = (isBatch = false) => (
         <div className="space-y-4">
+             <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Beskrivelses-adfærd</label>
+                <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setDescriptionBehavior('improve')} className={`p-3 rounded-lg border-2 text-sm font-semibold ${descriptionBehavior === 'improve' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}>
+                        Forbedre Beskrivelse
+                    </button>
+                    <button type="button" onClick={() => setDescriptionBehavior('format_only')} className={`p-3 rounded-lg border-2 text-sm font-semibold ${descriptionBehavior === 'format_only' ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-gray-50 dark:bg-dark-surface-light hover:border-gray-300 dark:hover:border-dark-border'}`}>
+                        Formater Kun
+                    </button>
+                </div>
+            </div>
             {!isBatch && <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Emojis i beskrivelse</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{emojiMenuOptions.map(option => (<button key={option.level} type="button" onClick={() => setEmojiLevel(option.level)} className={`text-center p-3 rounded-lg border-2 text-sm font-semibold ${emojiLevel === option.level ? 'border-primary bg-primary-light dark:bg-primary/20' : 'border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-light hover:border-gray-400'}`}>{option.label}</button>))}</div>
@@ -429,30 +491,64 @@ const ImportEventPage: React.FC = () => {
         );
     };
 
-    const renderForm = () => (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">Bekræft Event Detaljer</h2><button type="button" onClick={handleReset} className="flex items-center text-sm font-semibold text-primary hover:underline"><ArrowLeft size={16} className="mr-1" /> Start forfra</button></div>
-            {state.formData.image_urls.length > 0 && <div><label className="block text-sm font-medium mb-1">AI-genererede billeder</label><div className="grid grid-cols-2 gap-2">{state.formData.image_urls.map((url, i) => (<PrivateImage key={i} src={url} onRemove={() => updateState({ formData: {...state.formData, image_urls: state.formData.image_urls.filter((_, idx) => i !== idx)} })} className="aspect-square"/>))}</div></div>}
-            <div><label htmlFor="title" className="block text-sm font-medium mb-1">Navn</label><input type="text" id="title" name="title" value={state.formData.title} onChange={e => updateState({ formData: {...state.formData, title: e.target.value} })} className="w-full input-style" required /></div>
-            <div><label htmlFor="description" className="block text-sm font-medium mb-1">Beskrivelse</label><textarea id="description" name="description" rows={5} value={state.formData.description} onChange={e => updateState({ formData: {...state.formData, description: e.target.value} })} className="w-full input-style" required /></div>
-            <CategorySelector value={state.formData.category_id} onChange={(id) => updateState({ formData: {...state.formData, category_id: id} })} type="event" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label htmlFor="time" className="block text-sm font-medium mb-1">Start tidspunkt</label>
-                    <input type="datetime-local" id="time" name="time" value={state.formData.time} onChange={e => updateState({ formData: {...state.formData, time: e.target.value} })} className="w-full input-style" required/>
+    const renderForm = () => {
+        const selectedActivities = allActivities.filter(a => state.formData.selectedActivityIds.includes(a.id));
+        const selectedInterests = allInterests.filter(i => state.formData.selectedInterestIds.includes(i.id));
+
+        const allActivitiesForSelector = allActivities.map(a => ({ ...a, category_id: 0 }));
+        const selectedActivitiesForSelector = selectedActivities.map(a => ({ ...a, category_id: 0 }));
+
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">Bekræft Event Detaljer</h2><button type="button" onClick={handleReset} className="flex items-center text-sm font-semibold text-primary hover:underline"><ArrowLeft size={16} className="mr-1" /> Start forfra</button></div>
+                {state.formData.image_urls.length > 0 && <div><label className="block text-sm font-medium mb-1">AI-genererede billeder</label><div className="grid grid-cols-2 gap-2">{state.formData.image_urls.map((url, i) => (<PrivateImage key={i} src={url} onRemove={() => updateState({ formData: {...state.formData, image_urls: state.formData.image_urls.filter((_, idx) => i !== idx)} })} className="aspect-square"/>))}</div></div>}
+                <div><label htmlFor="title" className="block text-sm font-medium mb-1">Navn</label><input type="text" id="title" name="title" value={state.formData.title} onChange={e => updateState({ formData: {...state.formData, title: e.target.value} })} className="w-full input-style" required /></div>
+                <div><label htmlFor="description" className="block text-sm font-medium mb-1">Beskrivelse</label><textarea id="description" name="description" rows={5} value={state.formData.description} onChange={e => updateState({ formData: {...state.formData, description: e.target.value} })} className="w-full input-style" required /></div>
+                <CategorySelector value={state.formData.category_id} onChange={(id) => updateState({ formData: {...state.formData, category_id: id} })} type="event" />
+                <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm -m-4 mt-4">
+                    <TagSelector
+                        title="Foreslåede aktiviteter"
+                        categories={[]}
+                        allTags={allActivitiesForSelector}
+                        selectedTags={selectedActivitiesForSelector}
+                        onToggleTag={(tag) => {
+                            const newIds = state.formData.selectedActivityIds.includes(tag.id) ? state.formData.selectedActivityIds.filter(id => id !== tag.id) : [...state.formData.selectedActivityIds, tag.id];
+                            updateState({ formData: { ...state.formData, selectedActivityIds: newIds }});
+                        }}
+                        containerHeight="h-auto"
+                    />
                 </div>
-                <div>
-                    <label htmlFor="end_time" className="block text-sm font-medium mb-1">Slut tidspunkt (valgfrit)</label>
-                    <input type="datetime-local" id="end_time" name="end_time" value={state.formData.end_time} onChange={e => updateState({ formData: {...state.formData, end_time: e.target.value} })} className="w-full input-style"/>
+                <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm -m-4 mt-4">
+                    <TagSelector
+                        title="Foreslåede interesser"
+                        categories={interestCategories}
+                        allTags={allInterests}
+                        selectedTags={selectedInterests}
+                        onToggleTag={(tag) => {
+                             const newIds = state.formData.selectedInterestIds.includes(tag.id) ? state.formData.selectedInterestIds.filter(id => id !== tag.id) : [...state.formData.selectedInterestIds, tag.id];
+                            updateState({ formData: { ...state.formData, selectedInterestIds: newIds }});
+                        }}
+                        containerHeight="h-auto"
+                    />
                 </div>
-            </div>
-             <div>
-                <label htmlFor="address" className="block text-sm font-medium mb-1">Adresse</label>
-                <input type="text" id="address" name="address" value={state.formData.address} onChange={e => updateState({ formData: {...state.formData, address: e.target.value} })} className="w-full input-style" placeholder="F.eks. Gade 123, 9000 Aalborg" />
-            </div>
-            <button type="submit" className="w-full bg-primary text-white font-bold py-3 rounded-full text-lg">Opret Event</button>
-        </form>
-    );
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="time" className="block text-sm font-medium mb-1">Start tidspunkt</label>
+                        <input type="datetime-local" id="time" name="time" value={state.formData.time} onChange={e => updateState({ formData: {...state.formData, time: e.target.value} })} className="w-full input-style" required/>
+                    </div>
+                    <div>
+                        <label htmlFor="end_time" className="block text-sm font-medium mb-1">Slut tidspunkt (valgfrit)</label>
+                        <input type="datetime-local" id="end_time" name="end_time" value={state.formData.end_time} onChange={e => updateState({ formData: {...state.formData, end_time: e.target.value} })} className="w-full input-style"/>
+                    </div>
+                </div>
+                 <div>
+                    <label htmlFor="address" className="block text-sm font-medium mb-1">Adresse</label>
+                    <input type="text" id="address" name="address" value={state.formData.address} onChange={e => updateState({ formData: {...state.formData, address: e.target.value} })} className="w-full input-style" placeholder="F.eks. Gade 123, 9000 Aalborg" />
+                </div>
+                <button type="submit" className="w-full bg-primary text-white font-bold py-3 rounded-full text-lg">Opret Event</button>
+            </form>
+        );
+    };
 
     if (pageLoading) return <div className="p-8 text-center"><Loader2 className="animate-spin inline-block" /></div>;
 

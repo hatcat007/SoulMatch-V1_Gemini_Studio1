@@ -178,7 +178,11 @@ const EditEventPage: React.FC = () => {
 
         // 1. Update event
         const { error: eventError } = await supabase.from('events').update({
-            title: formData.title, description: formData.description, time: formData.time, end_time: formData.end_time, address: formData.location,
+            title: formData.title,
+            description: formData.description,
+            time: new Date(formData.time).toISOString(),
+            end_time: formData.end_time ? new Date(formData.end_time).toISOString() : null,
+            address: formData.location,
             is_sponsored: formData.is_sponsored, offer: formData.is_sponsored ? formData.offer : '', category_id: formData.category_id,
             icon: formData.emoji, image_url: images.length > 0 ? images[0].url : null,
         }).eq('id', eventId);

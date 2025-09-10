@@ -229,8 +229,8 @@ const CreateEventPage: React.FC = () => {
             const { data: newEvent, error: eventError } = await supabase.from('events').insert({
                 title: formData.eventName,
                 description: formData.description,
-                time: formData.time,
-                end_time: formData.end_time || null,
+                time: new Date(formData.time).toISOString(),
+                end_time: formData.end_time ? new Date(formData.end_time).toISOString() : null,
                 address: formData.location,
                 creator_user_id: user.id,
                 host_name: user.name,

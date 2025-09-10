@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, SlidersHorizontal, MapPin, Users, HeartHandshake, User, Building, Loader2, Image as ImageIcon } from 'lucide-react';
@@ -90,14 +91,14 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[] }> = ({ even
             eventsToFilter = eventsToFilter.filter(event => {
                 const hasMatchingInterest = event.interests?.some(i => i.interest.name.toLowerCase().includes(lowerCaseSearchTerm));
                 const hasMatchingOrgActivity = event.organization?.activities?.some(a => a.activity.name.toLowerCase().includes(lowerCaseSearchTerm));
-                const hasMatchingUserActivity = event.user_activities?.some(a => a.activity.name.toLowerCase().includes(lowerCaseSearchTerm));
+                const hasMatchingEventActivity = event.event_activities?.some(a => a.activity.name.toLowerCase().includes(lowerCaseSearchTerm));
 
                 return (
                     event.title.toLowerCase().includes(lowerCaseSearchTerm) ||
                     (event.description && event.description.toLowerCase().includes(lowerCaseSearchTerm)) ||
                     hasMatchingInterest ||
                     hasMatchingOrgActivity ||
-                    hasMatchingUserActivity
+                    hasMatchingEventActivity
                 );
             });
         }
@@ -125,7 +126,7 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[] }> = ({ even
             if (activeFilters.activityIds.length > 0) {
                 const eventActivityIds = new Set([
                     ...(event.organization?.activities?.map(a => a.activity.id) || []),
-                    ...(event.user_activities?.map(a => a.activity.id) || [])
+                    ...(event.event_activities?.map(a => a.activity.id) || [])
                 ]);
                 if (!activeFilters.activityIds.some(id => eventActivityIds.has(id))) return false;
             }

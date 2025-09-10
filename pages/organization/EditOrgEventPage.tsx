@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
-import type { Event, ImageRecord } from '../../types';
+import type { Event, ImageRecord, Activity } from '../../types';
 import { uploadFile, fetchPrivateFile } from '../../services/s3Service';
 import { Loader2, Plus, X, Ticket } from 'lucide-react';
 import CategorySelector from '../../components/CategorySelector';
 import LoadingScreen from '../../components/LoadingScreen';
+import TagSelector from '../../components/TagSelector';
 
 // This component can display a local blob URL directly or fetch a private S3 URL.
 const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemove: () => void; }> = ({ src, alt, className, onRemove }) => {
@@ -18,10 +19,7 @@ const SmartImage: React.FC<{ src: string; alt: string; className: string; onRemo
         let isMounted = true;
 
         const processUrl = async () => {
-            if (!src) {
-                if (isMounted) { setIsLoading(false); setDisplayUrl(''); }
-                return;
-            }
+            if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
             
             setIsLoading(true);
 
@@ -67,6 +65,9 @@ const EditOrgEventPage: React.FC = () => {
         title: '', description: '', time: '', end_time: '', is_sponsored: false, offer: '', category_id: null as number | null, address: '', icon: '🎉', color: 'bg-blue-100'
     });
     const [images, setImages] = useState<ImageRecord[]>([]);
+    
+    const [allActivities, setAllActivities] = useState<Activity[]>([]);
+    const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
 
     const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +94,13 @@ const EditOrgEventPage: React.FC = () => {
                 });
                 setImages(data.images || []);
             }
+            
+            const { data: activitiesData } = await supabase.from('activities').select('*').eq('approved', true).order('name');
+            if (activitiesData) setAllActivities(activitiesData);
+            
+            const { data: activityLinks } = await supabase.from('event_activities').select('activity_id').eq('event_id', eventId);
+            if (activityLinks) setSelectedActivityIds(activityLinks.map(link => link.activity_id));
+
             setLoading(false);
         };
         fetchEvent();
@@ -127,6 +135,17 @@ const EditOrgEventPage: React.FC = () => {
         }
     };
 
+    const handleActivityToggle = (activity: Activity) => {
+        const newSelectedIds = selectedActivityIds.includes(activity.id)
+            ? selectedActivityIds.filter(id => id !== activity.id)
+            : [...selectedActivityIds, activity.id];
+        setSelectedActivityIds(newSelectedIds);
+    };
+    
+    const selectedActivities = useMemo(() => {
+        return allActivities.filter(a => selectedActivityIds.includes(a.id));
+    }, [allActivities, selectedActivityIds]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.category_id) {
@@ -142,8 +161,8 @@ const EditOrgEventPage: React.FC = () => {
             .update({
                 title: formData.title,
                 description: formData.description,
-                time: formData.time,
-                end_time: formData.end_time,
+                time: new Date(formData.time).toISOString(),
+                end_time: formData.end_time ? new Date(formData.end_time).toISOString() : null,
                 is_sponsored: formData.is_sponsored,
                 offer: formData.is_sponsored ? formData.offer : '',
                 category_id: formData.category_id,
@@ -175,8 +194,22 @@ const EditOrgEventPage: React.FC = () => {
             }
         }
 
+        // 3. Sync activities
+        const { error: activityError } = await supabase.rpc('add_activities_to_event', {
+            p_event_id: Number(eventId),
+            p_activity_ids: selectedActivityIds,
+        });
+        if (activityError) {
+             setError(`Event opdateret, men aktiviteter kunne ikke gemmes: ${activityError.message}`);
+             setIsSubmitting(false);
+             return;
+        }
+
         navigate('/dashboard');
     };
+
+    const allActivitiesForSelector = useMemo(() => allActivities.map(a => ({ ...a, category_id: 0 })), [allActivities]);
+    const selectedActivitiesForSelector = useMemo(() => selectedActivities.map(a => ({ ...a, category_id: 0 })), [selectedActivities]);
 
     const emojiOptions = ['🎉', '🍔', '🎨', '🎲', '🎬', '🚶‍♀️', '🎮', '💪', '🥳', '☕', '🎸', '🍽️'];
     const colorOptions = ['bg-blue-100', 'bg-red-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100'];
@@ -248,6 +281,20 @@ const EditOrgEventPage: React.FC = () => {
                     onChange={(id) => setFormData(p => ({...p, category_id: id}))}
                     type="event"
                 />
+
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                    <TagSelector
+                        title="Vælg aktiviteter for dit event"
+                        categories={[]}
+                        allTags={allActivitiesForSelector}
+                        selectedTags={selectedActivitiesForSelector}
+                        onToggleTag={(tag) => {
+                            const activity = allActivities.find(a => a.id === tag.id);
+                            if (activity) handleActivityToggle(activity);
+                        }}
+                        containerHeight="h-auto"
+                    />
+                </div>
 
                 <div className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
                      <label className="block text-sm font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Sponsorering</label>

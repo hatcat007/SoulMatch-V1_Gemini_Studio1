@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -57,7 +58,7 @@ const AppContent: React.FC = () => {
   const [places, setPlaces] = useState<Place[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   
-  const eventsQuery = '*, is_diagnosis_friendly, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), user_activities:event_activities(activity:activities(id, name, icon)), event_participants ( count ), category:categories(*), interests:event_interests(interest:interests(*)), images:event_images(id, image_url)';
+  const eventsQuery = '*, is_diagnosis_friendly, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), event_participants ( count ), category:categories(*), interests:event_interests(interest:interests(*)), images:event_images(id, image_url)';
   
   const fetchPageData = useCallback(async () => {
     setDataLoading(true);

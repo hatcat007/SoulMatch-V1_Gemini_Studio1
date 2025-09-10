@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { supabase } from './supabase'; // Ensure supabase client is exported from supabase.ts
 // FIX: Import types needed for the new generateProfileDescription function
@@ -43,6 +42,8 @@ export type ImportedEventData = {
     emoji: string;
     error?: string;
     datetime_options?: string[];
+    suggested_activity_names?: string[];
+    suggested_interest_names?: string[];
 };
 
 /**
@@ -53,7 +54,10 @@ export async function importEventFromMultimodal(
     files: { mimeType: string; data: string }[],
     categoryOptions: string[],
     emojiOptions: string[],
-    emojiLevel: 'ai' | 'none' | 'some' | 'many'
+    emojiLevel: 'ai' | 'none' | 'some' | 'many',
+    allActivities: Activity[],
+    allInterests: Interest[],
+    descriptionBehavior: 'improve' | 'format_only'
 ): Promise<ImportedEventData> {
     const ai = getAiClient();
     const contents: any[] = [];
@@ -73,15 +77,35 @@ export async function importEventFromMultimodal(
     switch (emojiLevel) {
         case 'none': emojiInstruction = 'Do not add any emojis to the description.'; break;
         case 'some': emojiInstruction = 'Add a few relevant emojis to the description to make it friendly.'; break;
+
         case 'many': emojiInstruction = 'Add many relevant emojis to the description to make it lively and expressive.'; break;
         default: emojiInstruction = 'You can add emojis to the description if you feel it enhances the message.'; break;
     }
     
+    let descriptionInstruction = '';
+    if (descriptionBehavior === 'improve') {
+        descriptionInstruction = `**Description Field Rules:**
+- Rewrite and improve the user's provided text to create a clear, engaging, and friendly event description.
+- The final description MUST be formatted in clean, readable Markdown. Use paragraphs for spacing, bullet points for lists (using hyphens), and **bold** for important details.`;
+    } else { // 'format_only'
+        descriptionInstruction = `**Description Field Rules:**
+- Take the user's provided text for the description and format it into clean, readable Markdown.
+- **DO NOT change the content, wording, or meaning.** The original text must be preserved.
+- Your only task is to add structure: use paragraphs for spacing, bullet points for lists (using hyphens), and make key phrases **bold**.`;
+    }
+
+    const activityNames = allActivities.map(a => a.name);
+    const interestNames = allInterests.map(i => i.name);
+
     const systemInstruction = `You are an expert event creator. Your task is to extract event details from the provided text and images. Be concise and accurate. Today is ${new Date().toISOString()}.
     The response must be in JSON format. The JSON schema is provided. 
+    ${descriptionInstruction}
+    ${emojiInstruction}
     The "category" must be one of the following values: ${categoryOptions.join(', ')}.
     The "emoji" must be one of the following values: ${emojiOptions.join(', ')}.
-    ${emojiInstruction}
+    Based on the event's title and description, select the most relevant activities from this list: ${activityNames.join(', ')}.
+    Also, select the most relevant interests from this list: ${interestNames.join(', ')}.
+    Do not invent new activities or interests; only use the ones provided.
     If there are multiple possible dates/times, list them in the 'datetime_options' array. Otherwise, put the single best date/time in 'datetime' and leave 'datetime_options' empty.
     If you cannot find a required field, provide a sensible empty value, but set an 'error' field with a description of what is missing.
     `;
@@ -96,12 +120,14 @@ export async function importEventFromMultimodal(
                 type: Type.OBJECT,
                 properties: {
                     title: { type: Type.STRING, description: 'The title of the event.' },
-                    description: { type: Type.STRING, description: 'A detailed description of the event.' },
+                    description: { type: Type.STRING, description: 'A detailed description of the event, formatted in Markdown.' },
                     datetime: { type: Type.STRING, description: 'The start date and time of the event in ISO 8601 format. This is required.' },
                     end_time: { type: Type.STRING, description: 'The optional end date and time of the event in ISO 8601 format.' },
                     address: { type: Type.STRING, description: 'The full address of the event location.' },
                     category: { type: Type.STRING, description: `The category of the event. Must be one of: ${categoryOptions.join(', ')}` },
                     emoji: { type: Type.STRING, description: `An emoji for the event. Must be one of: ${emojiOptions.join(', ')}` },
+                    suggested_activity_names: { type: Type.ARRAY, items: { type: Type.STRING }, description: `A list of relevant activity names from the provided list.` },
+                    suggested_interest_names: { type: Type.ARRAY, items: { type: Type.STRING }, description: `A list of relevant interest names from the provided list.` },
                     error: { type: Type.STRING, description: 'An error message if any required information is missing.' },
                     datetime_options: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'A list of possible date/time options if ambiguous.' },
                 },

@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Send, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin, Lock } from 'lucide-react';
+import { ArrowLeft, Send, Plus, Ticket, BrainCircuit, MoreVertical, Smile, Check, MapPin, Lock, Users } from 'lucide-react';
 import type { Message, MessageThread, User, Friendship } from '../types';
 import { supabase } from '../services/supabase';
 import { getAiClient } from '../services/geminiService';
@@ -161,21 +160,30 @@ const ChatPage: React.FC = () => {
             if (!chatId || !currentUser) return;
             setLoading(true);
 
-            const { data: threadData } = await supabase
+            const { data: threadData, error } = await supabase
                 .from('message_threads')
-                .select('*, participants:message_thread_participants(user:users(*))')
+                .select('*, event:events(id, title, time, end_time), participants:message_thread_participants(user:users(*))')
                 .eq('id', chatId)
                 .single();
             
-            if (threadData) {
-                setThread(threadData as any);
-                const participant = threadData.participants.find(p => p.user?.id && p.user.id !== currentUser.id);
-                setOtherUser(participant?.user || null);
+            if (error || !threadData) {
+                console.error("Error fetching chat data:", error);
+                setLoading(false);
+                return;
+            }
+            
+            const typedThreadData = threadData as any as MessageThread;
+            setThread(typedThreadData);
 
-                if (participant?.user) {
-                    const other = participant.user;
-                    const u1 = Math.min(currentUser.id, other.id);
-                    const u2 = Math.max(currentUser.id, other.id);
+            if (typedThreadData.is_event_chat) {
+                setOtherUser(null); // No single "other user" in a group chat
+            } else {
+                 const participant = typedThreadData.participants.find(p => p.user?.id && p.user.id !== currentUser.id);
+                 const foundOtherUser = participant?.user || null;
+                 setOtherUser(foundOtherUser);
+                 if (foundOtherUser) {
+                    const u1 = Math.min(currentUser.id, foundOtherUser.id);
+                    const u2 = Math.max(currentUser.id, foundOtherUser.id);
                     const { data: friendshipData } = await supabase.from('friends').select('*').eq('user_id_1', u1).eq('user_id_2', u2).single();
                     if (friendshipData) {
                         if (friendshipData.status === 'accepted') setFriendshipStatus('friends');
@@ -186,15 +194,16 @@ const ChatPage: React.FC = () => {
                         setFriendshipStatus('not_friends');
                     }
                 }
-
-                const { data: messagesData } = await supabase
-                    .from('messages')
-                    .select('*')
-                    .eq('thread_id', chatId)
-                    .order('created_at', { ascending: true });
-                
-                if (messagesData) setMessages(messagesData as Message[]);
             }
+
+            const { data: messagesData } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('thread_id', chatId)
+                .order('created_at', { ascending: true });
+            
+            if (messagesData) setMessages(messagesData as Message[]);
+
             setLoading(false);
         };
         
@@ -334,12 +343,9 @@ const ChatPage: React.FC = () => {
 
             if (error) {
                 console.error('Error sending message:', error);
-                // Revert state on error
                 setMessages(currentMessages => currentMessages.filter(m => m.id !== optimisticMessage.id));
-                // Restore the input so the user can try again
                 setNewMessage(textToSend);
             } else if (data) {
-                // Replace the temporary message with the real one from the DB to get correct id/timestamp
                 setMessages(currentMessages =>
                     currentMessages.map(m => (m.id === optimisticMessage.id ? (data as Message) : m))
                 );
@@ -388,7 +394,7 @@ const ChatPage: React.FC = () => {
     };
 
     const renderHeaderActions = () => {
-        if (isAiMentorChat) return null;
+        if (isAiMentorChat || thread?.is_event_chat || !otherUser) return null;
         return (
             <div className="flex items-center space-x-1">
                 {renderFriendButton()}
@@ -409,7 +415,7 @@ const ChatPage: React.FC = () => {
                                 }}
                                 className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 font-semibold"
                             >
-                                Anmeld {otherUser?.name}
+                                Anmeld {otherUser.name}
                             </button>
                         </div>
                     )}
@@ -419,14 +425,24 @@ const ChatPage: React.FC = () => {
     };
 
     if (authLoading || loading) {
-        return <LoadingScreen message="Loading chat..." />;
+        return <LoadingScreen message="Indlæser chat..." />;
     }
     
-    if (!currentUser || !otherUser) {
+    if (!thread) {
         return (
             <div className="p-4 text-center">
                 <p>Chat not found.</p>
-                <button onClick={() => navigate('/chat')} className="text-primary mt-4">Back to chats</button>
+                <button onClick={() => navigate('/chat')} className="text-primary mt-4">Tilbage til chats</button>
+            </div>
+        );
+    }
+    
+    // Additional check for private chats
+    if (!isAiMentorChat && !thread.is_event_chat && !otherUser) {
+        return (
+            <div className="p-4 text-center">
+                <p>Kunne ikke indlæse deltagerinformation.</p>
+                <button onClick={() => navigate('/chat')} className="text-primary mt-4">Tilbage til chats</button>
             </div>
         );
     }
@@ -440,6 +456,10 @@ const ChatPage: React.FC = () => {
         { level: 'many', label: 'Mange emojis' },
     ];
 
+    const isGroupChat = thread.is_event_chat;
+    const headerTitle = isGroupChat ? (thread.event?.title || 'Event Chat') : (otherUser?.name);
+    const headerSubtitle = isGroupChat ? `${thread.participants.length} deltagere` : (otherUser?.online ? 'Online' : 'Offline');
+
     return (
         <div className="flex flex-col h-full bg-white dark:bg-dark-surface">
             <header className="flex items-center p-3 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky top-0 z-10">
@@ -448,17 +468,11 @@ const ChatPage: React.FC = () => {
                 </button>
                 <div className="flex-1 text-center">
                     <h2 className="font-bold text-lg text-text-primary dark:text-dark-text-primary flex items-center justify-center">
-                        {otherUser.name}
-                        {isAiMentorChat ? (
-                            <BrainCircuit className="w-5 h-5 ml-1 text-accent" strokeWidth={2.5}/>
-                        ) : (
-                            <div className="flex items-center ml-2 bg-gray-100 dark:bg-dark-surface-light px-2 py-0.5 rounded-full">
-                                <img src="https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/mitid_logo.svg" alt="MitID logo" className="w-5 h-5" />
-                                <span className="ml-1.5 text-xs font-semibold text-text-secondary dark:text-dark-text-secondary">verificeret</span>
-                            </div>
-                        )}
+                        {headerTitle}
+                        {isAiMentorChat && <BrainCircuit className="w-5 h-5 ml-1 text-accent" strokeWidth={2.5}/>}
+                        {isGroupChat && <Users className="w-5 h-5 ml-2 text-primary" />}
                     </h2>
-                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary">{otherUser.online ? 'Online' : 'Offline'}</p>
+                    <p className="text-xs text-text-secondary dark:text-dark-text-secondary">{headerSubtitle}</p>
                 </div>
                 <div className="min-w-[140px] flex justify-end">
                     {renderHeaderActions()}
@@ -466,7 +480,7 @@ const ChatPage: React.FC = () => {
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
-                {!isAiMentorChat && thread?.match_timestamp && (
+                {!isAiMentorChat && !isGroupChat && thread.match_timestamp && (
                     <MeetingTimer matchTimestamp={thread.match_timestamp} />
                 )}
 
@@ -477,7 +491,7 @@ const ChatPage: React.FC = () => {
                     </div>
                 )}
                 {messages.map((msg) => {
-                    const isCurrentUser = msg.sender_id === currentUser.id;
+                    const isCurrentUser = msg.sender_id === currentUser?.id;
                     const isAi = msg.sender_id === -1;
                     return (
                         <div

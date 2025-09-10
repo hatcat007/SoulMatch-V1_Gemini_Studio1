@@ -7,6 +7,8 @@ ADD COLUMN IF NOT EXISTS "is_event_chat" boolean DEFAULT false NOT NULL;
 
 -- Add foreign key constraint to link with events table.
 -- Using ON DELETE CASCADE so if an event is deleted, its chat thread is also deleted.
+-- FIX: Drop the constraint if it exists to make the script re-runnable without errors.
+ALTER TABLE "public"."message_threads" DROP CONSTRAINT IF EXISTS "message_threads_event_id_fkey";
 ALTER TABLE "public"."message_threads"
 ADD CONSTRAINT "message_threads_event_id_fkey"
 FOREIGN KEY (event_id) REFERENCES "public"."events"(id) ON DELETE CASCADE;
@@ -14,9 +16,21 @@ FOREIGN KEY (event_id) REFERENCES "public"."events"(id) ON DELETE CASCADE;
 -- 2. Create a trigger function to automatically create a chat when an event is created.
 CREATE OR REPLACE FUNCTION public.handle_new_event_chat_creation()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_thread_id bigint;
 BEGIN
+  -- Insert the new message thread for the event
   INSERT INTO public.message_threads (event_id, is_event_chat, last_message, "timestamp")
-  VALUES (NEW.id, true, 'Velkommen til event chatten! Koordiner og mød nye mennesker her.', NOW());
+  VALUES (NEW.id, true, 'Velkommen til event chatten! Koordiner og mød nye mennesker her.', NOW())
+  RETURNING id INTO v_thread_id;
+  
+  -- If the event was created by a user, add them as the first participant
+  IF NEW.creator_user_id IS NOT NULL THEN
+    INSERT INTO public.message_thread_participants (thread_id, user_id)
+    VALUES (v_thread_id, NEW.creator_user_id)
+    ON CONFLICT (thread_id, user_id) DO NOTHING;
+  END IF;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -33,41 +47,29 @@ CREATE OR REPLACE FUNCTION public.sync_event_participant_to_chat()
 RETURNS TRIGGER AS $$
 DECLARE
   v_thread_id bigint;
-  v_creator_user_id bigint;
 BEGIN
-  -- Find the thread_id and creator_user_id for the event
-  SELECT mt.id, e.creator_user_id 
-  INTO v_thread_id, v_creator_user_id 
-  FROM public.message_threads mt
-  JOIN public.events e ON mt.event_id = e.id
-  WHERE mt.event_id = COALESCE(NEW.event_id, OLD.event_id);
+  SELECT id INTO v_thread_id 
+  FROM public.message_threads 
+  WHERE event_id = COALESCE(NEW.event_id, OLD.event_id);
 
   IF v_thread_id IS NOT NULL THEN
     IF (TG_OP = 'INSERT') THEN
-      -- Add user to the chat participants
+      -- Add the new participant to the chat
       INSERT INTO public.message_thread_participants (thread_id, user_id)
       VALUES (v_thread_id, NEW.user_id)
       ON CONFLICT (thread_id, user_id) DO NOTHING;
       
-      -- Also ensure the event creator is in the chat
-      IF v_creator_user_id IS NOT NULL THEN
-         INSERT INTO public.message_thread_participants (thread_id, user_id)
-         VALUES (v_thread_id, v_creator_user_id)
-         ON CONFLICT (thread_id, user_id) DO NOTHING;
-      END IF;
-
     ELSIF (TG_OP = 'DELETE') THEN
-      -- Remove user from chat participants, but NOT if they are the creator
-      IF OLD.user_id != v_creator_user_id THEN
-          DELETE FROM public.message_thread_participants
-          WHERE thread_id = v_thread_id AND user_id = OLD.user_id;
-      END IF;
+      -- Remove the user from chat participants.
+      DELETE FROM public.message_thread_participants
+      WHERE thread_id = v_thread_id AND user_id = OLD.user_id;
     END IF;
   END IF;
 
   RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
 
 -- 5. Attach the trigger to the event_participants table for INSERT and DELETE operations.
 DROP TRIGGER IF EXISTS on_event_participant_change_sync_chat ON public.event_participants;
