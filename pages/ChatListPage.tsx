@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect } from 'react';
-import { Search, Lock, Loader2, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Lock, Loader2, Image as ImageIcon, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { MessageThread, User } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
@@ -98,11 +97,13 @@ const ChatListPage: React.FC = () => {
                     .from('message_threads')
                     .select(`
                         *,
+                        event:events(id, title),
                         participants:message_thread_participants (
                             user:users (*)
                         )
                     `)
-                    .in('id', threadIds);
+                    .in('id', threadIds)
+                    .order('timestamp', { ascending: false });
                 
                 if (threadsError) {
                     console.error('Error fetching message threads:', threadsError);
@@ -115,6 +116,13 @@ const ChatListPage: React.FC = () => {
 
         fetchData();
     }, [currentUser, authLoading]);
+    
+    const { privateChats, eventChats } = useMemo(() => {
+        const eventChats = threads.filter(t => t.is_event_chat);
+        const privateChats = threads.filter(t => !t.is_event_chat);
+        return { privateChats, eventChats };
+    }, [threads]);
+
 
     if (authLoading || loading) {
         return <LoadingScreen message="Indlæser chats..." />;
@@ -126,7 +134,7 @@ const ChatListPage: React.FC = () => {
         return participant?.user || null;
     }
 
-    const allThreads = [aiMentorThread, ...threads];
+    const allPrivateThreads = [aiMentorThread, ...privateChats];
 
     return (
         <div className="p-4 flex flex-col h-full">
@@ -149,54 +157,64 @@ const ChatListPage: React.FC = () => {
                 <span>Beskeder er beskyttet med end-to-end-kryptering. Det er kun personer i denne chat, der kan læse, lytte til eller dele dem.</span>
             </div>
 
-            <div>
-                <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Online nu</h2>
-                {onlineUsers.length > 0 ? (
-                    <div className="flex space-x-4 overflow-x-auto pb-3 scrollbar-hide">
-                        {onlineUsers.map(user => (
-                            <div key={user.id} className="flex flex-col items-center text-center w-20 flex-shrink-0">
-                                <div className="relative">
-                                    <PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full object-cover shadow-md" />
-                                    <span className="absolute bottom-0.5 right-0.5 block h-4 w-4 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface animate-pulse-slow"></span>
-                                </div>
-                                <p className="mt-2 text-sm font-semibold text-text-secondary dark:text-dark-text-secondary truncate w-full">{user.name}</p>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-sm text-text-secondary dark:text-dark-text-secondary bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg">
-                        Ingen er online lige nu.
+            <div className="flex-1 overflow-y-auto">
+                {eventChats.length > 0 && (
+                    <div className="mb-6">
+                        <h2 className="text-lg font-semibold text-text-primary mb-3">Event Chats</h2>
+                        <div className="space-y-2">
+                             {eventChats.map(thread => {
+                                const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
+                                return (
+                                     <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                                        <div className="w-14 h-14 rounded-full mr-4 bg-primary-light flex items-center justify-center"><Calendar className="w-7 h-7 text-primary"/></div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className="font-bold text-text-primary">{thread.event?.title || 'Event Chat'}</p>
+                                            <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>
+                                        </div>
+                                        <div className="text-right ml-2 flex-shrink-0">
+                                            <p className="text-xs text-gray-400 mb-1">{formattedTimestamp}</p>
+                                            {thread.unread_count > 0 && (
+                                                <span className="bg-primary text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center ml-auto">
+                                                    {thread.unread_count}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </Link>
+                                )
+                            })}
+                        </div>
                     </div>
                 )}
-            </div>
 
-            <div className="mt-6 flex-1">
-                <h2 className="text-lg font-semibold text-text-primary mb-3">Alle beskeder</h2>
-                <div className="space-y-2">
-                    {allThreads.map(thread => {
-                        const otherUser = getOtherParticipant(thread);
-                        if (!otherUser) return null;
 
-                        const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
+                <div>
+                    <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Alle beskeder</h2>
+                    <div className="space-y-2">
+                        {allPrivateThreads.map(thread => {
+                            const otherUser = getOtherParticipant(thread);
+                            if (!otherUser) return null;
 
-                        return (
-                            <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
-                                <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4 object-cover" />
-                                <div className="flex-1 overflow-hidden">
-                                    <p className="font-bold text-text-primary">{otherUser.name}</p>
-                                    <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>
-                                </div>
-                                <div className="text-right ml-2 flex-shrink-0">
-                                    <p className="text-xs text-gray-400 mb-1">{formattedTimestamp}</p>
-                                    {thread.unread_count > 0 && (
-                                        <span className="bg-primary text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center ml-auto">
-                                            {thread.unread_count}
-                                        </span>
-                                    )}
-                                </div>
-                            </Link>
-                        );
-                    })}
+                            const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                            return (
+                                <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                                    <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4 object-cover" />
+                                    <div className="flex-1 overflow-hidden">
+                                        <p className="font-bold text-text-primary">{otherUser.name}</p>
+                                        <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>
+                                    </div>
+                                    <div className="text-right ml-2 flex-shrink-0">
+                                        <p className="text-xs text-gray-400 mb-1">{formattedTimestamp}</p>
+                                        {thread.unread_count > 0 && (
+                                            <span className="bg-primary text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center ml-auto">
+                                                {thread.unread_count}
+                                            </span>
+                                        )}
+                                    </div>
+                                </Link>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </div>

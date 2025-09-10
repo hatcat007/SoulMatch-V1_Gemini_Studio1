@@ -20,10 +20,12 @@ Din tryghed er vores absolutte førsteprioritet. Vi har skabt et sikkert rum, hv
 -   **MitID Verifikation:** Alle brugere er verificeret med MitID. Det betyder ingen falske profiler, kun ægte mennesker, der ligesom dig søger venskab.
 -   **Anonym Anmeldelse:** Vores robuste anmeldelsessystem gør det nemt og trygt at rapportere upassende opførsel.
 
-### 💬 **Fra Chat til Virkelighed: 3-Dages Reglen**
+### 💬 **Fra Chat til Virkelighed: Event Chats & 3-Dages Reglen**
 Vi bryder med den digitale inerti. Hos os er chatten kun begyndelsen.
--   **Møde-Timeren:** En chatforbindelse udløber automatisk efter 3 dage! Dette skaber et positivt incitament til at tage det næste skridt og aftale at mødes.
--   **NFC Check-in & Belønninger:** Når I mødes på et af vores partnersteder, kan I "checke ind" ved at røre jeres telefoner sammen. Dette bekræfter jeres møde, forlænger jeres chat-forbindelse permanent og låser op for eksklusive rabatter (f.eks. "2 gratis kaffe").
+-   **Midlertidige Event Chats:** Når du tilmelder dig et event, får du adgang til en midlertidig gruppechat, der åbner 12 timer før eventstart. Her kan du koordinere med andre deltagere og modtage vigtige opdateringer fra arrangøren. Chatten lukker efter eventet for at holde fokus på den virkelige interaktion.
+-   **Tag Næste Skridt:** Efter et event opfordrer vi dig til at række ud til dem, du talte med. En skærm viser alle deltagere, så du nemt kan sende en venneanmodning og fortsætte samtalen.
+-   **Møde-Timeren:** For 1-til-1 chats udløber en forbindelse automatisk efter 3 dage! Dette skaber et positivt incitament til at aftale at mødes.
+-   **NFC Check-in & Belønninger:** Når I mødes, kan I "checke ind" ved at røre jeres telefoner sammen. Dette bekræfter jeres møde, forlænger jeres chat-forbindelse permanent og låser op for eksklusive rabatter (f.eks. "2 gratis kaffe") på vores partnersteder.
 
 ### 🚀 **AI-Assistent & Samtale-Mentor**
 Er samtalen gået i stå? Vores indbyggede **SoulMatch AI Mentor** er din personlige coach. Spørg om alt fra isbrydere og samtaleemner til råd om, hvordan du holder snakken i gang.
@@ -39,6 +41,9 @@ Glem alt om besværlig manuel indtastning. Med vores revolutionerende import-fun
 1.  **Indsætte tekst eller uploade en fil** (et billede af en plakat, en PDF, etc.).
 2.  Lade vores **AI analysere materialet** og automatisk udfylde alle event-detaljer: titel, beskrivelse, tid, sted og kategori.
 3.  Få **AI'en til at generere unikke, iøjnefaldende billeder** til jeres event, perfekt tilpasset indholdet.
+
+### 📣 **Direkte Kommunikation til Deltagere**
+Brug de midlertidige event chats til nemt at sende logistiske opdateringer og påmindelser direkte til alle tilmeldte deltagere, hvilket sikrer en problemfri oplevelse for alle.
 
 Det har aldrig været nemmere at nå ud til en engageret målgruppe og blive en central del af det sociale liv i din by.
 

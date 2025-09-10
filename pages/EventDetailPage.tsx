@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Info, Ticket, MapPin, Clock, Users, Calendar, Heart, Share2, User as UserIcon } from 'lucide-react';
+import { ArrowLeft, Info, Ticket, MapPin, Clock, Users, Calendar, Heart, Share2, User as UserIcon, MessageSquare } from 'lucide-react';
 import type { Event, User, MessageThread } from '../types';
 import ShareModal from '../components/ShareModal';
 import ImageSlideshow from '../components/ImageSlideshow';
@@ -9,6 +9,7 @@ import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import LoadingScreen from '../components/LoadingScreen';
 import { useAuth } from '../contexts/AuthContext';
+import PostEventFriendModal from '../components/PostEventFriendModal';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -61,21 +62,48 @@ const EventDetailPage: React.FC = () => {
     const [showShareModal, setShowShareModal] = useState(false);
     const [shareConfirmation, setShareConfirmation] = useState('');
     const [loading, setLoading] = useState(true);
+    const [showPostEventModal, setShowPostEventModal] = useState(false);
 
     const formattedTimeRange = useMemo(() => {
         if (!event?.time) return 'Tidspunkt ukendt';
-        const options: Intl.DateTimeFormatOptions = {
+
+        const startDate = new Date(event.time);
+        const startOptions: Intl.DateTimeFormatOptions = {
             weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
         };
-        const startTime = new Date(event.time).toLocaleString('da-DK', options);
+
+        const startTimeString = startDate.toLocaleString('da-DK', startOptions);
+
         if (!event.end_time) {
-            return startTime;
+            return startTimeString;
         }
-        const endTime = new Date(event.end_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false });
-        return `${startTime} - ${endTime}`;
+
+        const endDate = new Date(event.end_time);
+
+        // If end time is on the same day, just append the time.
+        if (startDate.toDateString() === endDate.toDateString()) {
+            const endTimeString = endDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false });
+            return `${startTimeString} - ${endTimeString}`;
+        } else {
+            // If end time is on a different day, format it fully as well.
+            const endOptions: Intl.DateTimeFormatOptions = {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            };
+            const endTimeString = endDate.toLocaleString('da-DK', endOptions);
+            return `${startTimeString} til ${endTimeString}`;
+        }
     }, [event]);
 
     useEffect(() => {
@@ -89,12 +117,12 @@ const EventDetailPage: React.FC = () => {
 
             const { data, error } = await supabase
                 .from('events')
-                .select('*, participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*)')
+                .select('*, participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*), message_thread:message_threads(id)')
                 .eq('id', eventId)
                 .single();
             
             if (error) {
-                console.error('Error fetching event details:', error);
+                console.error('Error fetching event details:', error.message);
                 setEvent(null);
             } else {
                 const transformedEvent = { ...data, participants: data.participants.map((p: any) => p.user).filter(Boolean) };
@@ -193,6 +221,55 @@ const EventDetailPage: React.FC = () => {
         }
         setTimeout(() => setShareConfirmation(''), 3000);
     };
+
+    const EventChatButton: React.FC = () => {
+        const [now, setNow] = useState(Date.now());
+
+        const activationTime = useMemo(() => event ? new Date(event.time).getTime() - 12 * 60 * 60 * 1000 : 0, [event]);
+        const endTime = useMemo(() => event ? new Date(event.end_time || event.time).getTime() : 0, [event]);
+
+        useEffect(() => {
+            const timer = setInterval(() => setNow(Date.now()), 1000);
+            return () => clearInterval(timer);
+        }, []);
+
+        if (!event) return null;
+
+        if (now < activationTime) {
+            const diff = activationTime - now;
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            
+            const countdownText = `Gruppechat åbner om ${hours}t ${minutes}m ${seconds}s`;
+
+            return (
+                <button disabled className="w-full bg-gray-300 text-gray-500 font-bold py-3 px-4 rounded-full text-lg flex items-center justify-center">
+                    <MessageSquare size={20} className="mr-2"/>
+                    {countdownText}
+                </button>
+            );
+        }
+        
+        if (now > endTime) {
+            return (
+                <button onClick={() => setShowPostEventModal(true)} className="w-full bg-accent text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-accent-light flex items-center justify-center">
+                    <Heart size={20} className="mr-2"/>Tag Næste Skridt
+                </button>
+            );
+        }
+        
+        if (event.message_thread && event.message_thread.id) {
+            const threadId = event.message_thread.id;
+            return (
+                <Link to={`/chat/${threadId}`} className="w-full text-center bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg hover:bg-primary/20 dark:hover:bg-dark-border flex items-center justify-center">
+                    <MessageSquare size={20} className="mr-2"/>Event Gruppechat
+                </Link>
+            );
+        }
+
+        return null;
+    };
     
     if (authLoading || loading) {
         return <LoadingScreen message="Loading event..." />;
@@ -212,6 +289,14 @@ const EventDetailPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-background dark:bg-dark-background">
+            {showPostEventModal && currentUser && event.participants && (
+                <PostEventFriendModal 
+                    isOpen={showPostEventModal}
+                    onClose={() => setShowPostEventModal(false)}
+                    participants={event.participants}
+                    currentUser={currentUser}
+                />
+            )}
             {/* Header */}
             <header className="fixed top-0 left-0 right-0 z-20 bg-white/90 backdrop-blur-md md:relative md:bg-transparent md:backdrop-blur-none dark:bg-dark-surface/90 dark:md:bg-transparent border-b border-gray-100 dark:border-dark-border md:border-0">
                 <div className="max-w-4xl mx-auto flex items-center justify-between p-4">
@@ -400,12 +485,16 @@ const EventDetailPage: React.FC = () => {
             
             <footer className="sticky bottom-0 bg-white dark:bg-dark-surface border-t border-gray-200 dark:border-dark-border p-4 z-10">
                 <div className="max-w-4xl mx-auto md:flex md:space-x-4 space-y-3 md:space-y-0">
-                    <button
-                        onClick={() => setShowShareModal(true)}
-                        className="w-full md:w-auto md:flex-1 bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg transition duration-300 hover:bg-primary/20 dark:hover:bg-dark-border"
-                    >
-                        Del med soulmate 😎
-                    </button>
+                    {isJoined ? (
+                        <EventChatButton />
+                    ) : (
+                        <button
+                            onClick={() => setShowShareModal(true)}
+                            className="w-full md:w-auto md:flex-1 bg-primary-light text-primary dark:bg-dark-surface-light dark:text-dark-text-primary font-bold py-3 px-4 rounded-full text-lg transition duration-300 hover:bg-primary/20 dark:hover:bg-dark-border"
+                        >
+                            Del med soulmate 😎
+                        </button>
+                    )}
                     <button
                         onClick={handleToggleJoin}
                         className={`w-full md:w-auto md:flex-1 text-white font-bold py-3 px-4 rounded-full text-lg transition duration-300 shadow-lg ${isJoined ? 'bg-gray-500 hover:bg-gray-600' : 'bg-primary hover:bg-primary-dark'}`}

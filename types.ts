@@ -66,6 +66,7 @@ export interface Event {
   category_id: number;
   creator_user_id?: number;
   interests?: Interest[];
+  message_thread?: { id: number };
 }
 
 export interface Place {
@@ -98,6 +99,14 @@ export interface MessageThread {
   unread_count: number;
   match_timestamp?: string;
   participants: { user: User }[];
+  is_event_chat?: boolean;
+  event_id?: number;
+  event?: {
+    id: number;
+    title: string;
+    time: string;
+    end_time?: string;
+  };
 }
 
 export interface Message {
