@@ -6,6 +6,23 @@ import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import PublicAuthModal from '../components/PublicAuthModal';
 
+const slugify = (text: string): string => {
+  if (!text) return '';
+  const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
+  const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrsssssttuuuuuuuuuwxyyzzz------'
+  const p = new RegExp(a.split('').join('|'), 'g')
+
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
+    .replace(/&/g, '-and-') // Replace & with 'and'
+    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
+    .replace(/\-\-+/g, '-') // Replace multiple - with single -
+    .replace(/^-+/, '') // Trim - from start of text
+    .replace(/-+$/, '') // Trim - from end of text
+}
+
+
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
     useEffect(() => {
@@ -21,29 +38,57 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 };
 
 const PublicEventPage: React.FC = () => {
-    const { eventId } = useParams<{ eventId: string }>();
+    const { orgSlug, eventSlug } = useParams<{ orgSlug: string, eventSlug: string }>();
     const [event, setEvent] = useState<Partial<Event> | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchEventData = async () => {
-            if (!eventId) {
+            if (!orgSlug || !eventSlug) {
                 setLoading(false);
                 return;
             }
-            const { data } = await supabase
+            // Fetch all events from organizations to perform client-side slug matching
+            // FIX: The `organization` select now includes `logo_url` to satisfy the `Event` type.
+            const { data, error } = await supabase
                 .from('events')
-                .select('title, description, time, address, image_url, icon')
-                .eq('id', eventId)
-                .single();
+                .select('title, description, time, address, image_url, icon, organization:organizations!inner(name, logo_url)')
+                .not('organization_id', 'is', null);
+
+            if (error) {
+                console.error("Error fetching public events:", error.message);
+                setLoading(false);
+                return;
+            }
 
             if (data) {
-                setEvent(data);
+                // Find the matching event by slugifying each one
+                const foundEvent = data.find(e => {
+                    const eventData = e as any;
+                    const org = Array.isArray(eventData.organization) ? eventData.organization[0] : eventData.organization;
+                    if (!org) return false;
+                    const currentOrgSlug = slugify(org.name);
+                    const currentEventSlug = slugify(eventData.title);
+                    return currentOrgSlug === orgSlug && currentEventSlug === eventSlug;
+                });
+                
+                // FIX: Handle cases where Supabase returns a relationship as an array.
+                // This ensures the object passed to setEvent matches the Partial<Event> type.
+                if (foundEvent) {
+                    const transformedEvent = {
+                        ...foundEvent,
+                        organization: Array.isArray(foundEvent.organization) ? foundEvent.organization[0] : foundEvent.organization,
+                    };
+                    setEvent(transformedEvent);
+                } else {
+                    setEvent(null);
+                }
             }
             setLoading(false);
         };
         fetchEventData();
-    }, [eventId]);
+    }, [orgSlug, eventSlug]);
+
 
     if (loading) {
         return (

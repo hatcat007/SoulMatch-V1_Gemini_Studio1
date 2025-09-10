@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MoreVertical, MessageCircle, ChevronRight, Phone, Mail, Globe, Share2 } from 'lucide-react';
-import type { Organization, MessageThread, User, OrganizationOpportunity, OrganizationUpdate } from '../types';
+import { ArrowLeft, MoreVertical, MessageCircle, ChevronRight, Phone, Mail, Globe, Share2, Loader2 } from 'lucide-react';
+import type { Organization, MessageThread, User, OrganizationOpportunity, OrganizationUpdate, Activity } from '../types';
 import ShareModal from '../components/ShareModal';
 import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import LoadingScreen from '../components/LoadingScreen';
+import { useAuth } from '../contexts/AuthContext';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -32,6 +33,7 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 const OrganizationProfilePage: React.FC = () => {
     const { organizationId } = useParams<{ organizationId: string }>();
     const navigate = useNavigate();
+    const { user: currentUser } = useAuth();
     const [organization, setOrganization] = useState<Organization | null>(null);
     const [opportunities, setOpportunities] = useState<OrganizationOpportunity[]>([]);
     const [updates, setUpdates] = useState<OrganizationUpdate[]>([]);
@@ -39,65 +41,61 @@ const OrganizationProfilePage: React.FC = () => {
     const [showShareModal, setShowShareModal] = useState(false);
     const [shareConfirmation, setShareConfirmation] = useState('');
     const [loading, setLoading] = useState(true);
+    const [messageLoading, setMessageLoading] = useState(false);
 
-    useEffect(() => {
-        const fetchOrganizationData = async () => {
-            if (!organizationId) return;
-            setLoading(true);
+    const fetchOrganizationData = useCallback(async () => {
+        if (!organizationId) return;
+        setLoading(true);
 
-            // Fetch main organization details
-            const { data: orgData, error: orgError } = await supabase
-                .from('organizations')
-                .select('*')
-                .eq('id', organizationId)
-                .single();
+        const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('*, activities:organization_activities(activity:activities(*))')
+            .eq('id', organizationId)
+            .single();
 
-            if (orgError) {
-                console.error('Error fetching organization:', orgError);
-                setOrganization(null);
-            } else {
-                setOrganization(orgData);
-            }
+        if (orgError) {
+            console.error('Error fetching organization:', orgError);
+            setOrganization(null);
+        } else {
+            setOrganization(orgData);
+        }
 
-            // Fetch opportunities
-            const { data: oppData, error: oppError } = await supabase
-                .from('organization_opportunities')
-                .select('name, icon')
-                .eq('organization_id', organizationId);
-            
-            if (oppError) console.error('Error fetching opportunities:', oppError);
-            else setOpportunities(oppData || []);
+        const { data: oppData, error: oppError } = await supabase
+            .from('organization_opportunities')
+            .select('name, icon')
+            .eq('organization_id', organizationId);
+        
+        if (oppError) console.error('Error fetching opportunities:', oppError);
+        else setOpportunities(oppData || []);
 
-            // Fetch updates
-            const { data: updateData, error: updateError } = await supabase
-                .from('organization_updates')
-                .select('id, image_url')
-                .eq('organization_id', organizationId);
+        const { data: updateData, error: updateError } = await supabase
+            .from('organization_updates')
+            .select('id, image_url')
+            .eq('organization_id', organizationId);
 
-            if (updateError) console.error('Error fetching updates:', updateError);
-            else setUpdates(updateData || []);
+        if (updateError) console.error('Error fetching updates:', updateError);
+        else setUpdates(updateData || []);
 
-            // Fetch soulmates for sharing
-            const { data: soulmateData, error: soulmateError } = await supabase.from('users').select('*').limit(2);
-            if (soulmateError) console.error('Error fetching soulmates:', soulmateError);
-            else {
-                 const threads: MessageThread[] = (soulmateData || []).map((u: User) => ({
-                    id: u.id,
-                    participants: [{ user: u }],
-                    last_message: '',
-                    timestamp: '',
-                    unread_count: 0,
-                }));
-                setSoulmates(threads);
-            }
+        const { data: soulmateData, error: soulmateError } = await supabase.from('users').select('*').limit(2);
+        if (soulmateError) console.error('Error fetching soulmates:', soulmateError);
+        else {
+             const threads: MessageThread[] = (soulmateData || []).map((u: User) => ({
+                id: u.id,
+                participants: [{ user: u }],
+                last_message: '',
+                timestamp: '',
+                unread_count: 0,
+            }));
+            setSoulmates(threads);
+        }
 
-            setLoading(false);
-        };
-
-        fetchOrganizationData();
+        setLoading(false);
     }, [organizationId]);
+    
+    useEffect(() => {
+        fetchOrganizationData();
+    }, [fetchOrganizationData]);
 
-    // FIX: The handleShare function now accepts a MessageThread object to match the ShareModal's onShare prop.
     const handleShare = (thread: MessageThread) => {
         setShowShareModal(false);
         const user = thread.participants[0]?.user;
@@ -105,6 +103,68 @@ const OrganizationProfilePage: React.FC = () => {
         setShareConfirmation(`Profil delt med ${user.name}!`);
         setTimeout(() => setShareConfirmation(''), 3000);
     };
+    
+    const handleSendMessage = async () => {
+        if (!organization || !organization.host_name) {
+            setShareConfirmation('Organisationen har ikke angivet en kontaktperson.');
+            setTimeout(() => setShareConfirmation(''), 3000);
+            return;
+        }
+
+        setMessageLoading(true);
+
+        try {
+            const { data: hostUser, error: findUserError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('name', organization.host_name)
+                .limit(1)
+                .single();
+            
+            if (findUserError || !hostUser) {
+                setShareConfirmation('Kunne ikke finde en brugerprofil for organisationens kontaktperson.');
+                setTimeout(() => setShareConfirmation(''), 4000);
+                console.error('Error finding host user:', findUserError);
+                return;
+            }
+            
+            if (hostUser.id === currentUser?.id) {
+                setShareConfirmation('Du kan ikke starte en chat med dig selv.');
+                setTimeout(() => setShareConfirmation(''), 3000);
+                return;
+            }
+
+            const { data: threadId, error: rpcError } = await supabase.rpc('get_or_create_chat_thread', {
+                p_friend_id: hostUser.id
+            });
+            
+            if (rpcError || !threadId) {
+                setShareConfirmation('Kunne ikke starte en chat. Prøv igen.');
+                setTimeout(() => setShareConfirmation(''), 4000);
+                console.error('Error creating chat thread:', rpcError);
+                return;
+            }
+            
+            navigate(`/chat/${threadId}`);
+
+        } catch (e: any) {
+            setShareConfirmation('Der opstod en uventet fejl.');
+            setTimeout(() => setShareConfirmation(''), 3000);
+            console.error('Unexpected error in handleSendMessage:', e);
+        } finally {
+            setMessageLoading(false);
+        }
+    };
+
+
+    const organizationActivities = useMemo(() => {
+        if (!organization || !organization.activities) return [];
+        return organization.activities.map((act: any) => act.activity).filter(Boolean);
+    }, [organization]);
+
+    const organizationInterests = useMemo(() => {
+        return organization?.emojis || [];
+    }, [organization]);
     
     if (loading) {
         return <LoadingScreen message="Loading organization..." />;
@@ -130,7 +190,7 @@ const OrganizationProfilePage: React.FC = () => {
                 />
             )}
             {shareConfirmation && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-full z-50">
+                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm font-bold py-2 px-4 rounded-full z-50">
                     {shareConfirmation}
                 </div>
             )}
@@ -163,6 +223,33 @@ const OrganizationProfilePage: React.FC = () => {
                             <p className="text-text-secondary dark:text-dark-text-secondary mt-2 flex-1">{organization.description}</p>
                         </div>
                     </section>
+
+                    {(organizationActivities.length > 0 || organizationInterests.length > 0) && (
+                        <section className="mb-8">
+                            <div className="bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm">
+                                {organizationActivities.length > 0 && (
+                                    <div className={organizationInterests.length > 0 ? "mb-6" : ""}>
+                                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-3">Organisationens Aktiviteter</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {organizationActivities.map((activity: Activity) => (
+                                                <span key={activity.id} className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 px-3 py-1.5 rounded-full text-sm font-medium">{activity.name}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {organizationInterests.length > 0 && (
+                                    <div>
+                                        <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-3">Organisationens Interesser</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {organizationInterests.map((interestName: string) => (
+                                                <span key={interestName} className="bg-gray-100 dark:bg-dark-surface-light text-text-secondary dark:text-dark-text-secondary px-3 py-1.5 rounded-full text-sm font-medium">{interestName}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    )}
 
                     {/* Opportunities */}
                     {opportunities.length > 0 && (
@@ -238,10 +325,12 @@ const OrganizationProfilePage: React.FC = () => {
                         Del Profil
                     </button>
                     <button
-                        className="w-full flex-1 bg-primary text-white font-bold py-3 px-4 rounded-full text-lg transition duration-300 shadow-lg hover:bg-primary-dark flex items-center justify-center"
+                        onClick={handleSendMessage}
+                        disabled={messageLoading}
+                        className="w-full flex-1 bg-primary text-white font-bold py-3 px-4 rounded-full text-lg transition duration-300 shadow-lg hover:bg-primary-dark flex items-center justify-center disabled:opacity-70"
                     >
-                        <MessageCircle size={20} className="mr-2"/>
-                        Send Besked
+                        {messageLoading ? <Loader2 className="animate-spin"/> : <MessageCircle size={20} className="mr-2"/>}
+                        {messageLoading ? 'Starter chat...' : 'Send Besked'}
                     </button>
                 </div>
             </footer>

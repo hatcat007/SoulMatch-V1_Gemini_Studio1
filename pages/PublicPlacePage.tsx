@@ -6,6 +6,22 @@ import { supabase } from '../services/supabase';
 import { fetchPrivateFile } from '../services/s3Service';
 import PublicAuthModal from '../components/PublicAuthModal';
 
+const slugify = (text: string): string => {
+  if (!text) return '';
+  const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
+  const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrsssssttuuuuuuuuuwxyyzzz------'
+  const p = new RegExp(a.split('').join('|'), 'g')
+
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
+    .replace(/&/g, '-and-') // Replace & with 'and'
+    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
+    .replace(/\-\-+/g, '-') // Replace multiple - with single -
+    .replace(/^-+/, '') // Trim - from start of text
+    .replace(/-+$/, '') // Trim - from end of text
+}
+
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
     useEffect(() => {
@@ -21,29 +37,54 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
 };
 
 const PublicPlacePage: React.FC = () => {
-    const { placeId } = useParams<{ placeId: string }>();
+    const { orgSlug, placeSlug } = useParams<{ orgSlug: string, placeSlug: string }>();
     const [place, setPlace] = useState<Partial<Place> | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchPlaceData = async () => {
-            if (!placeId) {
+            if (!orgSlug || !placeSlug) {
                 setLoading(false);
                 return;
             }
+            // FIX: The `organization` select now includes `id` to satisfy the `Place` type.
             const { data, error } = await supabase
                 .from('places')
-                .select('name, description, address, image_url, icon, offer, is_sponsored')
-                .eq('id', placeId)
-                .single();
+                .select('name, description, address, image_url, icon, offer, is_sponsored, organization:organizations!inner(id, name)')
+                .not('organization_id', 'is', null);
+
+            if (error) {
+                console.error("Error fetching public places:", error.message);
+                setLoading(false);
+                return;
+            }
 
             if (data) {
-                setPlace(data);
+                const foundPlace = data.find(p => {
+                    const placeData = p as any;
+                    const org = Array.isArray(placeData.organization) ? placeData.organization[0] : placeData.organization;
+                    if (!org) return false;
+                    const currentOrgSlug = slugify(org.name);
+                    const currentPlaceSlug = slugify(placeData.name);
+                    return currentOrgSlug === orgSlug && currentPlaceSlug === placeSlug;
+                });
+                
+                // FIX: Handle cases where Supabase returns a relationship as an array.
+                // This ensures the object passed to setPlace matches the Partial<Place> type.
+                if (foundPlace) {
+                    const transformedPlace = {
+                        ...foundPlace,
+                        organization: Array.isArray(foundPlace.organization) ? foundPlace.organization[0] : foundPlace.organization,
+                    };
+                    setPlace(transformedPlace);
+                } else {
+                    setPlace(null);
+                }
             }
             setLoading(false);
         };
         fetchPlaceData();
-    }, [placeId]);
+    }, [orgSlug, placeSlug]);
 
     if (loading) {
         return (

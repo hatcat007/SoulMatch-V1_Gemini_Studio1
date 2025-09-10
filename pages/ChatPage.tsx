@@ -10,8 +10,9 @@ import { fetchPrivateFile } from '../services/s3Service';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from '../components/LoadingScreen';
 import MeetingTimer from '../components/MeetingTimer';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({ src, alt, className }) => {
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
     const [loading, setLoading] = useState(true);
 
@@ -34,8 +35,8 @@ const PrivateImage: React.FC<{src: string, alt: string, className: string}> = ({
         };
     }, [src]);
 
-    if (loading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded-xl`} />;
-    if (!imageUrl) return <div className={`${className} bg-gray-100 dark:bg-dark-surface-light rounded-xl`} />;
+    if (loading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse`} />;
+    if (!imageUrl) return <div className={`${className} bg-gray-100 dark:bg-dark-surface-light`} />;
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
@@ -64,11 +65,10 @@ const CardMessage: React.FC<{ card: Message['card_data'], isCurrentUser: boolean
     if (!card) return null;
     
     const linkTo = card.type === 'event' ? `/event/${card.id}` : `/places?open=${card.id}`;
-    const cardBg = isCurrentUser ? 'bg-primary-dark' : 'bg-white dark:bg-dark-surface';
+    const cardBg = isCurrentUser ? 'bg-primary-dark/80 dark:bg-primary/50' : 'bg-white dark:bg-dark-surface';
     const textColor = isCurrentUser ? 'text-white' : 'text-text-primary dark:text-dark-text-primary';
     const secondaryTextColor = isCurrentUser ? 'text-gray-200' : 'text-text-secondary dark:text-dark-text-secondary';
     const offerTextColor = isCurrentUser ? 'text-yellow-300' : 'text-primary';
-    const linkTextColor = isCurrentUser ? 'text-blue-300' : 'text-blue-500';
 
     return (
         <Link to={linkTo} className={`block mt-2 rounded-lg overflow-hidden border border-transparent hover:shadow-md transition-shadow ${cardBg}`}>
@@ -91,7 +91,7 @@ const CardMessage: React.FC<{ card: Message['card_data'], isCurrentUser: boolean
                         {card.offer}
                     </p>
                 )}
-                <p className={`text-xs font-semibold ${linkTextColor} mt-2`}>Se detaljer →</p>
+                <p className={`text-xs font-semibold ${textColor} mt-2 opacity-80`}>Se detaljer →</p>
             </div>
         </Link>
     );
@@ -117,6 +117,8 @@ const ChatPage: React.FC = () => {
     const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
     const [isEmojiMenuOpen, setIsEmojiMenuOpen] = useState(false);
     const [emojiLevel, setEmojiLevel] = useState<EmojiLevel>('ai');
+    const [isOrgChat, setIsOrgChat] = useState(false);
+    const [organizationName, setOrganizationName] = useState<string | null>(null);
 
 
     const isAiMentorChat = chatId === 'ai-mentor';
@@ -182,6 +184,16 @@ const ChatPage: React.FC = () => {
                  const foundOtherUser = participant?.user || null;
                  setOtherUser(foundOtherUser);
                  if (foundOtherUser) {
+                    // Check if otherUser is an org host
+                    const { data: orgData } = await supabase.from('organizations').select('id, name').eq('host_name', foundOtherUser.name).limit(1).single();
+                    if (orgData) {
+                        setIsOrgChat(true);
+                        setOrganizationName(orgData.name);
+                    } else {
+                        setIsOrgChat(false);
+                        setOrganizationName(null);
+                    }
+
                     const u1 = Math.min(currentUser.id, foundOtherUser.id);
                     const u2 = Math.max(currentUser.id, foundOtherUser.id);
                     const { data: friendshipData } = await supabase.from('friends').select('*').eq('user_id_1', u1).eq('user_id_2', u2).single();
@@ -394,7 +406,7 @@ const ChatPage: React.FC = () => {
     };
 
     const renderHeaderActions = () => {
-        if (isAiMentorChat || thread?.is_event_chat || !otherUser) return null;
+        if (isAiMentorChat || thread?.is_event_chat || !otherUser || isOrgChat) return null;
         return (
             <div className="flex items-center space-x-1">
                 {renderFriendButton()}
@@ -428,7 +440,7 @@ const ChatPage: React.FC = () => {
         return <LoadingScreen message="Indlæser chat..." />;
     }
     
-    if (!thread) {
+    if (!thread && !isAiMentorChat) {
         return (
             <div className="p-4 text-center">
                 <p>Chat not found.</p>
@@ -438,7 +450,7 @@ const ChatPage: React.FC = () => {
     }
     
     // Additional check for private chats
-    if (!isAiMentorChat && !thread.is_event_chat && !otherUser) {
+    if (!isAiMentorChat && !thread?.is_event_chat && !otherUser) {
         return (
             <div className="p-4 text-center">
                 <p>Kunne ikke indlæse deltagerinformation.</p>
@@ -456,18 +468,23 @@ const ChatPage: React.FC = () => {
         { level: 'many', label: 'Mange emojis' },
     ];
 
-    const isGroupChat = thread.is_event_chat;
+    const isGroupChat = thread?.is_event_chat;
     const headerTitle = isGroupChat ? (thread.event?.title || 'Event Chat') : (otherUser?.name);
-    const headerSubtitle = isGroupChat ? `${thread.participants.length} deltagere` : (otherUser?.online ? 'Online' : 'Offline');
+    const headerSubtitle = isGroupChat 
+        ? `${thread.participants.length} deltagere` 
+        : isOrgChat && organizationName
+        ? `User fra ${organizationName}`
+        : (otherUser?.online ? 'Online' : 'Offline');
 
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-dark-surface">
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-dark-background">
             <header className="flex items-center p-3 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky top-0 z-10">
                 <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary">
                     <ArrowLeft size={28} />
                 </button>
-                <div className="flex-1 text-center">
-                    <h2 className="font-bold text-lg text-text-primary dark:text-dark-text-primary flex items-center justify-center">
+                {otherUser && !isGroupChat && <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-10 h-10 rounded-full ml-2 object-cover" />}
+                <div className="flex-1 text-left ml-3">
+                    <h2 className="font-bold text-lg text-text-primary dark:text-dark-text-primary flex items-center">
                         {headerTitle}
                         {isAiMentorChat && <BrainCircuit className="w-5 h-5 ml-1 text-accent" strokeWidth={2.5}/>}
                         {isGroupChat && <Users className="w-5 h-5 ml-2 text-primary" />}
@@ -479,8 +496,8 @@ const ChatPage: React.FC = () => {
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 md:px-8 lg:px-16 space-y-4">
-                {!isAiMentorChat && !isGroupChat && thread.match_timestamp && (
+            <main className="flex-1 overflow-y-auto p-4 space-y-2">
+                {!isAiMentorChat && !isGroupChat && !isOrgChat && thread?.match_timestamp && (
                     <MeetingTimer matchTimestamp={thread.match_timestamp} />
                 )}
 
@@ -490,35 +507,47 @@ const ChatPage: React.FC = () => {
                         <span className="leading-snug">Beskeder er beskyttet med end-to-end-kryptering. Det er kun personer i denne chat, der kan læse, lytte til eller dele dem.</span>
                     </div>
                 )}
-                {messages.map((msg) => {
+                {messages.map((msg, index) => {
                     const isCurrentUser = msg.sender_id === currentUser?.id;
                     const isAi = msg.sender_id === -1;
+
+                    const prevSenderId = messages[index - 1]?.sender_id;
+                    const nextSenderId = messages[index + 1]?.sender_id;
+                    const isFirstInGroup = msg.sender_id !== prevSenderId;
+                    const isLastInGroup = msg.sender_id !== nextSenderId;
+
+                    let bubbleClasses = '';
+                    if (isCurrentUser) {
+                        bubbleClasses = `bg-primary text-white dark:bg-primary-dark dark:text-dark-text-primary ${isFirstInGroup ? 'rounded-t-2xl' : 'rounded-tr-lg'} ${isLastInGroup ? 'rounded-bl-2xl' : 'rounded-l-lg'}`;
+                    } else {
+                        bubbleClasses = `bg-white dark:bg-dark-surface-light text-text-primary dark:text-dark-text-primary ${isFirstInGroup ? 'rounded-t-2xl' : 'rounded-tl-lg'} ${isLastInGroup ? 'rounded-br-2xl' : 'rounded-r-lg'}`;
+                    }
+
                     return (
-                        <div
+                        <motion.div
                             key={msg.id}
-                            className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                            className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3 }}
                         >
-                            <div
-                                className={`flex flex-col max-w-[80%] ${
-                                    isCurrentUser
-                                        ? 'bg-primary text-white rounded-t-2xl rounded-bl-2xl'
-                                        : 'bg-gray-100 dark:bg-dark-surface-light text-gray-800 dark:text-dark-text-primary rounded-t-2xl rounded-br-2xl'
-                                }`}
-                            >
-                                {msg.image_url && (
-                                    <PrivateImage src={msg.image_url} alt="Chat content" className="rounded-xl m-1" />
-                                )}
+                            {!isCurrentUser && (
+                                <div className="w-8 flex-shrink-0 self-end">
+                                    {isLastInGroup && otherUser && <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-8 h-8 rounded-full object-cover"/>}
+                                </div>
+                            )}
+                            <div className={`flex flex-col max-w-[80%] shadow-sm ${bubbleClasses}`}>
                                 <div className="px-3 py-2">
                                     <div className="flex items-end space-x-2">
                                         <div className="flex-1">
                                             {msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}
                                         </div>
-                                        <p className={`text-xs whitespace-nowrap self-end ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{getMessageTimestamp(msg)}</p>
+                                         <p className={`text-xs whitespace-nowrap self-end opacity-70 ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'}`}>{getMessageTimestamp(msg)}</p>
                                     </div>
                                     {msg.card_data && <CardMessage card={msg.card_data} isCurrentUser={isCurrentUser} />}
                                 </div>
                             </div>
-                        </div>
+                        </motion.div>
                     );
                 })}
                 {isAiReplying && (
@@ -535,13 +564,13 @@ const ChatPage: React.FC = () => {
 
             <footer className="p-3 border-t border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky bottom-0">
                 <form onSubmit={handleSendMessage} className="flex items-center space-x-2 max-w-3xl mx-auto">
-                    <div className="flex items-center w-full p-1 border border-gray-300 dark:border-dark-border rounded-full">
-                        {isAiMentorChat ? (
+                    <div className="flex items-center w-full p-1 bg-gray-100 dark:bg-dark-surface-light border border-transparent focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 dark:focus-within:border-primary-light/50 rounded-full transition-all duration-300">
+                        {isAiMentorChat && (
                            <div className="relative" ref={emojiMenuRef}>
                                 <button
                                     type="button"
                                     onClick={() => setIsEmojiMenuOpen(prev => !prev)}
-                                    className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full"
+                                    className="p-2 text-gray-500 dark:text-dark-text-secondary hover:text-primary rounded-full"
                                     aria-label="Change emoji level"
                                 >
                                     <Smile size={24} />
@@ -562,29 +591,22 @@ const ChatPage: React.FC = () => {
                                     </div>
                                 )}
                            </div>
-                        ) : (
-                            <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add content">
-                                <Plus size={24} />
-                            </button>
                         )}
-                        <button type="button" className="p-2 text-primary hover:bg-primary-light dark:hover:bg-primary/20 rounded-full" aria-label="Add ticket">
-                            <Ticket size={24} />
-                        </button>
                         <input
                             type="text"
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder="Send en besked"
-                            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-dark-text-secondary px-2"
+                            placeholder="Send en besked..."
+                            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-800 dark:text-dark-text-primary placeholder-gray-500 dark:placeholder-dark-text-secondary px-3"
                             aria-label="Chat message input"
                         />
                          <button
                             type="submit"
-                            className="text-primary rounded-full p-2 flex-shrink-0 hover:bg-primary-light dark:hover:bg-primary/20 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="bg-primary text-white rounded-full p-2.5 flex-shrink-0 hover:bg-primary-dark transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={!newMessage.trim() || isAiReplying}
                             aria-label="Send message"
                         >
-                            <Send size={24} />
+                            <Send size={20} />
                         </button>
                     </div>
                 </form>

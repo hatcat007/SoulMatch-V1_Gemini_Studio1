@@ -47,6 +47,7 @@ const ChatListPage: React.FC = () => {
     const [threads, setThreads] = useState<MessageThread[]>([]);
     const [loading, setLoading] = useState(true);
     const { user: currentUser, loading: authLoading } = useAuth();
+    const [hostMap, setHostMap] = useState<Map<string, string>>(new Map());
 
     const aiMentorThread: MessageThread = {
       id: 'ai-mentor',
@@ -71,6 +72,21 @@ const ChatListPage: React.FC = () => {
 
             setLoading(true); // Start loading chat data
             const userId = currentUser.id;
+            
+            // Fetch organizations to map hosts
+            const { data: orgsData, error: orgsError } = await supabase.from('organizations').select('name, host_name');
+            if (orgsError) {
+                console.error('Error fetching organizations for host mapping:', orgsError);
+            } else if (orgsData) {
+                const newHostMap = new Map<string, string>();
+                orgsData.forEach(org => {
+                    if (org.host_name && org.name) {
+                        newHostMap.set(org.host_name, org.name);
+                    }
+                });
+                setHostMap(newHostMap);
+            }
+
 
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
@@ -137,7 +153,7 @@ const ChatListPage: React.FC = () => {
     const allPrivateThreads = [aiMentorThread, ...privateChats];
 
     return (
-        <div className="p-4 flex flex-col h-full">
+        <div className="p-4 flex flex-col h-full bg-background dark:bg-dark-background">
             <div className="flex justify-between items-center mb-4">
                 <div className="w-10"></div> {/* Spacer */}
                 <h1 className="text-3xl font-bold text-primary">SoulMatch</h1>
@@ -147,7 +163,7 @@ const ChatListPage: React.FC = () => {
                 <input
                     type="text"
                     placeholder="Søg i chat"
-                    className="w-full bg-gray-100 border border-gray-200 rounded-full py-3 pl-10 pr-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-full py-3 pl-10 pr-4 text-gray-700 dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             </div>
@@ -160,16 +176,16 @@ const ChatListPage: React.FC = () => {
             <div className="flex-1 overflow-y-auto">
                 {eventChats.length > 0 && (
                     <div className="mb-6">
-                        <h2 className="text-lg font-semibold text-text-primary mb-3">Event Chats</h2>
+                        <h2 className="text-lg font-semibold text-text-primary dark:text-dark-text-primary mb-3">Event Chats</h2>
                         <div className="space-y-2">
                              {eventChats.map(thread => {
                                 const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
                                 return (
-                                     <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                                     <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-3 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-dark-surface-light transition-colors duration-200">
                                         <div className="w-14 h-14 rounded-full mr-4 bg-primary-light flex items-center justify-center"><Calendar className="w-7 h-7 text-primary"/></div>
                                         <div className="flex-1 overflow-hidden">
-                                            <p className="font-bold text-text-primary">{thread.event?.title || 'Event Chat'}</p>
-                                            <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>
+                                            <p className="font-bold text-text-primary dark:text-dark-text-primary">{thread.event?.title || 'Event Chat'}</p>
+                                            <p className="text-sm text-text-secondary dark:text-dark-text-secondary truncate">{thread.last_message}</p>
                                         </div>
                                         <div className="text-right ml-2 flex-shrink-0">
                                             <p className="text-xs text-gray-400 mb-1">{formattedTimestamp}</p>
@@ -195,13 +211,16 @@ const ChatListPage: React.FC = () => {
                             if (!otherUser) return null;
 
                             const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
+                            const orgName = hostMap.get(otherUser.name);
+                            const displayName = orgName ? `${otherUser.name} fra ${orgName}` : otherUser.name;
+
 
                             return (
-                                <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                                <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-3 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-dark-surface-light transition-colors duration-200">
                                     <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-14 h-14 rounded-full mr-4 object-cover" />
                                     <div className="flex-1 overflow-hidden">
-                                        <p className="font-bold text-text-primary">{otherUser.name}</p>
-                                        <p className="text-sm text-text-secondary truncate">{thread.last_message}</p>
+                                        <p className="font-bold text-text-primary dark:text-dark-text-primary">{displayName}</p>
+                                        <p className="text-sm text-text-secondary dark:text-dark-text-secondary truncate">{thread.last_message}</p>
                                     </div>
                                     <div className="text-right ml-2 flex-shrink-0">
                                         <p className="text-xs text-gray-400 mb-1">{formattedTimestamp}</p>

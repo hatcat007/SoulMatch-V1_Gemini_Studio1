@@ -54,6 +54,7 @@ export interface Event {
   participants?: User[];
   organization_id: number | null;
   organization?: {
+    name: string;
     logo_url: string;
     activities?: { activity: Activity }[];
   };
@@ -157,6 +158,7 @@ export interface Organization {
   opportunities?: OrganizationOpportunity[];
   updates?: OrganizationUpdate[];
   auth_id?: string;
+  activities?: { activity: Activity }[];
 }
 
 export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';

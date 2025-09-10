@@ -57,7 +57,7 @@ const AppContent: React.FC = () => {
   const [places, setPlaces] = useState<Place[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   
-  const eventsQuery = '*, is_diagnosis_friendly, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), event_participants ( count ), category:categories(*), interests:event_interests(interest:interests(*)), images:event_images(id, image_url)';
+  const eventsQuery = '*, is_diagnosis_friendly, organization:organizations(name, logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), event_participants ( count ), category:categories(*), interests:event_interests(interest:interests(*)), images:event_images(id, image_url)';
   const placesQuery = '*, is_certified, images:place_images(id, image_url), organization:organizations(id, name), category:categories(*), place_activities:place_activities(activity:activities(*)), place_interests:place_interests(interest:interests(*))';
   
   const fetchPageData = useCallback(async () => {
@@ -69,13 +69,16 @@ const AppContent: React.FC = () => {
 
     const [eventsRes, usersRes, placesRes] = await Promise.all([eventsPromise, onlineUsersPromise, placesPromise]);
 
-    if (eventsRes.error) console.error('Error fetching events:', eventsRes.error);
-    else setEvents(eventsRes.data.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
+    if (eventsRes.error) {
+        console.error('Error fetching events:', eventsRes.error.message);
+    } else {
+        setEvents(eventsRes.data.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
+    }
     
-    if (usersRes.error) console.error('Error fetching online users:', usersRes.error);
+    if (usersRes.error) console.error('Error fetching online users:', usersRes.error.message);
     else setOnlineUsers(usersRes.data || []);
 
-    if (placesRes.error) console.error('Error fetching places:', placesRes.error);
+    if (placesRes.error) console.error('Error fetching places:', placesRes.error.message);
     else setPlaces((placesRes.data || []) as Place[]);
 
     setDataLoading(false);
@@ -95,13 +98,21 @@ const AppContent: React.FC = () => {
       if (!user) return;
 
       const fetchEvents = async () => {
-          const { data: eventsData } = await supabase.from('events').select(eventsQuery);
-          if (eventsData) setEvents(eventsData.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
+          const { data: eventsData, error } = await supabase.from('events').select(eventsQuery);
+          if (error) {
+              console.error('Error fetching events on realtime update:', error.message);
+          } else if (eventsData) {
+              setEvents(eventsData.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
+          }
       };
 
       const fetchPlaces = async () => {
-          const { data: placesData } = await supabase.from('places').select(placesQuery);
-          if (placesData) setPlaces((placesData || []) as Place[]);
+          const { data: placesData, error } = await supabase.from('places').select(placesQuery);
+          if (error) {
+              console.error('Error fetching places on realtime update:', error.message);
+          } else if (placesData) {
+              setPlaces((placesData || []) as Place[]);
+          }
       };
       
       const eventsChannel = supabase.channel('realtime events')
@@ -213,8 +224,8 @@ const AppContent: React.FC = () => {
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/create-organization" element={<CreateOrganizationPage />} />
                 <Route path="/confirm-organization" element={<ConfirmOrganizationPage />} />
-                <Route path="/event/public/:eventId" element={<PublicEventPage />} />
-                <Route path="/place/public/:placeId" element={<PublicPlacePage />} />
+                <Route path="/event/public/:orgSlug/:eventSlug" element={<PublicEventPage />} />
+                <Route path="/place/public/:orgSlug/:placeSlug" element={<PublicPlacePage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             );

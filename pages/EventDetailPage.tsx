@@ -12,6 +12,22 @@ import LoadingScreen from '../components/LoadingScreen';
 import { useAuth } from '../contexts/AuthContext';
 import PostEventFriendModal from '../components/PostEventFriendModal';
 
+const slugify = (text: string): string => {
+  if (!text) return '';
+  const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
+  const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrsssssttuuuuuuuuuwxyyzzz------'
+  const p = new RegExp(a.split('').join('|'), 'g')
+
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
+    .replace(/&/g, '-and-') // Replace & with 'and'
+    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
+    .replace(/\-\-+/g, '-') // Replace multiple - with single -
+    .replace(/^-+/, '') // Trim - from start of text
+    .replace(/-+$/, '') // Trim - from end of text
+}
+
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
 
@@ -164,7 +180,7 @@ const EventDetailPage: React.FC = () => {
 
         const { data, error } = await supabase
             .from('events')
-            .select('*, organization:organizations(logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*), interests:event_interests(interest:interests(*)), message_thread:message_threads!event_id(id)')
+            .select('*, organization:organizations(name, logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), participants:event_participants(user:users(*)), images:event_images(id, image_url), category:categories(*), interests:event_interests(interest:interests(*)), message_thread:message_threads!event_id(id)')
             .eq('id', eventId)
             .single();
         
@@ -265,7 +281,15 @@ const EventDetailPage: React.FC = () => {
     };
 
     const handlePublicShare = () => {
-        const publicUrl = `${window.location.origin}/#/event/public/${eventId}`;
+        if (!event || !event.organization?.name) {
+            setShareConfirmation('Kun events fra organisationer kan deles på denne måde.');
+            setTimeout(() => setShareConfirmation(''), 3000);
+            return;
+        }
+        const orgSlug = slugify(event.organization.name);
+        const eventSlug = slugify(event.title);
+        const publicUrl = `${window.location.origin}/#/event/public/${orgSlug}/${eventSlug}`;
+
         navigator.clipboard.writeText(publicUrl).then(() => {
             setShareConfirmation('Offentligt link kopieret!');
             setTimeout(() => setShareConfirmation(''), 3000);

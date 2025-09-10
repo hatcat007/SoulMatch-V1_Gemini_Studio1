@@ -68,50 +68,51 @@ $$;
 GRANT EXECUTE ON FUNCTION public.suggest_activity(text, text) TO authenticated;
 
 
--- 6. Update RLS policies for SELECT
--- For interests
+-- 6. Update RLS policies for interests table
+ALTER TABLE public.interests ENABLE ROW LEVEL SECURITY;
+
+-- Drop old policies to ensure a clean slate
 DROP POLICY IF EXISTS "Allow public read access to interests" ON public.interests;
-CREATE POLICY "Public can see approved interests, orgs can see their own suggestions"
-ON public.interests
-FOR SELECT
-USING (
+DROP POLICY IF EXISTS "Public can see approved interests, orgs can see their own suggestions" ON public.interests;
+DROP POLICY IF EXISTS "Admins can manage interests" ON public.interests;
+
+-- New SELECT Policy for non-admins
+CREATE POLICY "Public can see approved interests, orgs can see their own suggestions" ON public.interests
+FOR SELECT USING (
   approved = true
   OR
-  created_by_organization_id = get_current_organization_id()
+  (auth.role() = 'authenticated' AND created_by_organization_id = get_current_organization_id())
 );
--- Add admin policy for interests
-CREATE POLICY "Admins can see all interests"
-ON public.interests
-FOR SELECT
-USING ( (SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true );
 
--- For activities
+-- New Admin Policy for ALL operations
+CREATE POLICY "Admins can manage interests" ON public.interests
+FOR ALL USING ( (SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true );
+
+
+-- 7. Update RLS policies for activities table
 ALTER TABLE public.activities ENABLE ROW LEVEL SECURITY;
+
+-- Drop old policies
+DROP POLICY IF EXISTS "Allow public read access to activities" ON public.activities;
 DROP POLICY IF EXISTS "Public can see approved activities, orgs can see their own suggestions" ON public.activities;
-CREATE POLICY "Public can see approved activities, orgs can see their own suggestions"
-ON public.activities
-FOR SELECT
-USING (
+DROP POLICY IF EXISTS "Admins can manage activities" ON public.activities;
+
+-- New SELECT Policy for non-admins
+CREATE POLICY "Public can see approved activities, orgs can see their own suggestions" ON public.activities
+FOR SELECT USING (
   approved = true
   OR
-  created_by_organization_id = get_current_organization_id()
+  (auth.role() = 'authenticated' AND created_by_organization_id = get_current_organization_id())
 );
--- Allow admins to see everything
-CREATE POLICY "Admins can see all activities" ON public.activities FOR SELECT USING ((SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true);
+
+-- New Admin Policy for ALL operations
+CREATE POLICY "Admins can manage activities" ON public.activities
+FOR ALL USING ( (SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true );
 
 
--- For organization_activities
+-- 8. RLS policies for organization_activities join table
 ALTER TABLE public.organization_activities ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Orgs can manage their own activities" ON public.organization_activities;
 CREATE POLICY "Orgs can manage their own activities" ON public.organization_activities FOR ALL USING (organization_id = get_current_organization_id());
 DROP POLICY IF EXISTS "Public can read organization activities" ON public.organization_activities;
 CREATE POLICY "Public can read organization activities" ON public.organization_activities FOR SELECT USING (true);
-
-
--- 7. Update RLS policies for INSERT/UPDATE/DELETE
-DROP POLICY IF EXISTS "Allow authenticated users to add new interests" ON public.interests;
--- INSERTs will be handled by the RPC functions, so we don't need a broad INSERT policy. Admins will bypass RLS.
-CREATE POLICY "Admins can manage interests" ON public.interests FOR ALL USING ( (SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true );
-
--- For Activities
-CREATE POLICY "Admins can manage activities" ON public.activities FOR ALL USING ( (SELECT is_admin FROM users WHERE auth_id = auth.uid()) = true );
