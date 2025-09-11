@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, SlidersHorizontal, MapPin, Users, HeartHandshake, User, Building, Loader2, Image as ImageIcon, BrainCircuit, ChevronRight } from 'lucide-react';
-import type { Event, User as UserType } from '../types';
+import { Search, SlidersHorizontal, MapPin, Users, HeartHandshake, User, Building, Loader2, Image as ImageIcon, BrainCircuit, ChevronRight, Clock } from 'lucide-react';
+import type { Event, User as UserType, DropInInvitation } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { fetchPrivateFile } from '../services/s3Service';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -39,6 +38,60 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
+const Countdown: React.FC<{ expiry: string }> = ({ expiry }) => {
+    const calculateTimeLeft = () => {
+        const difference = +new Date(expiry) - +new Date();
+        let timeLeft: { minutes?: number, seconds?: number } = {};
+
+        if (difference > 0) {
+            timeLeft = {
+                minutes: Math.floor((difference / 1000 / 60) % 60),
+                seconds: Math.floor((difference / 1000) % 60),
+            };
+        }
+        return timeLeft;
+    };
+
+    const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setTimeLeft(calculateTimeLeft());
+        }, 1000);
+        return () => clearTimeout(timer);
+    });
+
+    if (!timeLeft.minutes && !timeLeft.seconds) {
+        return <span className="text-red-500">Udløbet</span>;
+    }
+
+    return <span>{String(timeLeft.minutes).padStart(2, '0')}:{String(timeLeft.seconds).padStart(2, '0')}</span>;
+};
+
+
+const DropInCard: React.FC<{ dropIn: DropInInvitation }> = ({ dropIn }) => (
+    <Link to={`/drop-in/${dropIn.id}`} className="block w-80 flex-shrink-0 bg-white dark:bg-dark-surface rounded-2xl shadow-md hover:shadow-xl transition-shadow duration-300 p-4">
+        <div className="flex items-start space-x-3">
+            <PrivateImage src={dropIn.creator.avatar_url} alt={dropIn.creator.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
+            <div className="flex-1">
+                <p className="font-bold text-text-primary dark:text-dark-text-primary">{dropIn.creator.name}</p>
+                <p className="text-sm text-text-secondary dark:text-dark-text-secondary line-clamp-2">{dropIn.message}</p>
+            </div>
+             <div className="text-2xl">{dropIn.activity_icon}</div>
+        </div>
+        <div className="flex justify-between items-center mt-3 text-xs text-text-secondary dark:text-dark-text-secondary">
+            <div className="flex items-center font-semibold">
+                <MapPin size={12} className="mr-1.5" />
+                <span>{dropIn.location_name}</span>
+            </div>
+            <div className="flex items-center font-bold text-primary">
+                 <Clock size={12} className="mr-1.5" />
+                <Countdown expiry={dropIn.expires_at} />
+            </div>
+        </div>
+    </Link>
+);
+
 
 const EventCard: React.FC<{ event: Event }> = ({ event }) => (
     <Link to={`/event/${event.id}`} className="block bg-white dark:bg-dark-surface rounded-2xl shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden">
@@ -73,7 +126,7 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => (
     </Link>
 );
 
-const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[]; loading: boolean }> = ({ events, onlineUsers, loading }) => {
+const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[]; dropIns: DropInInvitation[], loading: boolean }> = ({ events, onlineUsers, dropIns, loading }) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilters, setActiveFilters] = useState<Filters>({
@@ -198,18 +251,12 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[]; loading: bo
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             </div>
 
-            {onlineUsers.length > 0 && (
-                <div className="mb-6">
-                    <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Online nu</h2>
-                    <div className="flex space-x-4 overflow-x-auto pb-2 scrollbar-hide">
-                        {onlineUsers.map(user => (
-                            <div key={user.id} className="flex-shrink-0 text-center w-20">
-                                <div className="relative">
-                                    <PrivateImage src={user.avatar_url} alt={user.name} className="w-16 h-16 rounded-full mx-auto object-cover" />
-                                    <span className="absolute bottom-0 right-2 block h-4 w-4 rounded-full bg-green-400 border-2 border-background dark:border-dark-background"></span>
-                                </div>
-                                <p className="text-xs mt-1 truncate font-semibold text-text-secondary dark:text-dark-text-secondary">{user.name}</p>
-                            </div>
+            {dropIns.length > 0 && (
+                 <div className="mb-6">
+                    <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Spontane Møder Lige Nu</h2>
+                    <div className="flex space-x-4 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
+                       {dropIns.map(dropIn => (
+                            <DropInCard key={dropIn.id} dropIn={dropIn} />
                         ))}
                     </div>
                 </div>

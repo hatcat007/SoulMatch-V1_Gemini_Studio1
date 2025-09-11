@@ -7,7 +7,10 @@ import ChatListPage from './pages/ChatListPage';
 import ProfilePage from './pages/ProfilePage';
 import OnboardingPage from './pages/OnboardingPage';
 import BottomNav from './components/BottomNav';
-import CreateEventPage from './pages/CreateEventPage';
+import CreatePage from './pages/CreateEventPage'; // Changed from CreateEventPage
+import CreatePlannedEventPage from './pages/CreatePlannedEventPage'; // New page for planned events
+import CreateDropInPage from './pages/CreateDropInPage'; // New page for drop-ins
+import DropInDetailPage from './pages/DropInDetailPage'; // New detail page for drop-ins
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ChatPage from './pages/ChatPage';
@@ -31,7 +34,7 @@ import AdminPage from './pages/AdminPage';
 import MyEventsPage from './pages/MyEventsPage';
 import EditEventPage from './pages/EditEventPage';
 import { NotificationProvider } from './contexts/NotificationContext';
-import type { User, Event, Place, Message, MessageThread } from './types';
+import type { User, Event, Place, Message, MessageThread, DropInInvitation } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { supabase } from './services/supabase';
@@ -127,6 +130,7 @@ const AppContent: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [dropIns, setDropIns] = useState<DropInInvitation[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   
   const eventsQuery = '*, is_diagnosis_friendly, organization:organizations(name, logo_url, activities:organization_activities(activity:activities(id, name, icon))), event_activities:event_activities(activity:activities(id, name, icon)), event_participants ( count ), category:categories(*), interests:event_interests(interest:interests(*)), images:event_images(id, image_url)';
@@ -138,8 +142,10 @@ const AppContent: React.FC = () => {
     const eventsPromise = supabase.from('events').select(eventsQuery);
     const onlineUsersPromise = supabase.from('users').select('*').eq('online', true).limit(10);
     const placesPromise = supabase.from('places').select(placesQuery);
+    const dropInsPromise = supabase.from('drop_in_invitations').select('*, creator:users(*)').gt('expires_at', new Date().toISOString());
 
-    const [eventsRes, usersRes, placesRes] = await Promise.all([eventsPromise, onlineUsersPromise, placesPromise]);
+
+    const [eventsRes, usersRes, placesRes, dropInsRes] = await Promise.all([eventsPromise, onlineUsersPromise, placesPromise, dropInsPromise]);
 
     if (eventsRes.error) {
         console.error('Error fetching events:', eventsRes.error.message);
@@ -152,6 +158,10 @@ const AppContent: React.FC = () => {
 
     if (placesRes.error) console.error('Error fetching places:', placesRes.error.message);
     else setPlaces((placesRes.data || []) as Place[]);
+
+    if (dropInsRes.error) console.error('Error fetching drop-ins:', dropInsRes.error.message);
+    else setDropIns((dropInsRes.data || []) as DropInInvitation[]);
+
 
     setDataLoading(false);
   }, [eventsQuery, placesQuery]);
@@ -169,39 +179,30 @@ const AppContent: React.FC = () => {
   useEffect(() => {
       if (!user) return;
 
-      const fetchEvents = async () => {
-          const { data: eventsData, error } = await supabase.from('events').select(eventsQuery);
-          if (error) {
-              console.error('Error fetching events on realtime update:', error.message);
-          } else if (eventsData) {
-              setEvents(eventsData.map(e => ({ ...e, participantCount: e.event_participants?.[0]?.count || 0 })) as Event[]);
-          }
-      };
-
-      const fetchPlaces = async () => {
-          const { data: placesData, error } = await supabase.from('places').select(placesQuery);
-          if (error) {
-              console.error('Error fetching places on realtime update:', error.message);
-          } else if (placesData) {
-              setPlaces((placesData || []) as Place[]);
-          }
+      const fetchAllData = async () => {
+         await fetchPageData();
       };
       
       const eventsChannel = supabase.channel('realtime events')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, fetchEvents)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, fetchEvents)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'event_images' }, fetchEvents)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, fetchAllData)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, fetchAllData)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'event_images' }, fetchAllData)
           .subscribe();
           
       const placesChannel = supabase.channel('realtime places')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, fetchPlaces)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, fetchAllData)
+          .subscribe();
+
+      const dropInsChannel = supabase.channel('realtime drop-ins')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'drop_in_invitations' }, fetchAllData)
           .subscribe();
 
       return () => {
           supabase.removeChannel(eventsChannel);
           supabase.removeChannel(placesChannel);
+          supabase.removeChannel(dropInsChannel);
       };
-  }, [user, eventsQuery, placesQuery]);
+  }, [user, fetchPageData]);
 
   const isUser = session && user;
   const isOrganization = session && organization;
@@ -257,9 +258,12 @@ const AppContent: React.FC = () => {
                 <div className="md:flex h-screen w-full">
                   <div className="flex-1 overflow-y-auto pb-16 md:pb-0">
                     <Routes>
-                      <Route path="/home" element={<HomePage events={events} onlineUsers={onlineUsers} loading={dataLoading} />} />
+                      <Route path="/home" element={<HomePage events={events} onlineUsers={onlineUsers} dropIns={dropIns} loading={dataLoading} />} />
                       <Route path="/places" element={<PlacesPage places={places} />} />
-                      <Route path="/create" element={<CreateEventPage />} />
+                      <Route path="/create" element={<CreatePage />} />
+                      <Route path="/create-planned-event" element={<CreatePlannedEventPage />} />
+                      <Route path="/create-drop-in" element={<CreateDropInPage />} />
+                      <Route path="/drop-in/:dropInId" element={<DropInDetailPage />} />
                       <Route path="/chat" element={<ChatListPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/chat/:chatId" element={<ChatPage />} />

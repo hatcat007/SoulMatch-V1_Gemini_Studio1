@@ -241,3 +241,14 @@ export interface UserAiDescription {
   description: string;
   created_at: string;
 }
+
+export interface DropInInvitation {
+  id: number;
+  creator_user_id: number;
+  message: string;
+  location_name: string;
+  activity_icon: string;
+  expires_at: string;
+  created_at: string;
+  creator: User;
+}
