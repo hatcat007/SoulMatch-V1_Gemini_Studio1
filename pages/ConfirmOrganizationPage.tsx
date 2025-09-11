@@ -2,24 +2,13 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
     ArrowLeft, Camera, Building, Loader2, Search,
-    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, PenTool, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical, PlusCircle
+    Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, LucideIcon, PenTool, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical, PlusCircle, Sparkles, X, ChevronDown
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
-import { uploadFile, fetchPrivateFile } from '../services/s3Service';
+import { uploadFile } from '../services/s3Service';
 import TagSelector from '../components/TagSelector';
 import type { Activity, Interest, InterestCategory } from '../types';
-
-const prefilledData = {
-  name: 'SIND Ungdom Aalborg',
-  phone: '+45 2323112',
-  website: 'sindungdom.dk',
-  address: 'Danmarksgade 52, 9000 Aalborg',
-  organization_type: 'NGO forening',
-  facebook_url: 'Facebook.com/sindungdomaalborg',
-  description: 'SIND Ungdom i Aalborg er et klubtilbud for unge psykisk sårbare i alderen 16-35 år.',
-  logo_url: 'https://i.imgur.com/8S8V5c2.png',
-  host_name: 'Jette Jensen',
-};
+import { motion, AnimatePresence } from 'framer-motion';
 
 const emptyData = {
   name: '',
@@ -37,36 +26,38 @@ const iconMap: { [key: string]: LucideIcon } = {
     Utensils, Dice5, MessagesSquare, Music, Paintbrush, Footprints, Bike, PartyPopper, Presentation, Wrench, Film, TreePine, PenTool, Camera, FileText, Heart, Gem, Ship, Laptop, Scissors, Droplets, Flower, Hammer, Book, BookOpen, Circle, Dumbbell, Flower2, Mountain, PersonStanding, Swords, Sailboat, Waves, Snowflake, Flag, PawPrint, Gamepad2, Code, ToyBrick, Smartphone, Twitch, Trophy, Gamepad, Puzzle, Coffee, GlassWater, Beer, Cake, Leaf, Globe, Flame, Users, Backpack, Tent, Building2, Car, MapPin, Bird, Sprout, Fish, Star, HelpCircle, Store, Landmark, Megaphone, Baby, Languages, Guitar, Mic, Disc, Palette, Scroll, Theater, Construction, MoveVertical
 };
 
-const SmartImage: React.FC<{ src: string; alt: string; className: string; fallback: React.ReactNode; }> = ({ src, alt, className, fallback }) => {
-    const [displayUrl, setDisplayUrl] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        let objectUrlToRevoke: string | null = null;
-        let isMounted = true;
-
-        const processUrl = async () => {
-            if (!src) { if (isMounted) { setIsLoading(false); setDisplayUrl(''); } return; }
-            setIsLoading(true);
-            if (src.startsWith('blob:') || src.startsWith('http')) {
-                setDisplayUrl(src);
-                setIsLoading(false);
-            } else {
-                try {
-                    const fetchedBlobUrl = await fetchPrivateFile(src);
-                    if (isMounted) { objectUrlToRevoke = fetchedBlobUrl; setDisplayUrl(fetchedBlobUrl); }
-                } catch(e) { console.error("Failed to fetch private image", e); if (isMounted) setDisplayUrl(''); } 
-                finally { if (isMounted) setIsLoading(false); }
-            }
-        };
-        processUrl();
-        return () => { isMounted = false; if (objectUrlToRevoke) { URL.revokeObjectURL(objectUrlToRevoke); } };
-    }, [src]);
-
-    if (isLoading) return <div className={`${className} flex items-center justify-center`}><Loader2 className="animate-spin text-gray-400" /></div>;
-    if (!displayUrl) return <div className={`${className} flex items-center justify-center`}>{fallback}</div>;
-    return <img src={displayUrl} alt={alt} className={className} />;
-};
+const SuggestionInfoModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+    <motion.div
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+    >
+        <motion.div
+            className="bg-white dark:bg-dark-surface rounded-2xl p-6 w-full max-w-sm text-center relative"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <div className="mx-auto inline-block bg-primary-light dark:bg-primary/20 text-primary p-3 rounded-full mb-4">
+                <Sparkles size={32} strokeWidth={2} />
+            </div>
+            <p className="text-text-secondary dark:text-dark-text-secondary text-base mb-6">
+                ✨ Opret en profil for at kunne foreslå nye tags – eller få smarte AI-forslag ud fra jeres organisationsbeskrivelse.
+                <br/><br/>
+                👉 Når profilen er oprettet, finder du det hele under Indstillinger.
+            </p>
+            <button
+                onClick={onClose}
+                className="w-full bg-primary text-white font-bold py-3 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg"
+            >
+                Forstået
+            </button>
+        </motion.div>
+    </motion.div>
+);
 
 
 const ConfirmOrganizationPage: React.FC = () => {
@@ -74,7 +65,7 @@ const ConfirmOrganizationPage: React.FC = () => {
   const location = useLocation();
   const isManual = !!location.state?.manual;
 
-  const [formData, setFormData] = useState(isManual ? emptyData : prefilledData);
+  const [formData, setFormData] = useState(emptyData);
   
   // State for activities and interests
   const [allActivities, setAllActivities] = useState<Activity[]>([]);
@@ -94,6 +85,11 @@ const ConfirmOrganizationPage: React.FC = () => {
   // New state for activity search and suggestion
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
   const [isSuggestingActivity, setIsSuggestingActivity] = useState(false);
+  const [visibleActivitiesCount, setVisibleActivitiesCount] = useState(12);
+
+
+  // State for the new info modal
+  const [isSuggestionModalOpen, setIsSuggestionModalOpen] = useState(false);
 
   const fetchActivities = async () => {
     const { data: activitiesData } = await supabase.from('activities').select('*').order('name');
@@ -119,35 +115,12 @@ const ConfirmOrganizationPage: React.FC = () => {
   }, [allActivities, activitySearchTerm]);
 
   const handleSuggestActivity = async () => {
-    if (!activitySearchTerm.trim()) return;
-    setIsSuggestingActivity(true);
-    const { data: newActivity, error: rpcError } = await supabase.rpc('suggest_activity', {
-        p_name: activitySearchTerm.trim(),
-        p_icon: 'HelpCircle', // Default icon for suggested activities
-    });
-    setIsSuggestingActivity(false);
-
-    if (rpcError) {
-        setError(rpcError.message);
-    } else if (newActivity) {
-        setAllActivities(prev => [...prev, newActivity]);
-        setSelectedActivityIds(prev => [...prev, newActivity.id]);
-        setActivitySearchTerm('');
-    }
+    setIsSuggestionModalOpen(true);
   };
 
   const handleSuggestInterest = async (tagName: string, categoryId: number): Promise<Interest | null> => {
-    setError(null);
-    const { data, error: rpcError } = await supabase.rpc('suggest_interest', {
-        p_name: tagName,
-        p_category_id: categoryId,
-    });
-    if (rpcError) {
-        setError(rpcError.message);
-        return null;
-    }
-    setAllInterests(prev => [...prev, data]);
-    return data;
+    setIsSuggestionModalOpen(true);
+    return null;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -158,8 +131,9 @@ const ConfirmOrganizationPage: React.FC = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'logo_url') => {
     if (e.target.files && e.target.files[0]) {
         const file = e.target.files[0];
+        // Optimistic UI update with a temporary blob URL
         const previewUrl = URL.createObjectURL(file);
-        setFormData(prev => ({ ...prev, [field]: previewUrl })); // Show preview immediately
+        setFormData(prev => ({ ...prev, [field]: previewUrl })); 
         
         try {
             const finalUrl = await uploadFile(file);
@@ -168,7 +142,7 @@ const ConfirmOrganizationPage: React.FC = () => {
             setError('Image upload failed. Please try again.');
             setFormData(prev => ({ ...prev, [field]: '' })); // Clear on error
         } finally {
-            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            // No need to revoke here, as the state will update and SmartImage/new component won't use it
         }
     }
   };
@@ -258,6 +232,10 @@ const ConfirmOrganizationPage: React.FC = () => {
   };
   
   return (
+    <>
+    <AnimatePresence>
+        {isSuggestionModalOpen && <SuggestionInfoModal onClose={() => setIsSuggestionModalOpen(false)} />}
+    </AnimatePresence>
     <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-gray-50 dark:bg-dark-background">
         <style>{`
             .input-style { 
@@ -308,7 +286,7 @@ const ConfirmOrganizationPage: React.FC = () => {
                     <div className="text-center">
                         <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Opret Organisationsprofil</h2>
                         <p className="text-text-secondary dark:text-dark-text-secondary mt-2">
-                            {isManual ? "Udfyld venligst oplysningerne manuelt." : "Bekræft de indhentede oplysninger."}
+                            Udfyld venligst oplysningerne manuelt.
                         </p>
                     </div>
 
@@ -316,12 +294,13 @@ const ConfirmOrganizationPage: React.FC = () => {
                         <label className="text-lg font-semibold text-gray-800 dark:text-dark-text-primary mb-3">Organisationslogo</label>
                         <div className="relative group">
                             <div className="w-32 h-32 rounded-full bg-gray-100 dark:bg-dark-surface-light flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-300 dark:border-dark-border">
-                                <SmartImage 
-                                    src={formData.logo_url} 
-                                    alt="Organization logo" 
-                                    className="w-full h-full object-cover" 
-                                    fallback={<Building size={64} className="text-gray-400 dark:text-gray-500" />} 
-                                />
+                                {formData.logo_url ? (
+                                    <div className="w-full h-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center text-center p-2">
+                                        <p className="text-sm font-semibold text-green-800 dark:text-green-300">Organisationslogo uploadet 👌</p>
+                                    </div>
+                                ) : (
+                                    <Building size={64} className="text-gray-400 dark:text-gray-500" />
+                                )}
                             </div>
                             <input type="file" ref={logoInputRef} onChange={(e) => handleImageUpload(e, 'logo_url')} accept="image/*" className="hidden" />
                             <button 
@@ -330,7 +309,7 @@ const ConfirmOrganizationPage: React.FC = () => {
                                 className="absolute inset-0 w-full h-full bg-black/60 rounded-full flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                                 <Camera size={24} />
-                                <span className="text-sm font-semibold mt-1">Skift logo</span>
+                                <span className="text-sm font-semibold mt-1">{formData.logo_url ? 'Skift logo' : 'Vælg logo'}</span>
                             </button>
                         </div>
                     </div>
@@ -363,13 +342,16 @@ const ConfirmOrganizationPage: React.FC = () => {
                                 type="text"
                                 placeholder="Søg eller foreslå en aktivitet..."
                                 value={activitySearchTerm}
-                                onChange={(e) => setActivitySearchTerm(e.target.value)}
+                                onChange={(e) => {
+                                    setActivitySearchTerm(e.target.value);
+                                    setVisibleActivitiesCount(12);
+                                }}
                                 className="input-style w-full pl-10"
                             />
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
                         <div className="flex flex-wrap gap-3">
-                           {filteredActivities.map(activity => {
+                           {filteredActivities.slice(0, visibleActivitiesCount).map(activity => {
                                 const IconComponent = iconMap[activity.icon] || Building;
                                 const isSelected = selectedActivityIds.includes(activity.id);
                                 return (
@@ -387,6 +369,16 @@ const ConfirmOrganizationPage: React.FC = () => {
                                 </button>
                            )}
                         </div>
+                         {filteredActivities.length > visibleActivitiesCount && (
+                            <button
+                                type="button"
+                                onClick={() => setVisibleActivitiesCount(prev => prev + 12)}
+                                className="w-full flex items-center justify-center text-center font-semibold text-primary py-2 mt-4 hover:underline"
+                            >
+                                Vis flere
+                                <ChevronDown size={20} className="ml-1" />
+                            </button>
+                        )}
                     </section>
 
                     <section>
@@ -421,6 +413,7 @@ const ConfirmOrganizationPage: React.FC = () => {
             </div>
         </div>
     </div>
+    </>
   );
 };
 
