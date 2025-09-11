@@ -1,15 +1,45 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, ChangeEvent } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Message, User, MessageThread } from '../types';
 import { ArrowLeft, Send, Paperclip, Loader2, MoreVertical } from 'lucide-react';
-import { fetchPrivateFile } from '../services/s3Service';
+import { fetchPrivateFile, uploadFile } from '../services/s3Service';
 import LoadingScreen from '../components/LoadingScreen';
 import MeetingTimer from '../components/MeetingTimer';
 import ReportUserModal from '../components/ReportUserModal';
 
-// Simplified PrivateImage component for chat
+// Component for securely displaying images within chat bubbles.
+const ChatMessageImage: React.FC<{src: string, alt: string}> = ({ src, alt }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            setLoading(true);
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            }).finally(() => {
+                setLoading(false);
+            });
+        } else {
+            setLoading(false);
+        }
+        return () => { if (objectUrl && objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl); };
+    }, [src]);
+
+    if (loading) {
+        return <div className="w-56 h-40 bg-gray-200 dark:bg-dark-surface-light rounded-lg animate-pulse" />;
+    }
+    
+    if (!imageUrl) return null;
+
+    return <img src={imageUrl} alt={alt} className="max-w-[250px] max-h-[300px] w-auto h-auto object-cover rounded-lg cursor-pointer" />;
+};
+
+
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
     useEffect(() => {
@@ -40,8 +70,11 @@ const ChatPage: React.FC = () => {
     const [isSending, setIsSending] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [hostMap, setHostMap] = useState<Map<string, string>>(new Map());
+    const [isUploading, setIsUploading] = useState(false);
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,7 +83,7 @@ const ChatPage: React.FC = () => {
     useEffect(scrollToBottom, [messages]);
 
     const isOrgChat = !!organization;
-    const currentUserId = currentUser?.id;
+    const currentUserId = isOrgChat ? organization?.id : currentUser?.id;
 
     const fetchThreadData = useCallback(async () => {
         if (!chatId || !currentUserId) {
@@ -111,7 +144,7 @@ const ChatPage: React.FC = () => {
         }
 
         setThread(threadData as any);
-        const other = threadData.participants.find((p: any) => p.user.id !== currentUserId)?.user;
+        const other = threadData.participants.find((p: any) => p.user.id !== currentUser?.id)?.user;
         setOtherUser(other || null);
 
         const { data: messagesData, error: messagesError } = await supabase
@@ -127,7 +160,7 @@ const ChatPage: React.FC = () => {
         }
 
         setLoading(false);
-    }, [chatId, currentUserId]);
+    }, [chatId, currentUserId, currentUser]);
 
     useEffect(() => {
         fetchThreadData();
@@ -139,9 +172,12 @@ const ChatPage: React.FC = () => {
         const channel = supabase.channel(`messages:${chatId}`)
             .on<Message>(
                 'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'messages', filter: `thread_id=eq.${chatId},sender_id=neq.${currentUserId}` },
+                { event: 'INSERT', schema: 'public', table: 'messages', filter: `thread_id=eq.${chatId}` },
                 (payload) => {
-                    setMessages(prev => [...prev, payload.new]);
+                    // Avoid duplicating messages if we added it optimistically
+                     if (payload.new.sender_id !== currentUserId) {
+                        setMessages(prev => [...prev, payload.new]);
+                     }
                 }
             )
             .subscribe();
@@ -159,29 +195,52 @@ const ChatPage: React.FC = () => {
         }
         
         setIsSending(true);
-        const tempId = `temp_${Date.now()}`;
-        const messagePayload: Partial<Message> = {
-            id: tempId,
-            thread_id: chatId,
-            sender_id: currentUserId,
-            text: newMessage.trim(),
-            created_at: new Date().toISOString(),
-        };
-
-        setMessages(prev => [...prev, messagePayload as Message]);
+        const text = newMessage.trim();
         setNewMessage('');
         
-        const { error } = await supabase.from('messages').insert({
+        const { data: newMessageData, error } = await supabase.from('messages').insert({
             thread_id: chatId,
             sender_id: currentUserId,
-            text: messagePayload.text,
-        });
+            text: text,
+        }).select().single();
         
-        setIsSending(false);
         if (error) {
             console.error("Error sending message:", error);
-            setMessages(prev => prev.filter(m => m.id !== tempId));
-            setNewMessage(messagePayload.text ?? '');
+            setNewMessage(text);
+        } else if (newMessageData) {
+            setMessages(prev => [...prev, newMessageData as Message]);
+        }
+        setIsSending(false);
+    };
+
+    const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !currentUserId || !chatId || chatId === 'ai-mentor') return;
+    
+        const file = e.target.files[0];
+        setIsUploading(true);
+    
+        try {
+            const imageUrl = await uploadFile(file);
+            
+            const { data: newMessageData, error } = await supabase.from('messages').insert({
+                thread_id: chatId,
+                sender_id: currentUserId,
+                text: '',
+                image_url: imageUrl,
+            }).select().single();
+    
+            if (error) {
+                console.error("Error sending image message:", error);
+            } else if (newMessageData) {
+                setMessages(prev => [...prev, newMessageData as Message]);
+            }
+        } catch (uploadError) {
+            console.error("Error uploading file:", uploadError);
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
         }
     };
     
@@ -234,9 +293,15 @@ const ChatPage: React.FC = () => {
                     const isCurrentUser = message.sender_id === currentUserId;
                     return (
                         <div key={message.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${isCurrentUser ? 'bg-primary text-white rounded-br-none' : 'bg-white dark:bg-dark-surface shadow-sm rounded-bl-none'}`}>
-                                <p className="text-sm break-words">{message.text}</p>
-                                <MessageCard card={message.card_data} />
+                             <div className={`rounded-2xl ${isCurrentUser ? 'bg-primary text-white rounded-br-none' : 'bg-white dark:bg-dark-surface shadow-sm rounded-bl-none'} ${message.image_url ? 'p-1.5' : 'p-3'}`}>
+                                {message.image_url ? (
+                                    <ChatMessageImage src={message.image_url} alt="Sent image" />
+                                ) : (
+                                    <>
+                                        <p className="text-sm break-words">{message.text}</p>
+                                        <MessageCard card={message.card_data} />
+                                    </>
+                                )}
                             </div>
                         </div>
                     );
@@ -246,16 +311,20 @@ const ChatPage: React.FC = () => {
 
             <footer className="flex-shrink-0 p-3 border-t border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface sticky bottom-0">
                 <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
-                    <button type="button" className="p-2 text-gray-500 hover:text-primary"><Paperclip size={22} /></button>
+                    <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" disabled={isUploading} />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="p-2 text-gray-500 hover:text-primary disabled:opacity-50">
+                        <Paperclip size={22} />
+                    </button>
                     <input
                         type="text"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Skriv en besked..."
-                        className="flex-1 px-4 py-2 bg-gray-100 dark:bg-dark-surface-light border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-primary"
+                        disabled={isUploading}
+                        className="flex-1 px-4 py-2 bg-gray-100 dark:bg-dark-surface-light border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
                     />
-                    <button type="submit" disabled={isSending || !newMessage.trim()} className="p-3 bg-primary text-white rounded-full disabled:opacity-50">
-                        {isSending ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
+                    <button type="submit" disabled={isSending || !newMessage.trim() || isUploading} className="p-3 bg-primary text-white rounded-full disabled:opacity-50">
+                        {isUploading || isSending ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                     </button>
                 </form>
             </footer>
