@@ -7,6 +7,7 @@ import NotificationIcon from '../components/NotificationIcon';
 import { fetchPrivateFile } from '../services/s3Service';
 import { AnimatePresence, motion } from 'framer-motion';
 import EventFilterModal, { Filters } from '../components/EventFilterModal';
+import EventCardSkeleton from '../components/EventCardSkeleton';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -72,23 +73,6 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => (
     </Link>
 );
 
-const EventCardSkeleton: React.FC = () => (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-md overflow-hidden">
-        <div className="h-48 bg-gray-200 dark:bg-dark-surface-light animate-pulse" />
-        <div className="p-4">
-            <div className="flex items-center mb-2">
-                <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-dark-surface-light animate-pulse mr-3" />
-                <div className="flex-1 space-y-2">
-                    <div className="h-3 w-1/2 bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded" />
-                    <div className="h-5 w-full bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded" />
-                </div>
-            </div>
-            <div className="h-3 w-1/3 bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded mt-4" />
-        </div>
-    </div>
-);
-
-
 const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[]; loading: boolean }> = ({ events, onlineUsers, loading }) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -150,28 +134,47 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[]; loading: bo
     }, [events, activeFilters, searchTerm]);
 
     const renderEventContent = () => {
-        if (loading && events.length === 0) {
+        const hasActiveFilters = 
+            !!activeFilters.categoryId ||
+            !!activeFilters.date ||
+            !!activeFilters.timeOfDay ||
+            activeFilters.interestIds.length > 0 ||
+            activeFilters.activityIds.length > 0 ||
+            activeFilters.creatorType !== 'all' ||
+            searchTerm.trim() !== '';
+
+        if (loading) {
             return (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {[...Array(3)].map((_, i) => <EventCardSkeleton key={i} />)}
+                    {[...Array(6)].map((_, i) => <EventCardSkeleton key={i} />)}
                 </div>
             );
         }
 
-        if (filteredEvents.length > 0) {
-            return (
-                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredEvents.map(event => (
-                        <EventCard key={event.id} event={event} />
-                    ))}
-                </div>
-            );
+        if (filteredEvents.length === 0) {
+            if (hasActiveFilters) {
+                // If filters are active, it's correct to show the "no events found" message.
+                return (
+                    <div className="text-center text-text-secondary dark:text-dark-text-secondary mt-8 p-6 bg-white dark:bg-dark-surface rounded-lg">
+                        <p className="font-semibold">Ingen events fundet</p>
+                        <p className="text-sm">Prøv at justere dine filtre eller kom tilbage senere.</p>
+                    </div>
+                );
+            } else {
+                // If no filters are active and no events are found, it's the initial load state. Show skeletons.
+                return (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {[...Array(6)].map((_, i) => <EventCardSkeleton key={i} />)}
+                    </div>
+                );
+            }
         }
-
+        
         return (
-            <div className="text-center text-text-secondary dark:text-dark-text-secondary mt-8 p-6 bg-white dark:bg-dark-surface rounded-lg">
-                <p className="font-semibold">Ingen events fundet</p>
-                <p className="text-sm">Prøv at justere dine filtre eller kom tilbage senere.</p>
+             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredEvents.map(event => (
+                    <EventCard key={event.id} event={event} />
+                ))}
             </div>
         );
     };
