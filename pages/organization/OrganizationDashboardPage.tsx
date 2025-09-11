@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabase';
 import type { Organization, Event, Place, MessageThread, User } from '../../types';
 import BarChart from '../../components/BarChart';
-import { Calendar, MapPin, Users, CheckCircle, Edit, Trash2, MessageSquare } from 'lucide-react';
+import { Calendar, MapPin, Users, CheckCircle, Edit, Trash2, MessageSquare, Sparkles, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import LoadingScreen from '../../components/LoadingScreen';
 import { fetchPrivateFile } from '../../services/s3Service';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface EventWithParticipants extends Event {
   participant_count: number;
@@ -29,12 +30,61 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
+const WelcomeModal: React.FC<{ organizationName: string; onClose: () => void }> = ({ organizationName, onClose }) => (
+    <motion.div
+        className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+    >
+        <motion.div
+            className="bg-white dark:bg-dark-surface rounded-2xl p-6 md:p-8 w-full max-w-lg relative text-text-primary dark:text-dark-text-primary"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <div className="text-center mb-6">
+                 <div className="inline-block p-3 bg-primary-light dark:bg-primary/20 rounded-full mb-4">
+                    <Sparkles size={32} className="text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold">Velkommen til dit dashboard, {organizationName}!</h2>
+            </div>
+            
+            <div className="text-sm text-text-secondary dark:text-dark-text-secondary space-y-4">
+                <p className="font-semibold text-text-primary dark:text-dark-text-primary">Udforsk Jeres Dashboard & Opret Indhold</p>
+                <ul className="list-disc list-inside space-y-2 pl-2">
+                    <li>Når I logger ind, lander I direkte på jeres <strong className="text-primary">Dashboard</strong>.</li>
+                    <li>Brug navigationen i venstre side (eller i bunden på mobil) til at gå i gang.</li>
+                    <li>Klik på <strong className="text-primary">"Opret Event"</strong> for at lave jeres første arrangement.</li>
+                    <li>Klik på <strong className="text-primary">"Opret Mødested"</strong> for at registrere jeres lokation.</li>
+                    <li>Klik på <strong className="text-primary">"Importer Event"</strong> for at prøve vores smarte AI-funktion.</li>
+                    <li>Gå til <strong className="text-primary">"Indstillinger"</strong> for at finjustere jeres profil.</li>
+                </ul>
+                <p className="pt-2">Vi glæder os til at se jer på platformen og til at skabe positive forandringer sammen!</p>
+                <p className="font-semibold text-right">- Teamet bag SoulMatch DK</p>
+            </div>
+
+            <div className="mt-8 text-center">
+                 <button
+                    onClick={onClose}
+                    className="bg-primary text-white font-bold py-3 px-8 rounded-full text-lg hover:bg-primary-dark transition-colors shadow-lg"
+                >
+                    Kom i gang!
+                </button>
+            </div>
+        </motion.div>
+    </motion.div>
+);
+
 const OrganizationDashboardPage: React.FC = () => {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [events, setEvents] = useState<EventWithParticipants[]>([]);
   const [places, setPlaces] = useState<PlaceWithCheckins[]>([]);
   const [recentChats, setRecentChats] = useState<MessageThread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
   const fetchDashboardChats = useCallback(async () => {
       // The new unified RLS policies allow us to query the table directly.
@@ -90,6 +140,14 @@ const OrganizationDashboardPage: React.FC = () => {
 
         if (orgData) {
             setOrganization(orgData);
+            
+            // Check if welcome modal should be shown
+            const welcomeModalShownKey = `welcomeModalShown_org_${orgData.id}`;
+            if (!sessionStorage.getItem(welcomeModalShownKey)) {
+                setShowWelcomeModal(true);
+                sessionStorage.setItem(welcomeModalShownKey, 'true');
+            }
+
             await Promise.all([
                 fetchStats(orgData.id),
                 fetchDashboardChats()
@@ -160,6 +218,10 @@ const OrganizationDashboardPage: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8">
+        <AnimatePresence>
+            {showWelcomeModal && <WelcomeModal organizationName={organization.name} onClose={() => setShowWelcomeModal(false)} />}
+        </AnimatePresence>
+
       <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Dashboard</h1>
       
       <section className="mt-8">

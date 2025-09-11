@@ -94,9 +94,10 @@ const ChatPage: React.FC = () => {
             setOtherUser(other || null);
         }
     }, [cachedData, currentUser]);
-
-    const isOrgChat = !!organization;
-    const currentUserId = isOrgChat ? organization?.id : currentUser?.id;
+    
+    // FIX: currentUserId should always be currentUser.id.
+    // For organizations, useAuth() correctly sets currentUser to the host's user profile.
+    const currentUserId = currentUser?.id;
 
     useEffect(() => {
         const fetchData = async () => {
@@ -136,34 +137,48 @@ const ChatPage: React.FC = () => {
             if (!isChatCached(chatId)) {
                 setLoading(true);
 
-                const threadPromise = supabase
-                    .from('message_threads')
-                    .select('*, event:events(*), participants:message_thread_participants(user:users(*))')
-                    .eq('id', chatId)
-                    .single();
+                if (organization) {
+                    // Organization flow: use secure RPC function
+                    const { data: threadData, error: rpcError } = await supabase.rpc('get_organization_chat_thread_details', { p_thread_id: Number(chatId) });
 
-                const messagesPromise = supabase
-                    .from('messages')
-                    .select('*')
-                    .eq('thread_id', chatId)
-                    .order('created_at', { ascending: true });
-                
-                const [threadRes, messagesRes] = await Promise.all([threadPromise, messagesPromise]);
-                
-                if (threadRes.error || !threadRes.data) {
-                    console.error('Error fetching thread:', threadRes.error?.message);
-                    setLoading(false);
-                    return;
+                    if (rpcError || !threadData) {
+                        console.error('Error fetching org thread details via RPC:', rpcError?.message);
+                        setLoading(false);
+                        return;
+                    }
+
+                    const { data: messagesData } = await supabase.from('messages').select('*').eq('thread_id', chatId).order('created_at', { ascending: true });
+                    setInitialChatData(chatId, threadData as any, messagesData || []);
+                } else {
+                    // Regular user flow: use RLS-protected select
+                    const threadPromise = supabase
+                        .from('message_threads')
+                        .select('*, event:events(*), participants:message_thread_participants(user:users(*))')
+                        .eq('id', chatId)
+                        .single();
+
+                    const messagesPromise = supabase
+                        .from('messages')
+                        .select('*')
+                        .eq('thread_id', chatId)
+                        .order('created_at', { ascending: true });
+                    
+                    const [threadRes, messagesRes] = await Promise.all([threadPromise, messagesPromise]);
+                    
+                    if (threadRes.error || !threadRes.data) {
+                        console.error('Error fetching thread:', threadRes.error?.message);
+                        setLoading(false);
+                        return;
+                    }
+                    setInitialChatData(chatId, threadRes.data as any, messagesRes.data || []);
                 }
-
-                setInitialChatData(chatId, threadRes.data as any, messagesRes.data || []);
             }
             
             setLoading(false);
         };
 
         fetchData();
-    }, [chatId, currentUserId, isChatCached, setInitialChatData]);
+    }, [chatId, currentUserId, isChatCached, setInitialChatData, organization]);
 
     useEffect(() => {
         if (!chatId || chatId === 'ai-mentor' || !currentUserId) return;
@@ -204,7 +219,7 @@ const ChatPage: React.FC = () => {
             console.error("Error sending message:", error);
             setNewMessage(text);
         } else if (newMessageData) {
-            addMessageToCache(chatId, newMessageData as Message);
+            // Realtime subscription will handle adding the message to cache
         }
         setIsSending(false);
     };
@@ -218,17 +233,15 @@ const ChatPage: React.FC = () => {
         try {
             const imageUrl = await uploadFile(file);
             
-            const { data: newMessageData, error } = await supabase.from('messages').insert({
+            const { error } = await supabase.from('messages').insert({
                 thread_id: chatId,
                 sender_id: currentUserId,
                 text: '',
                 image_url: imageUrl,
-            }).select().single();
+            });
     
             if (error) {
                 console.error("Error sending image message:", error);
-            } else if (newMessageData) {
-                addMessageToCache(chatId, newMessageData as Message);
             }
         } catch (uploadError) {
             console.error("Error uploading file:", uploadError);

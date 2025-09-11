@@ -54,22 +54,15 @@ const OrganizationChatListPage: React.FC = () => {
             }
 
             setLoading(true);
-            const { data: threadsData, error } = await supabase
-                .from('message_threads')
-                .select(`
-                    *,
-                    participants:message_thread_participants(user:users(*))
-                `)
-                .order('timestamp', { ascending: false });
+            // FIX: Call the secure RPC function instead of a broad select.
+            // This ensures only the correct threads for the organization's host are fetched.
+            const { data: threadsData, error } = await supabase.rpc('get_organization_chat_threads');
 
             if (error) {
-                console.error('Error fetching organization chat threads:', error.message);
+                console.error('Error fetching organization chat threads via RPC:', error.message);
             } else {
-                const typedThreads = (threadsData as any[]).map(thread => ({
-                    ...thread,
-                    participants: thread.participants || []
-                }));
-                setThreads(typedThreads as MessageThread[]);
+                // The RPC function returns data pre-formatted, so we can cast it directly.
+                setThreads(threadsData as MessageThread[] || []);
             }
             setLoading(false);
         };

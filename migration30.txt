@@ -1,0 +1,46 @@
+-- Migration 30: Add RPC function to securely create host user profiles for organizations
+
+-- 1. Create a function that allows an authenticated organization to create its associated host user profile.
+-- This function runs with elevated privileges (SECURITY DEFINER) to bypass the standard RLS policy on the users table,
+-- which requires a matching auth_id (which host profiles do not have).
+CREATE OR REPLACE FUNCTION public.create_host_user_for_organization(
+    p_host_name text,
+    p_avatar_url text,
+    p_address text,
+    p_org_name text
+)
+RETURNS void
+LANGUAGE plpgsql
+-- SECURITY DEFINER is crucial here to bypass the RLS insert policy on `users`.
+SECURITY DEFINER
+-- We set the search_path to avoid potential hijacking.
+SET search_path = public
+AS $$
+DECLARE
+    v_org_id bigint;
+BEGIN
+    -- Security Check: Verify that the user calling this function is a legitimate, existing organization.
+    -- We look up the organization based on the caller's authenticated UID.
+    SELECT id INTO v_org_id FROM public.organizations WHERE auth_id = auth.uid() LIMIT 1;
+    
+    IF v_org_id IS NULL THEN
+        RAISE EXCEPTION 'Permission denied. Caller is not a valid organization.';
+    END IF;
+
+    -- If the security check passes, perform the insert into the public.users table.
+    -- This creates the profile for the host, which is not a real authenticated user and thus has no auth_id.
+    INSERT INTO public.users (name, avatar_url, age, bio, location, personality_test_completed, online)
+    VALUES (
+        p_host_name,
+        p_avatar_url,
+        0, -- Age is not applicable for a host profile
+        'Kontaktperson for ' || p_org_name,
+        p_address,
+        true, -- Bypass the personality test for host profiles
+        false
+    );
+END;
+$$;
+
+-- 2. Grant execute permission to the 'authenticated' role so that logged-in organizations can call it.
+GRANT EXECUTE ON FUNCTION public.create_host_user_for_organization(text, text, text, text) TO authenticated;

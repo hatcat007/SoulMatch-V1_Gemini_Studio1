@@ -1,0 +1,18 @@
+-- Migration 32: Clear all existing organization chat threads
+
+-- This script deletes all chat threads involving any organization host user.
+-- This provides a clean slate for organization chats after fixing the data access policies,
+-- resolving any issues from the previous data visibility bug.
+
+-- We use a CTE to identify all thread IDs that have an organization host as a participant.
+WITH threads_to_delete AS (
+    SELECT DISTINCT mtp.thread_id
+    FROM public.message_thread_participants mtp
+    JOIN public.users u ON mtp.user_id = u.id
+    -- A user is considered a host if their name exists in the organizations table's host_name column.
+    WHERE u.name IN (SELECT host_name FROM public.organizations WHERE host_name IS NOT NULL)
+)
+-- Deleting from the message_threads table will cascade and delete related
+-- messages and participant entries due to "ON DELETE CASCADE" constraints in the schema.
+DELETE FROM public.message_threads
+WHERE id IN (SELECT thread_id FROM threads_to_delete);
