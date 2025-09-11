@@ -135,7 +135,7 @@ const AppContent: React.FC = () => {
   const isOrganization = session && organization;
   
   // Unified loading state
-  const isLoading = authLoading || (isUser && !isOrganization && dataLoading);
+  const isLoading = authLoading || (isUser && !isOrganization && dataLoading && events.length === 0);
 
   const needsUserProfile = session && !user && !organization && !session.user.user_metadata?.is_organization;
   const needsPersonalityTest = isUser && !user.personality_test_completed;
@@ -183,7 +183,7 @@ const AppContent: React.FC = () => {
                 <div className="md:flex h-screen w-full">
                   <div className="flex-1 overflow-y-auto pb-16 md:pb-0">
                     <Routes>
-                      <Route path="/home" element={<HomePage events={events} onlineUsers={onlineUsers} />} />
+                      <Route path="/home" element={<HomePage events={events} onlineUsers={onlineUsers} loading={dataLoading} />} />
                       <Route path="/places" element={<PlacesPage places={places} />} />
                       <Route path="/create" element={<CreateEventPage />} />
                       <Route path="/chat" element={<ChatListPage />} />

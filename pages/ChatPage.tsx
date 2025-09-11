@@ -36,17 +36,18 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string, onCl
         }
         return () => {
             // Only revoke if it's a blob URL that this component created.
-            // The logic in handleImageUpload handles revoking its own previews.
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
         };
     }, [src]);
 
     if (loading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light animate-pulse`} />;
-    if (!imageUrl) return <div className={`${className} bg-gray-100 dark:bg-dark-surface-light`} />;
+    if (!imageUrl) return <div className={`${className} bg-gray-100 dark:bg-dark-surface-light flex items-center justify-center`}><ImageIcon className="text-gray-400" /></div>;
     return <img src={imageUrl} alt={alt} className={className} onClick={onClick} />;
 };
 
 type FriendshipStatus = 'not_friends' | 'pending_them' | 'pending_me' | 'friends' | 'loading';
-type EmojiLevel = 'ai' | 'none' | 'some' | 'many';
 
 const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
     const formatText = (inputText: string) => {
@@ -136,7 +137,8 @@ const ChatPage: React.FC = () => {
         'Food & Drink': ['🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🌽', '🥕', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🥪', '🥙', '🧆', '🌮', '🌯', '🥗', '🥘', '🥫', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '☕', '🍵', '🧃', '🥤', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾', '🧊', '🥄', '🍴', '🍽', '🥣', '🥡', '🥢', '🧂'],
         'Activities': ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛷', '⛸', '🥌', '🎿', '⛷', '🏂', '🪂', '🏋️‍♀️', '🏋️‍♂️', '🤼‍♀️', '🤼‍♂️', '🤸‍♀️', '🤸‍♂️', '🤺', '🤾‍♀️', '🤾‍♂️', '🏌️‍♀️', '🏌️‍♂️', '🏇', '🧘‍♀️', '🧘‍♂️', '🏄‍♀️', '🏄‍♂️', '🏊‍♀️', '🏊‍♂️', '🤽‍♀️', '🤽‍♂️', '🚣‍♀️', '🚣‍♂️', '🧗‍♀️', '🧗‍♂️', '🚵‍♀️', '🚵‍♂️', '🚴‍♀️', '🚴‍♂️', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖', '🏵', '🎗', '🎫', '🎟', '🎪', '🤹‍♀️', '🤹‍♂️', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '♟', '🎯', '🎳', '🎮', '🎰', '🧩'],
     };
-    
+    const allEmojis = useMemo(() => Object.values(emojiCategories).flat(), []);
+
     useEffect(() => {
         const fetchChatData = async () => {
             if (!chatId || !currentUser) return;
@@ -224,7 +226,9 @@ const ChatPage: React.FC = () => {
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) setIsOptionsMenuOpen(false);
-            if (emojiMenuRef.current && !emojiMenuRef.current.contains(event.target as Node)) setIsEmojiMenuOpen(false);
+            if (emojiMenuRef.current && !emojiMenuRef.current.contains(event.target as Node) && !(event.target as HTMLElement).closest('[aria-label="Toggle emoji picker"]')) {
+                setIsEmojiMenuOpen(false);
+            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -282,21 +286,37 @@ const ChatPage: React.FC = () => {
         }
     }, [newMessage]);
     
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || !e.target.files[0] || !currentUser || !chatId || isAiMentorChat) return;
         const file = e.target.files[0];
-        e.target.value = '';
+        e.target.value = ''; // Reset file input to allow selecting the same file again
+
         setIsUploading(true);
-        const previewUrl = URL.createObjectURL(file);
-        const optimisticMessage: Message = { id: `temp-img-${Date.now()}`, text: '', created_at: new Date().toISOString(), sender_id: currentUser.id, thread_id: Number(chatId), image_url: previewUrl };
+        const optimisticMessageId = `temp-img-${Date.now()}`;
+        const optimisticMessage: Message = {
+            id: optimisticMessageId, text: '', created_at: new Date().toISOString(),
+            sender_id: currentUser.id, thread_id: Number(chatId), image_url: 'uploading',
+        };
         setMessages(currentMessages => [...currentMessages, optimisticMessage]);
+
         try {
             const finalUrl = await uploadFile(file);
-            const { data, error } = await supabase.from('messages').insert({ thread_id: Number(chatId), sender_id: currentUser.id, text: '', image_url: finalUrl }).select().single();
+            const { data, error } = await supabase.from('messages').insert({
+                thread_id: Number(chatId), sender_id: currentUser.id, text: '', image_url: finalUrl,
+            }).select().single();
+
             if (error) throw error;
-            if (data) { setMessages(currentMessages => currentMessages.map(m => (m.id === optimisticMessage.id ? (data as Message) : m))); }
-        } catch (error) { setMessages(currentMessages => currentMessages.filter(m => m.id !== optimisticMessage.id)); } 
-        finally { setIsUploading(false); URL.revokeObjectURL(previewUrl); }
+            if (data) {
+                setMessages(currentMessages =>
+                    currentMessages.map(m => (m.id === optimisticMessageId ? (data as Message) : m))
+                );
+            }
+        } catch (error) {
+            console.error("Image upload failed:", error);
+            setMessages(currentMessages => currentMessages.filter(m => m.id !== optimisticMessageId));
+        } finally {
+            setIsUploading(false);
+        }
     };
     
     const handleSendFriendRequest = async () => {
@@ -360,7 +380,7 @@ const ChatPage: React.FC = () => {
                 {messages.map((msg, index) => {
                     const isCurrentUser = msg.sender_id === currentUser?.id;
                     const isAi = msg.sender_id === -1;
-                    const isUploadingImage = msg.id.toString().startsWith('temp-img-');
+                    const isUploadingImage = msg.image_url === 'uploading';
                     const prevSenderId = messages[index - 1]?.sender_id;
                     const nextSenderId = messages[index + 1]?.sender_id;
                     const isFirstInGroup = msg.sender_id !== prevSenderId;
@@ -374,9 +394,24 @@ const ChatPage: React.FC = () => {
                                 <div className={`${msg.image_url ? 'p-1' : 'px-3 py-2'}`}>
                                     <div className="flex items-end space-x-2">
                                         <div className="flex-1">
-                                            {msg.image_url ? (<div className="relative"><PrivateImage src={msg.image_url} alt="Sent image" className="rounded-lg max-w-[250px] w-full cursor-pointer" onClick={() => !isUploadingImage && setViewingImage(msg.image_url)} />{isUploadingImage && (<div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center"><Loader2 className="animate-spin text-white" size={24} /></div>)}</div>) : msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}
+                                            {msg.image_url ? (
+                                                <div className="relative rounded-lg max-w-[250px] w-full overflow-hidden aspect-square">
+                                                    {isUploadingImage ? (
+                                                        <div className="w-full h-full bg-gray-200 dark:bg-dark-surface-light flex items-center justify-center">
+                                                            <Loader2 className="animate-spin text-gray-400" size={24} />
+                                                        </div>
+                                                    ) : (
+                                                        <PrivateImage 
+                                                            src={msg.image_url} 
+                                                            alt="Sent image" 
+                                                            className="w-full h-full object-cover cursor-pointer" 
+                                                            onClick={() => setViewingImage(msg.image_url)} 
+                                                        />
+                                                    )}
+                                                </div>
+                                            ) : msg.text && (isAi ? <MarkdownRenderer text={msg.text} /> : <p className="break-words whitespace-pre-wrap">{msg.text}</p>)}
                                         </div>
-                                         <p className={`text-xs whitespace-nowrap self-end opacity-70 ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'} ${msg.image_url ? 'absolute bottom-2 right-2 bg-black/30 text-white rounded px-1' : ''}`}>{getMessageTimestamp(msg)}</p>
+                                         <p className={`text-xs whitespace-nowrap self-end opacity-70 ${isCurrentUser ? 'text-gray-200' : 'text-gray-500 dark:text-dark-text-secondary'} ${msg.image_url && !isUploadingImage ? 'absolute bottom-2 right-2 bg-black/30 text-white rounded px-1' : ''}`}>{getMessageTimestamp(msg)}</p>
                                     </div>
                                     {msg.card_data && <CardMessage card={msg.card_data} isCurrentUser={isCurrentUser} />}
                                 </div>
@@ -401,7 +436,7 @@ const ChatPage: React.FC = () => {
                      >
                         <div className="h-64 bg-gray-50 dark:bg-dark-surface-light rounded-2xl p-2 border border-gray-200 dark:border-dark-border">
                              <div className="h-full grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1 overflow-y-auto">
-                                {Object.values(emojiCategories).flat().map(emoji => (
+                                {allEmojis.map(emoji => (
                                     <button
                                         key={emoji}
                                         type="button"
@@ -420,7 +455,7 @@ const ChatPage: React.FC = () => {
                     <div className="flex items-center w-full p-1 bg-gray-100 dark:bg-dark-surface-light rounded-2xl transition-all duration-300">
                         {!isAiMentorChat && (<button type="button" onClick={() => imageInputRef.current?.click()} disabled={isUploading} className="p-2 text-gray-500 dark:text-dark-text-secondary hover:text-primary rounded-full disabled:opacity-50" aria-label="Upload image">{isUploading ? <Loader2 className="animate-spin" size={24} /> : <ImageIcon size={24} />}</button>)}
                         <input type="file" ref={imageInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" disabled={isUploading}/>
-                        <button type="button" onClick={() => setIsEmojiMenuOpen(p => !p)} className="p-2 text-gray-500 dark:text-dark-text-secondary hover:text-primary rounded-full"><Smile size={24} /></button>
+                        <button type="button" onClick={() => setIsEmojiMenuOpen(p => !p)} className="p-2 text-gray-500 dark:text-dark-text-secondary hover:text-primary rounded-full" aria-label="Toggle emoji picker"><Smile size={24} /></button>
                         <textarea
                             ref={textAreaRef}
                             value={newMessage}

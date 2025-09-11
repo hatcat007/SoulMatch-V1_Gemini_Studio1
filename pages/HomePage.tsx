@@ -1,8 +1,7 @@
 
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, SlidersHorizontal, MapPin, Users, HeartHandshake, User, Building, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Search, SlidersHorizontal, MapPin, Users, HeartHandshake, User, Building, Loader2, Image as ImageIcon, BrainCircuit, ChevronRight } from 'lucide-react';
 import type { Event, User as UserType } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { fetchPrivateFile } from '../services/s3Service';
@@ -73,8 +72,24 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => (
     </Link>
 );
 
+const EventCardSkeleton: React.FC = () => (
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-md overflow-hidden">
+        <div className="h-48 bg-gray-200 dark:bg-dark-surface-light animate-pulse" />
+        <div className="p-4">
+            <div className="flex items-center mb-2">
+                <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-dark-surface-light animate-pulse mr-3" />
+                <div className="flex-1 space-y-2">
+                    <div className="h-3 w-1/2 bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded" />
+                    <div className="h-5 w-full bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded" />
+                </div>
+            </div>
+            <div className="h-3 w-1/3 bg-gray-200 dark:bg-dark-surface-light animate-pulse rounded mt-4" />
+        </div>
+    </div>
+);
 
-const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[] }> = ({ events, onlineUsers }) => {
+
+const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[]; loading: boolean }> = ({ events, onlineUsers, loading }) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilters, setActiveFilters] = useState<Filters>({
@@ -134,6 +149,33 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[] }> = ({ even
         });
     }, [events, activeFilters, searchTerm]);
 
+    const renderEventContent = () => {
+        if (loading && events.length === 0) {
+            return (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[...Array(3)].map((_, i) => <EventCardSkeleton key={i} />)}
+                </div>
+            );
+        }
+
+        if (filteredEvents.length > 0) {
+            return (
+                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredEvents.map(event => (
+                        <EventCard key={event.id} event={event} />
+                    ))}
+                </div>
+            );
+        }
+
+        return (
+            <div className="text-center text-text-secondary dark:text-dark-text-secondary mt-8 p-6 bg-white dark:bg-dark-surface rounded-lg">
+                <p className="font-semibold">Ingen events fundet</p>
+                <p className="text-sm">Prøv at justere dine filtre eller kom tilbage senere.</p>
+            </div>
+        );
+    };
+
     return (
         <div className="p-4 md:p-6 relative">
             <div className="flex justify-between items-center mb-4">
@@ -170,6 +212,25 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[] }> = ({ even
                 </div>
             )}
 
+            {/* Find Soul Matches CTA */}
+            <div className="mb-6">
+                <Link
+                    to="/soulmatches"
+                    className="group block rounded-2xl bg-gradient-to-br from-primary via-primary-dark to-accent dark:from-primary-dark dark:via-[#004d56] dark:to-accent/80 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <BrainCircuit className="h-10 w-10 text-white/80" />
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Find Soul Matches</h3>
+                                <p className="text-sm text-white/90">Lad vores AI finde de bedste matches til dig.</p>
+                            </div>
+                        </div>
+                        <ChevronRight className="h-6 w-6 text-white/70 transform transition-transform group-hover:translate-x-1" />
+                    </div>
+                </Link>
+            </div>
+
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Events for dig</h2>
@@ -194,18 +255,7 @@ const HomePage: React.FC<{ events: Event[]; onlineUsers: UserType[] }> = ({ even
             </AnimatePresence>
 
             <div>
-                {filteredEvents.length > 0 ? (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredEvents.map(event => (
-                            <EventCard key={event.id} event={event} />
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center text-text-secondary dark:text-dark-text-secondary mt-8 p-6 bg-white dark:bg-dark-surface rounded-lg">
-                        <p className="font-semibold">Ingen events fundet</p>
-                        <p className="text-sm">Prøv at justere dine filtre eller kom tilbage senere.</p>
-                    </div>
-                )}
+               {renderEventContent()}
             </div>
         </div>
     );
