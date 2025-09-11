@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, PlusCircle, MapPin, Settings, LogOut, Sparkles } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, MapPin, Settings, LogOut, Sparkles, MessageSquare } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import type { Organization } from '../../types';
 
@@ -30,6 +30,7 @@ const OrganizationSidebar: React.FC = () => {
         { to: '/create-event', icon: PlusCircle, label: 'Opret Event', mobileLabel: 'Opret' },
         { to: '/import-event', icon: Sparkles, label: 'Importer Event', mobileLabel: 'Import' },
         { to: '/create-place', icon: MapPin, label: 'Opret Mødested', mobileLabel: 'Mødested' },
+        { to: '/chat', icon: MessageSquare, label: 'Chat', mobileLabel: 'Chat' },
         { to: '/settings', icon: Settings, label: 'Indstillinger', mobileLabel: 'Settings' },
     ];
 

@@ -1,0 +1,105 @@
+-- Migration 29: Unify Chat Access for Users and Organizations
+
+-- 1. Create a universal helper function to get the effective user_id for the current session.
+-- This function is the key to unifying the policies. It checks if the session belongs
+-- to a regular user or an organization, and returns the appropriate user_id.
+CREATE OR REPLACE FUNCTION public.get_sender_id()
+RETURNS bigint
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER -- Must be definer to look up organizations table
+SET search_path = public
+AS $$
+DECLARE
+    v_user_id bigint;
+    v_org_id bigint;
+BEGIN
+    -- First, try to find a direct user match
+    SELECT id INTO v_user_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1;
+    IF v_user_id IS NOT NULL THEN
+        RETURN v_user_id;
+    END IF;
+
+    -- If no user match, check if it's an organization
+    SELECT id INTO v_org_id FROM public.organizations WHERE auth_id = auth.uid() LIMIT 1;
+    IF v_org_id IS NOT NULL THEN
+        -- It's an organization, so find the user_id of its host
+        SELECT u.id INTO v_user_id
+        FROM public.users u
+        JOIN public.organizations o ON u.name = o.host_name
+        WHERE o.id = v_org_id
+        LIMIT 1;
+        
+        IF v_user_id IS NOT NULL THEN
+            RETURN v_user_id;
+        END IF;
+    END IF;
+    
+    -- If neither, return null
+    RETURN NULL;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.get_sender_id() TO authenticated;
+
+
+-- 2. Create a unified access check function for message threads.
+CREATE OR REPLACE FUNCTION public.can_access_thread(p_thread_id bigint)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER -- Must be definer to use get_sender_id()
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.message_thread_participants
+    WHERE thread_id = p_thread_id AND user_id = get_sender_id()
+  );
+$$;
+GRANT EXECUTE ON FUNCTION public.can_access_thread(bigint) TO authenticated;
+
+
+-- 3. Rewrite RLS Policies for `messages` table
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow read access to messages in own threads" ON public.messages;
+DROP POLICY IF EXISTS "Allow insert of own messages" ON public.messages;
+DROP POLICY IF EXISTS "Allow update/delete of own messages" ON public.messages;
+DROP POLICY IF EXISTS "Unified: Allow access to messages in own threads" ON public.messages;
+
+CREATE POLICY "Unified: Allow access to messages in own threads"
+ON public.messages
+FOR ALL
+USING ( can_access_thread(thread_id) )
+WITH CHECK ( sender_id = get_sender_id() ); -- Check applies to INSERT/UPDATE
+
+
+-- 4. Rewrite RLS Policies for `message_threads` table
+ALTER TABLE public.message_threads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow access to own message threads" ON public.message_threads;
+DROP POLICY IF EXISTS "Allow access to own and related event message threads" ON public.message_threads;
+DROP POLICY IF EXISTS "Allow read access to own and related event threads" ON public.message_threads;
+DROP POLICY IF EXISTS "Allow update on own message threads" ON public.message_threads;
+DROP POLICY IF EXISTS "Allow delete on own message threads" ON public.message_threads;
+DROP POLICY IF EXISTS "Unified: Allow access to own message threads" ON public.message_threads;
+
+CREATE POLICY "Unified: Allow access to own message threads"
+ON public.message_threads
+FOR ALL
+USING ( can_access_thread(id) );
+
+
+-- 5. Rewrite RLS Policies for `message_thread_participants` table
+ALTER TABLE public.message_thread_participants ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow access to own thread participants" ON public.message_thread_participants;
+DROP POLICY IF EXISTS "Unified: Allow access to own thread participants" ON public.message_thread_participants;
+
+CREATE POLICY "Unified: Allow access to own thread participants"
+ON public.message_thread_participants
+FOR SELECT -- Only select is needed, inserts/deletes are handled by triggers/rpc
+USING ( can_access_thread(thread_id) );
+
+
+-- 6. Clean up: Drop the now-redundant organization-specific RPC functions.
+-- The new RLS policies make these obsolete, simplifying the security model.
+DROP FUNCTION IF EXISTS public.get_organization_chat_threads();
+DROP FUNCTION IF EXISTS public.get_organization_chat_thread_details(bigint);

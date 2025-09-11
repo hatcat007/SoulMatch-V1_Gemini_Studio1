@@ -47,6 +47,7 @@ import EditOrgEventPage from './pages/organization/EditOrgEventPage';
 import EditPlacePage from './pages/organization/EditPlacePage';
 import PublicEventPage from './pages/PublicEventPage';
 import PublicPlacePage from './pages/PublicPlacePage';
+import OrganizationChatListPage from './pages/organization/OrganizationChatListPage';
 
 const AppContent: React.FC = () => {
   const { session, user, organization, loading: authLoading, refetchUserProfile } = useAuth();
@@ -167,6 +168,8 @@ const AppContent: React.FC = () => {
                     <Route path="/import-event" element={<ImportEventPage />} />
                     <Route path="/create-place" element={<CreatePlacePage />} />
                     <Route path="/edit-place/:placeId" element={<EditPlacePage />} />
+                    <Route path="/chat" element={<OrganizationChatListPage />} />
+                    <Route path="/chat/:chatId" element={<ChatPage />} />
                     <Route path="/settings" element={<OrganizationSettingsPage />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>

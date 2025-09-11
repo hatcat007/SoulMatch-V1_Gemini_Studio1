@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabase';
-import type { Organization, Event, Place } from '../../types';
+import type { Organization, Event, Place, MessageThread, User } from '../../types';
 import BarChart from '../../components/BarChart';
-import { Calendar, MapPin, Users, CheckCircle, Edit, Trash2 } from 'lucide-react';
+import { Calendar, MapPin, Users, CheckCircle, Edit, Trash2, MessageSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import LoadingScreen from '../../components/LoadingScreen';
+import { fetchPrivateFile } from '../../services/s3Service';
 
 interface EventWithParticipants extends Event {
   participant_count: number;
@@ -14,36 +15,68 @@ interface PlaceWithCheckins extends Place {
   checkin_count: number;
 }
 
+const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
+    const [imageUrl, setImageUrl] = useState<string>('');
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => { objectUrl = url; setImageUrl(url); });
+        }
+        return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    }, [src]);
+
+    if (!imageUrl) return <div className={`${className} bg-gray-200 animate-pulse`} />;
+    return <img src={imageUrl} alt={alt} className={className} />;
+};
+
 const OrganizationDashboardPage: React.FC = () => {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [events, setEvents] = useState<EventWithParticipants[]>([]);
   const [places, setPlaces] = useState<PlaceWithCheckins[]>([]);
+  const [recentChats, setRecentChats] = useState<MessageThread[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const fetchDashboardChats = useCallback(async () => {
+      // The new unified RLS policies allow us to query the table directly.
+      // Supabase will only return threads the organization's host is part of.
+      const { data: threadsData, error } = await supabase
+        .from('message_threads')
+        .select(`
+            *,
+            participants:message_thread_participants(user:users(*))
+        `)
+        .order('timestamp', { ascending: false })
+        .limit(5);
+        
+      if (error) {
+          console.error("Error fetching org chats:", error.message);
+          return;
+      }
+      if (threadsData) {
+          const typedThreads = (threadsData as any[]).map(thread => ({
+              ...thread,
+              participants: thread.participants || []
+          }));
+          setRecentChats(typedThreads as MessageThread[]);
+      }
+  }, []);
+
+  const fetchStats = useCallback(async (orgId: number) => {
+    const eventsPromise = supabase.from('events').select('*, event_participants(count)').eq('organization_id', orgId);
+    const placesPromise = supabase.from('places').select('*, checkins(count)').eq('organization_id', orgId);
+    
+    const [eventsRes, placesRes] = await Promise.all([eventsPromise, placesPromise]);
+
+    if (eventsRes.data) {
+        setEvents(eventsRes.data.map(e => ({ ...e, participant_count: e.event_participants[0]?.count || 0 })));
+    }
+    if (placesRes.data) {
+        setPlaces(placesRes.data.map((p: any) => ({ ...p, checkin_count: p.checkins[0]?.count || 0 })));
+    }
+  }, []);
 
   useEffect(() => {
     let channel: any; // SupabaseRealtimeChannel
-
-    const fetchDynamicData = async (orgId: number) => {
-        // Fetch events with participant counts
-        const { data: eventsData } = await supabase
-            .from('events')
-            .select('*, event_participants(count)')
-            .eq('organization_id', orgId);
-
-        if (eventsData) {
-            setEvents(eventsData.map(e => ({ ...e, participant_count: e.event_participants[0]?.count || 0 })));
-        }
-
-        // Fetch places with checkin counts
-        const { data: placesData } = await supabase
-            .from('places')
-            .select('*, checkins(count)')
-            .eq('organization_id', orgId);
-
-        if (placesData) {
-            setPlaces(placesData.map((p: any) => ({ ...p, checkin_count: p.checkins[0]?.count || 0 })));
-        }
-    };
 
     const setupDashboard = async () => {
         setLoading(true);
@@ -53,37 +86,19 @@ const OrganizationDashboardPage: React.FC = () => {
             return;
         }
 
-        const { data: orgData } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('auth_id', user.id)
-            .single();
+        const { data: orgData } = await supabase.from('organizations').select('*').eq('auth_id', user.id).single();
 
         if (orgData) {
             setOrganization(orgData);
-            await fetchDynamicData(orgData.id);
+            await Promise.all([
+                fetchStats(orgData.id),
+                fetchDashboardChats()
+            ]);
 
-            // Set up real-time subscription
-            channel = supabase
-                .channel(`dashboard-org-${orgData.id}`)
-                .on('postgres_changes', { 
-                    event: '*', 
-                    schema: 'public', 
-                    table: 'event_participants'
-                }, 
-                (payload) => {
-                    console.log('Participant change detected, refetching dashboard data.');
-                    fetchDynamicData(orgData.id);
-                })
-                .on('postgres_changes', {
-                    event: '*',
-                    schema: 'public',
-                    table: 'checkins'
-                },
-                (payload) => {
-                    console.log('Check-in change detected, refetching dashboard data.');
-                    fetchDynamicData(orgData.id);
-                })
+            channel = supabase.channel(`dashboard-org-${orgData.id}`)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, () => fetchStats(orgData.id))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => fetchStats(orgData.id))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchDashboardChats())
                 .subscribe();
         }
         setLoading(false);
@@ -96,11 +111,9 @@ const OrganizationDashboardPage: React.FC = () => {
             supabase.removeChannel(channel);
         }
     };
-  }, []);
+  }, [fetchStats, fetchDashboardChats]);
 
   const handleDeleteEvent = async (eventId: number) => {
-    // The sandbox environment blocks window.confirm(), so we remove it.
-    // In a real application, a custom modal component would be a better solution.
     const { error } = await supabase.from('events').delete().eq('id', eventId);
     if (error) {
       alert(`Fejl ved sletning af event: ${error.message}`);
@@ -110,8 +123,6 @@ const OrganizationDashboardPage: React.FC = () => {
   };
 
   const handleDeletePlace = async (placeId: number) => {
-    // The sandbox environment blocks window.confirm(), so we remove it.
-    // In a real application, a custom modal component would be a better solution.
     const { error } = await supabase.from('places').delete().eq('id', placeId);
     if (error) {
       alert(`Fejl ved sletning af mødested: ${error.message}`);
@@ -119,6 +130,16 @@ const OrganizationDashboardPage: React.FC = () => {
       setPlaces(prev => prev.filter(p => p.id !== placeId));
     }
   };
+
+  const getOtherParticipant = (thread: MessageThread): User | null => {
+    if (!organization) return null;
+    const participant = thread.participants.find(p => {
+        if (!p.user) return false;
+        // The user object is nested inside the participant object
+        return p.user.name !== organization.host_name;
+    });
+    return participant?.user || null;
+  }
   
   if (loading) {
     return <LoadingScreen message="Loading Dashboard..." />;
@@ -140,6 +161,31 @@ const OrganizationDashboardPage: React.FC = () => {
   return (
     <div className="p-6 md:p-8">
       <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Dashboard</h1>
+      
+      <section className="mt-8">
+        <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Ny besked anmodning</h2>
+        <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-4 space-y-3">
+            {recentChats.length > 0 ? recentChats.map(thread => {
+                const otherUser = getOtherParticipant(thread);
+                if (!otherUser) return null;
+
+                return (
+                    <Link to={`/chat/${thread.id}`} key={thread.id} className="flex items-center p-2 rounded-md hover:bg-gray-50 dark:hover:bg-dark-surface-light">
+                        <div className="flex-shrink-0 w-10 h-10 mr-3">
+                            <PrivateImage src={otherUser.avatar_url} alt={otherUser.name} className="w-full h-full rounded-full object-cover" />
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <p className="font-semibold text-text-primary dark:text-dark-text-primary">Ny besked fra {otherUser.name}</p>
+                            <p className="text-sm text-text-secondary dark:text-dark-text-secondary truncate">{thread.last_message}</p>
+                        </div>
+                         <div className="text-right ml-2">
+                            <p className="text-xs text-gray-400">{new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                    </Link>
+                );
+            }) : <p className="text-center text-text-secondary dark:text-dark-text-secondary p-4">Ingen nye beskeder.</p>}
+        </div>
+      </section>
 
       <section className="mt-8">
         <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Statistik</h2>

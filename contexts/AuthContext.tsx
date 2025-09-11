@@ -56,9 +56,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             const isOrg = currentSession.user.user_metadata?.is_organization;
             if (isOrg) {
-                const { data } = await supabase.from('organizations').select('*').eq('auth_id', currentSession.user.id).single();
-                setOrganization(data || null);
-                setUser(null);
+                const { data: orgData } = await supabase.from('organizations').select('*').eq('auth_id', currentSession.user.id).single();
+                setOrganization(orgData || null);
+                if (orgData?.host_name) {
+                    // An organization acts through its host, so we need the host's user profile for actions like sending messages.
+                    const { data: hostUserData } = await supabase.from('users').select('*').eq('name', orgData.host_name).limit(1).single();
+                    setUser(hostUserData || null);
+                } else {
+                    setUser(null);
+                }
             } else {
                 const { data } = await supabase.from('users').select('*').eq('auth_id', currentSession.user.id).single();
                 setUser(data || null);

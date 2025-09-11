@@ -1,0 +1,82 @@
+-- Migration 26: Add RPC function for organizations to fetch their host's chat threads
+
+CREATE OR REPLACE FUNCTION public.get_organization_chat_threads()
+RETURNS TABLE (
+    -- Define the columns to match the SELECT statement in the function
+    id bigint,
+    last_message text,
+    "timestamp" timestamptz,
+    unread_count integer,
+    match_timestamp timestamptz,
+    created_at timestamptz,
+    creator_auth_id uuid,
+    event_id bigint,
+    is_event_chat boolean,
+    participants jsonb -- Return participants as JSON to be parsed on the client
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_org_id bigint;
+    v_host_user_id bigint;
+BEGIN
+    -- 1. Get the organization ID for the currently authenticated user
+    SELECT o.id INTO v_org_id
+    FROM public.organizations o
+    WHERE o.auth_id = auth.uid()
+    LIMIT 1;
+
+    IF v_org_id IS NULL THEN
+        RAISE EXCEPTION 'No organization found for the current user.';
+    END IF;
+
+    -- 2. Get the host's user ID from the organization's host_name
+    SELECT u.id INTO v_host_user_id
+    FROM public.users u
+    JOIN public.organizations o ON u.name = o.host_name
+    WHERE o.id = v_org_id
+    LIMIT 1;
+
+    IF v_host_user_id IS NULL THEN
+        -- No host user found, return empty set
+        RETURN;
+    END IF;
+
+    -- 3. Return the threads the host is a part of
+    RETURN QUERY
+    SELECT
+        mt.id,
+        mt.last_message,
+        mt."timestamp",
+        mt.unread_count,
+        mt.match_timestamp,
+        mt.created_at,
+        mt.creator_auth_id,
+        mt.event_id,
+        mt.is_event_chat,
+        -- Aggregate participants into a JSON array that matches the client's expected structure
+        (
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'user', to_jsonb(u.*)
+                )
+            )
+            FROM message_thread_participants mtp
+            JOIN users u ON mtp.user_id = u.id
+            WHERE mtp.thread_id = mt.id
+        ) AS participants
+    FROM message_threads mt
+    WHERE mt.id IN (
+        SELECT mtp.thread_id
+        FROM message_thread_participants mtp
+        WHERE mtp.user_id = v_host_user_id
+    )
+    ORDER BY mt."timestamp" DESC;
+
+END;
+$$;
+
+-- Grant execute permission to authenticated users (which includes organizations)
+GRANT EXECUTE ON FUNCTION public.get_organization_chat_threads() TO authenticated;
