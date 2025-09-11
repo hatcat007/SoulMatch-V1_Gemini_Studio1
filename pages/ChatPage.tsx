@@ -39,6 +39,7 @@ const ChatPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [hostMap, setHostMap] = useState<Map<string, string>>(new Map());
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -78,12 +79,30 @@ const ChatPage: React.FC = () => {
             setLoading(false);
             return;
         }
+        
+        const orgsPromise = supabase.from('organizations').select('name, host_name');
 
-        const { data: threadData, error: threadError } = await supabase
+        const threadPromise = supabase
             .from('message_threads')
             .select('*, event:events(*), participants:message_thread_participants(user:users(*))')
             .eq('id', chatId)
             .single();
+
+        const [orgsRes, threadRes] = await Promise.all([orgsPromise, threadPromise]);
+
+        if (orgsRes.error) {
+            console.error('Error fetching organizations for host mapping:', orgsRes.error);
+        } else if (orgsRes.data) {
+            const newHostMap = new Map<string, string>();
+            orgsRes.data.forEach(org => {
+                if (org.host_name && org.name) {
+                    newHostMap.set(org.host_name, org.name);
+                }
+            });
+            setHostMap(newHostMap);
+        }
+
+        const { data: threadData, error: threadError } = threadRes;
 
         if (threadError || !threadData) {
             console.error('Error fetching thread:', threadError?.message);
@@ -184,7 +203,9 @@ const ChatPage: React.FC = () => {
     if (loading) return <LoadingScreen message="Indlæser chat..." />;
     if (!thread) return <div className="p-4 text-center">Chat ikke fundet.</div>;
 
-    const headerTitle = thread.is_event_chat ? thread.event?.title : otherUser?.name;
+    const orgName = otherUser ? hostMap.get(otherUser.name) : undefined;
+    const displayName = orgName ? `${otherUser?.name} fra ${orgName}` : otherUser?.name;
+    const headerTitle = thread.is_event_chat ? thread.event?.title : displayName;
     const headerAvatar = thread.is_event_chat ? null : otherUser?.avatar_url;
 
     return (
