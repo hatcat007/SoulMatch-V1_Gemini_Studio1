@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import HomePage from './pages/HomePage';
@@ -31,7 +31,7 @@ import AdminPage from './pages/AdminPage';
 import MyEventsPage from './pages/MyEventsPage';
 import EditEventPage from './pages/EditEventPage';
 import { NotificationProvider } from './contexts/NotificationContext';
-import type { User, Event, Place } from './types';
+import type { User, Event, Place, Message, MessageThread } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { supabase } from './services/supabase';
@@ -48,6 +48,77 @@ import EditPlacePage from './pages/organization/EditPlacePage';
 import PublicEventPage from './pages/PublicEventPage';
 import PublicPlacePage from './pages/PublicPlacePage';
 import OrganizationChatListPage from './pages/organization/OrganizationChatListPage';
+
+// Chat Caching Context
+interface ChatCache {
+  [chatId: string]: {
+    thread: MessageThread;
+    messages: Message[];
+  };
+}
+
+interface ChatCacheContextType {
+  cache: ChatCache;
+  setInitialChatData: (chatId: string, thread: MessageThread, messages: Message[]) => void;
+  addMessageToCache: (chatId: string, message: Message) => void;
+  isChatCached: (chatId: string) => boolean;
+}
+
+const ChatCacheContext = createContext<ChatCacheContextType | undefined>(undefined);
+
+export const useChatCache = () => {
+  const context = useContext(ChatCacheContext);
+  if (!context) {
+    throw new Error('useChatCache must be used within a ChatCacheProvider');
+  }
+  return context;
+};
+
+const ChatCacheProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [cache, setCache] = useState<ChatCache>({});
+
+    const setInitialChatData = useCallback((chatId: string, thread: MessageThread, messages: Message[]) => {
+        setCache(prev => ({
+            ...prev,
+            [chatId]: { thread, messages }
+        }));
+    }, []);
+
+    const addMessageToCache = useCallback((chatId: string, message: Message) => {
+        setCache(prev => {
+          if (!prev[chatId]) return prev;
+          
+          const existingMessages = prev[chatId].messages;
+          if (existingMessages.some(m => m.id === message.id)) {
+            return prev;
+          }
+
+          const newMessages = [...existingMessages, message];
+          const newThread = { ...prev[chatId].thread, last_message: message.text || 'Billede sendt', timestamp: message.created_at };
+
+          return {
+            ...prev,
+            [chatId]: {
+              thread: newThread,
+              messages: newMessages,
+            }
+          };
+        });
+    }, []);
+    
+    const isChatCached = useCallback((chatId: string) => {
+        return !!cache[chatId];
+    }, [cache]);
+
+    const value = { cache, setInitialChatData, addMessageToCache, isChatCached };
+
+    return (
+        <ChatCacheContext.Provider value={value}>
+          {children}
+        </ChatCacheContext.Provider>
+    );
+};
+
 
 const AppContent: React.FC = () => {
   const { session, user, organization, loading: authLoading, refetchUserProfile } = useAuth();
@@ -243,9 +314,11 @@ const App: React.FC = () => (
   <ThemeProvider>
     <AuthProvider>
       <NotificationProvider>
-        <HashRouter>
-          <AppContent />
-        </HashRouter>
+        <ChatCacheProvider>
+          <HashRouter>
+            <AppContent />
+          </HashRouter>
+        </ChatCacheProvider>
       </NotificationProvider>
     </AuthProvider>
   </ThemeProvider>

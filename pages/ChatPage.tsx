@@ -8,6 +8,7 @@ import { fetchPrivateFile, uploadFile } from '../services/s3Service';
 import LoadingScreen from '../components/LoadingScreen';
 import MeetingTimer from '../components/MeetingTimer';
 import ReportUserModal from '../components/ReportUserModal';
+import { useChatCache } from '../App';
 
 // Component for securely displaying images within chat bubbles.
 const ChatMessageImage: React.FC<{src: string, alt: string}> = ({ src, alt }) => {
@@ -61,6 +62,9 @@ const ChatPage: React.FC = () => {
     const { chatId } = useParams<{ chatId: string }>();
     const navigate = useNavigate();
     const { user: currentUser, organization } = useAuth();
+    
+    const { cache, setInitialChatData, addMessageToCache, isChatCached } = useChatCache();
+    const cachedData = chatId ? cache[chatId] : null;
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [thread, setThread] = useState<MessageThread | null>(null);
@@ -81,90 +85,85 @@ const ChatPage: React.FC = () => {
     };
 
     useEffect(scrollToBottom, [messages]);
+    
+    useEffect(() => {
+        if (cachedData) {
+            setThread(cachedData.thread);
+            setMessages(cachedData.messages);
+            const other = cachedData.thread.participants.find((p: any) => p.user.id !== currentUser?.id)?.user;
+            setOtherUser(other || null);
+        }
+    }, [cachedData, currentUser]);
 
     const isOrgChat = !!organization;
     const currentUserId = isOrgChat ? organization?.id : currentUser?.id;
 
-    const fetchThreadData = useCallback(async () => {
-        if (!chatId || !currentUserId) {
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-
-        // AI Mentor special case
-        if (chatId === 'ai-mentor') {
-            const aiMentorThread: MessageThread = {
-                id: 'ai-mentor',
-                last_message: 'Din personlige AI mentor til samtaler.',
-                timestamp: new Date().toISOString(),
-                unread_count: 0,
-                participants: [{ user: {
-                    id: -1, name: 'SoulMatch AI mentor', age: 0,
-                    avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png',
-                    online: true,
-                }}]
-            };
-            setThread(aiMentorThread);
-            setOtherUser(aiMentorThread.participants[0].user);
-            setMessages([]);
-            setLoading(false);
-            return;
-        }
-        
-        const orgsPromise = supabase.from('organizations').select('name, host_name');
-
-        const threadPromise = supabase
-            .from('message_threads')
-            .select('*, event:events(*), participants:message_thread_participants(user:users(*))')
-            .eq('id', chatId)
-            .single();
-
-        const [orgsRes, threadRes] = await Promise.all([orgsPromise, threadPromise]);
-
-        if (orgsRes.error) {
-            console.error('Error fetching organizations for host mapping:', orgsRes.error);
-        } else if (orgsRes.data) {
-            const newHostMap = new Map<string, string>();
-            orgsRes.data.forEach(org => {
-                if (org.host_name && org.name) {
-                    newHostMap.set(org.host_name, org.name);
-                }
-            });
-            setHostMap(newHostMap);
-        }
-
-        const { data: threadData, error: threadError } = threadRes;
-
-        if (threadError || !threadData) {
-            console.error('Error fetching thread:', threadError?.message);
-            setLoading(false);
-            return;
-        }
-
-        setThread(threadData as any);
-        const other = threadData.participants.find((p: any) => p.user.id !== currentUser?.id)?.user;
-        setOtherUser(other || null);
-
-        const { data: messagesData, error: messagesError } = await supabase
-            .from('messages')
-            .select('*')
-            .eq('thread_id', chatId)
-            .order('created_at', { ascending: true });
-
-        if (messagesError) {
-            console.error('Error fetching messages:', messagesError.message);
-        } else {
-            setMessages(messagesData || []);
-        }
-
-        setLoading(false);
-    }, [chatId, currentUserId, currentUser]);
-
     useEffect(() => {
-        fetchThreadData();
-    }, [fetchThreadData]);
+        const fetchData = async () => {
+            const { data: orgsData } = await supabase.from('organizations').select('name, host_name');
+            if (orgsData) {
+                const newHostMap = new Map<string, string>();
+                orgsData.forEach(org => {
+                    if (org.host_name && org.name) newHostMap.set(org.host_name, org.name);
+                });
+                setHostMap(newHostMap);
+            }
+
+            if (!chatId || !currentUserId) {
+                setLoading(false);
+                return;
+            }
+
+            if (chatId === 'ai-mentor') {
+                const aiMentorThread: MessageThread = {
+                    id: 'ai-mentor',
+                    last_message: 'Din personlige AI mentor til samtaler.',
+                    timestamp: new Date().toISOString(),
+                    unread_count: 0,
+                    participants: [{ user: {
+                        id: -1, name: 'SoulMatch AI mentor', age: 0,
+                        avatar_url: 'https://q1f3.c3.e2-9.dev/soulmatch-uploads-public/bot.png',
+                        online: true,
+                    }}]
+                };
+                setThread(aiMentorThread);
+                setOtherUser(aiMentorThread.participants[0].user);
+                setMessages([]);
+                setLoading(false);
+                return;
+            }
+
+            if (!isChatCached(chatId)) {
+                setLoading(true);
+
+                const threadPromise = supabase
+                    .from('message_threads')
+                    .select('*, event:events(*), participants:message_thread_participants(user:users(*))')
+                    .eq('id', chatId)
+                    .single();
+
+                const messagesPromise = supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('thread_id', chatId)
+                    .order('created_at', { ascending: true });
+                
+                const [threadRes, messagesRes] = await Promise.all([threadPromise, messagesPromise]);
+                
+                if (threadRes.error || !threadRes.data) {
+                    console.error('Error fetching thread:', threadRes.error?.message);
+                    setLoading(false);
+                    return;
+                }
+
+                setInitialChatData(chatId, threadRes.data as any, messagesRes.data || []);
+            }
+            
+            setLoading(false);
+        };
+
+        fetchData();
+    }, [chatId, currentUserId, isChatCached, setInitialChatData]);
 
     useEffect(() => {
         if (!chatId || chatId === 'ai-mentor' || !currentUserId) return;
@@ -174,10 +173,7 @@ const ChatPage: React.FC = () => {
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'messages', filter: `thread_id=eq.${chatId}` },
                 (payload) => {
-                    // Avoid duplicating messages if we added it optimistically
-                     if (payload.new.sender_id !== currentUserId) {
-                        setMessages(prev => [...prev, payload.new]);
-                     }
+                     addMessageToCache(chatId, payload.new);
                 }
             )
             .subscribe();
@@ -185,7 +181,7 @@ const ChatPage: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [chatId, currentUserId]);
+    }, [chatId, currentUserId, addMessageToCache]);
 
     const handleSendMessage = async () => {
         if (!newMessage.trim() || !currentUserId || isSending) return;
@@ -208,7 +204,7 @@ const ChatPage: React.FC = () => {
             console.error("Error sending message:", error);
             setNewMessage(text);
         } else if (newMessageData) {
-            setMessages(prev => [...prev, newMessageData as Message]);
+            addMessageToCache(chatId, newMessageData as Message);
         }
         setIsSending(false);
     };
@@ -232,7 +228,7 @@ const ChatPage: React.FC = () => {
             if (error) {
                 console.error("Error sending image message:", error);
             } else if (newMessageData) {
-                setMessages(prev => [...prev, newMessageData as Message]);
+                addMessageToCache(chatId, newMessageData as Message);
             }
         } catch (uploadError) {
             console.error("Error uploading file:", uploadError);
