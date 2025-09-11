@@ -1,0 +1,78 @@
+-- Migration 28: Add RPC function for an organization to fetch a single chat thread
+
+-- 1. Create a function to securely fetch a single chat thread for an organization.
+-- This is necessary because the organization's auth.uid() is not in the public.users table,
+-- which makes standard RLS policies fail. This function runs with elevated privileges
+-- but performs its own security checks.
+CREATE OR REPLACE FUNCTION public.get_organization_chat_thread_details(p_thread_id bigint)
+RETURNS jsonb -- Return a single JSON object for easier client-side handling
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_org_id bigint;
+    v_host_user_id bigint;
+    is_participant boolean;
+    thread_details jsonb;
+BEGIN
+    -- 1. Get the organization and host user ID for the current authenticated session
+    SELECT o.id, u.id INTO v_org_id, v_host_user_id
+    FROM public.organizations o
+    JOIN public.users u ON o.host_name = u.name
+    WHERE o.auth_id = auth.uid()
+    LIMIT 1;
+
+    IF v_org_id IS NULL OR v_host_user_id IS NULL THEN
+        RAISE EXCEPTION 'Organization or host not found for current user.';
+    END IF;
+
+    -- 2. Check if the host is a participant of the requested thread
+    SELECT EXISTS (
+        SELECT 1
+        FROM message_thread_participants mtp
+        WHERE mtp.thread_id = p_thread_id AND mtp.user_id = v_host_user_id
+    ) INTO is_participant;
+
+    IF NOT is_participant THEN
+        RAISE EXCEPTION 'Organization host is not a participant of this chat thread.';
+    END IF;
+
+    -- 3. If authorized, fetch the full thread details and format as JSON, matching the shape of the client's direct query
+    SELECT to_jsonb(t) INTO thread_details FROM (
+        SELECT
+            mt.*,
+            (SELECT to_jsonb(e.*) FROM events e WHERE e.id = mt.event_id) AS event,
+            (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'user', jsonb_build_object(
+                            'id', u.id,
+                            'name', u.name,
+                            'age', u.age,
+                            'avatar_url', u.avatar_url,
+                            'online', u.online,
+                            'bio', u.bio,
+                            'location', u.location,
+                            'personality_type', u.personality_type,
+                            'emojis', u.emojis,
+                            'personality_test_completed', u.personality_test_completed,
+                            'is_admin', u.is_admin,
+                            'auth_id', u.auth_id
+                        )
+                    )
+                )
+                FROM message_thread_participants mtp
+                JOIN users u ON mtp.user_id = u.id
+                WHERE mtp.thread_id = mt.id
+            ) AS participants
+        FROM message_threads mt
+        WHERE mt.id = p_thread_id
+    ) t;
+
+    RETURN thread_details;
+END;
+$$;
+
+-- 2. Grant execute permission on the new function
+GRANT EXECUTE ON FUNCTION public.get_organization_chat_thread_details(bigint) TO authenticated;

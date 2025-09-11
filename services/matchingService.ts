@@ -15,9 +15,7 @@ export interface MatchDetails {
     personality: number;
     interestCount: number;
     tagCount: number;
-    interestAndTagPercent: number; // Jaccard-style similarity percentage
-    interestJaccard: number;       // New: Interest overlap robustness
-    tagJaccard: number;            // New: Tag overlap robustness
+    interestAndTagPercent: number; // New score for interest/tag match percentage
   };
   commonalities: {
     interests: Interest[];
@@ -48,17 +46,18 @@ const getDimensionMap = (dims: UserPersonalityDimension[]): Record<string, numbe
 
     Object.keys(poles).forEach(dimKey => {
         const userDim = dims.find(d => d.dimension === dimKey);
-        const [poleA, poleB] = poles[dimKey];
+        const [poleA, poleB] = poles[dimKey]; // e.g., I, E
 
         if (userDim) {
             if (userDim.dominant_trait === poleA) {
                 map[poleA] = userDim.score;
                 map[poleB] = 100 - userDim.score;
-            } else {
+            } else { // dominant_trait must be poleB
                 map[poleB] = userDim.score;
                 map[poleA] = 100 - userDim.score;
             }
         } else {
+            // If dimension data is missing for a user, assume they are neutral.
             map[poleA] = 50;
             map[poleB] = 50;
         }
@@ -68,7 +67,7 @@ const getDimensionMap = (dims: UserPersonalityDimension[]): Record<string, numbe
 
 /**
  * Calculates the personality similarity score between two users based on their dimension maps.
- * Uses non-linear distance scaling: small differences are rewarded more, large differences penalized harder.
+ * A lower distance means a better match.
  * @param currentUserMap - A map of the current user's dimension scores (0-100 for each pole).
  * @param otherUserMap - A map of the other user's dimension scores.
  * @returns A similarity score from 0 to 100.
@@ -77,32 +76,21 @@ function calculatePersonalityScore(
     currentUserMap: Record<string, number>,
     otherUserMap: Record<string, number>
 ): number {
-    let totalScaledDistance = 0;
+    let totalDistance = 0;
+    // We only need to compare one pole from each dimension (e.g., I, S, T, J) to get the distance.
     const dimensionPoles = ['I', 'S', 'T', 'J'];
 
     dimensionPoles.forEach(pole => {
         const currentUserPoleScore = currentUserMap[pole] || 50;
         const otherUserPoleScore = otherUserMap[pole] || 50;
-        const rawDiff = Math.abs(currentUserPoleScore - otherUserPoleScore);
-
-        // Non-linear penalty: diffs under 20 are gently penalized, over 60 harshly
-        let scaledDiff = 0;
-        if (rawDiff <= 20) {
-            scaledDiff = rawDiff * 0.5; // gentle
-        } else if (rawDiff <= 60) {
-            scaledDiff = 10 + (rawDiff - 20) * 1.0; // linear
-        } else {
-            scaledDiff = 50 + (rawDiff - 60) * 2.0; // harsh
-        }
-
-        totalScaledDistance += scaledDiff;
+        totalDistance += Math.abs(currentUserPoleScore - otherUserPoleScore);
     });
 
-    // Max possible scaled distance is 4*(10 + 40*1 + 40*2) = 4*(10+40+80)=520? Let’s cap at 400 for simplicity
-    const maxScaledDistance = 400;
-    const similarity = Math.max(0, (1 - (totalScaledDistance / maxScaledDistance)) * 100);
+    // Max distance is 100 for each of the 4 dimensions.
+    const maxDistance = 400; 
+    const similarity = Math.max(0, (1 - (totalDistance / maxDistance)) * 100);
 
-    return Math.round(Math.min(100, similarity));
+    return Math.round(similarity);
 }
 
 
@@ -134,33 +122,7 @@ function findSharedTags(
 
 
 /**
- * Calculates Jaccard similarity index for two sets (shared / union).
- * Returns 0 if both sets are empty.
- */
-function calculateJaccardSimilarity(setA: Set<number>, setB: Set<number>): number {
-    if (setA.size === 0 && setB.size === 0) return 0;
-
-    const intersection = [...setA].filter(x => setB.has(x)).length;
-    const union = new Set([...setA, ...setB]).size;
-
-    return union === 0 ? 0 : (intersection / union);
-}
-
-
-/**
- * Applies a decay penalty to sparse profiles to avoid overrating matches with very few items.
- * Example: if user has only 1 interest, even 100% match is penalized slightly.
- */
-function applySparsityDecay(value: number, setSize: number, minSizeForFullCredit = 3): number {
-    if (setSize >= minSizeForFullCredit) return value;
-    const decayFactor = setSize / minSizeForFullCredit;
-    return value * decayFactor;
-}
-
-
-/**
  * A centralized matching algorithm that calculates compatibility based on personality, interests, and a combined score.
- * Now uses adaptive weighting, Jaccard similarity, and non-linear scoring for more intelligent matching.
  * @param currentUser The user for whom to find matches.
  * @param potentialMatches An array of other users to compare against.
  * @returns An object containing three sorted arrays of matched users with detailed score breakdowns.
@@ -174,9 +136,6 @@ export function calculateMatches(
     const currentUserInterestIds = new Set(currentUser.interests.map(i => i.id));
     const currentUserTagIds = new Set(currentUser.personality_tags.map(t => t.id));
 
-    const currentUserInterestCount = currentUser.interests.length;
-    const currentUserTagCount = currentUser.personality_tags.length;
-
     const scoredMatches: MatchDetails[] = potentialMatches.map(otherUser => {
         // 1. Calculate Personality Score
         const otherUserDimensionMap = getDimensionMap(otherUser.dimensions);
@@ -188,63 +147,34 @@ export function calculateMatches(
         const interestCount = sharedInterests.length;
         const tagCount = sharedTags.length;
 
-        const otherUserInterestIds = new Set(otherUser.interests.map(i => i.id));
-        const otherUserTagIds = new Set(otherUser.personality_tags.map(t => t.id));
+        // 3. Normalize interest and tag scores for weighting
+        const numCurrentUserInterests = currentUser.interests.length;
+        const numCurrentUserTags = currentUser.personality_tags.length;
 
-        // 3. Calculate Jaccard similarities
-        const interestJaccard = calculateJaccardSimilarity(currentUserInterestIds, otherUserInterestIds);
-        const tagJaccard = calculateJaccardSimilarity(currentUserTagIds, otherUserTagIds);
-
-        // 4. Apply sparsity decay to prevent overrating matches with tiny profiles
-        const decayedInterestJaccard = applySparsityDecay(interestJaccard * 100, currentUserInterestCount);
-        const decayedTagJaccard = applySparsityDecay(tagJaccard * 100, currentUserTagCount);
-
-        // 5. Normalize counts for display (but Jaccard used for scoring)
-        const normalizedInterestScore = currentUserInterestCount > 0 ? (interestCount / currentUserInterestCount) * 100 : 0;
-        const normalizedTagScore = currentUserTagCount > 0 ? (tagCount / currentUserTagCount) * 100 : 0;
-
-        // 6. Calculate Combined Score with ADAPTIVE WEIGHTING
-        // If user has no interests/tags, lean heavier on personality
-        let personalityWeight = 0.5;
-        let interestWeight = 0.3;
-        let tagWeight = 0.2;
-
-        if (currentUserInterestCount === 0 && currentUserTagCount === 0) {
-            personalityWeight = 1.0;
-            interestWeight = 0;
-            tagWeight = 0;
-        } else if (currentUserInterestCount === 0) {
-            personalityWeight = 0.6;
-            interestWeight = 0;
-            tagWeight = 0.4;
-        } else if (currentUserTagCount === 0) {
-            personalityWeight = 0.6;
-            interestWeight = 0.4;
-            tagWeight = 0;
-        }
-
+        const normalizedInterestScore = numCurrentUserInterests > 0 ? (interestCount / numCurrentUserInterests) * 100 : 0;
+        const normalizedTagScore = numCurrentUserTags > 0 ? (tagCount / numCurrentUserTags) * 100 : 0;
+            
+        // 4. Calculate Combined Score
         const combinedScore = Math.round(
-            (personalityWeight * personalityScore) +
-            (interestWeight * decayedInterestJaccard) +
-            (tagWeight * decayedTagJaccard)
+            (0.5 * personalityScore) +
+            (0.3 * normalizedInterestScore) +
+            (0.2 * normalizedTagScore)
         );
-
-        // 7. Calculate weighted interest + tag score for the 'Interests' tab
+        
+        // 5. Calculate weighted interest + tag score for the 'Interests' tab
         const interestAndTagPercent = Math.round(
-            (0.7 * decayedInterestJaccard) +
-            (0.3 * decayedTagJaccard)
+            (0.7 * normalizedInterestScore) +
+            (0.3 * normalizedTagScore)
         );
 
         return {
             user: otherUser,
             scores: {
-                combined: Math.min(100, Math.max(0, combinedScore)),
+                combined: combinedScore,
                 personality: personalityScore,
                 interestCount: interestCount,
                 tagCount: tagCount,
-                interestAndTagPercent: Math.min(100, Math.max(0, interestAndTagPercent)),
-                interestJaccard: Math.round(decayedInterestJaccard),
-                tagJaccard: Math.round(decayedTagJaccard),
+                interestAndTagPercent: interestAndTagPercent,
             },
             commonalities: {
                 interests: sharedInterests,
@@ -253,31 +183,10 @@ export function calculateMatches(
         };
     });
 
-    // Sort with tie-breaking: if primary score equal, use secondary (personality, then interest/tag)
-    const sortWithTiebreak = (a: MatchDetails, b: MatchDetails, primary: keyof MatchDetails['scores'], secondary: keyof MatchDetails['scores'], tertiary?: keyof MatchDetails['scores']) => {
-        if (a.scores[primary] !== b.scores[primary]) {
-            return b.scores[primary] - a.scores[primary];
-        }
-        if (a.scores[secondary] !== b.scores[secondary]) {
-            return b.scores[secondary] - a.scores[secondary];
-        }
-        if (tertiary && a.scores[tertiary] !== b.scores[tertiary]) {
-            return b.scores[tertiary] - a.scores[tertiary];
-        }
-        return 0; // retain order
-    };
-
-    const combined = [...scoredMatches].sort((a, b) =>
-        sortWithTiebreak(a, b, 'combined', 'personality', 'interestAndTagPercent')
-    );
-
-    const personality = [...scoredMatches].sort((a, b) =>
-        sortWithTiebreak(a, b, 'personality', 'interestAndTagPercent', 'combined')
-    );
-
-    const interests = [...scoredMatches].sort((a, b) =>
-        sortWithTiebreak(a, b, 'interestAndTagPercent', 'tagJaccard', 'personality')
-    );
+    // Sort the lists based on their respective primary score
+    const combined = [...scoredMatches].sort((a, b) => b.scores.combined - a.scores.combined);
+    const personality = [...scoredMatches].sort((a, b) => b.scores.personality - a.scores.personality);
+    const interests = [...scoredMatches].sort((a, b) => b.scores.interestAndTagPercent - a.scores.interestAndTagPercent);
 
     return { combined, personality, interests };
 }

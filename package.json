@@ -1,5 +1,5 @@
 {
-  "name": "copy-of-soulmatch---combat-loneliness-v3",
+  "name": "soulmatch---combat-loneliness-v2",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -18,10 +18,7 @@
     "framer-motion": "^11.3.19",
     "@aws-sdk/client-s3": "^3.623.0",
     "aws4fetch": "^1.0.17",
-    "next": "^15.5.2",
-    "@prisma/client": "^6.16.1",
-    "@neondatabase/serverless": "^1.0.1",
-    "@prisma/adapter-neon": "^6.16.1"
+    "next": "^15.5.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
