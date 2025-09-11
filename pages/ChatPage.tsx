@@ -73,7 +73,6 @@ const ChatPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-    const [hostMap, setHostMap] = useState<Map<string, string>>(new Map());
     const [isUploading, setIsUploading] = useState(false);
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -101,15 +100,6 @@ const ChatPage: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
-            const { data: orgsData } = await supabase.from('organizations').select('name, host_name');
-            if (orgsData) {
-                const newHostMap = new Map<string, string>();
-                orgsData.forEach(org => {
-                    if (org.host_name && org.name) newHostMap.set(org.host_name, org.name);
-                });
-                setHostMap(newHostMap);
-            }
-
             if (!chatId || !currentUserId) {
                 setLoading(false);
                 return;
@@ -271,8 +261,12 @@ const ChatPage: React.FC = () => {
     if (loading) return <LoadingScreen message="Indlæser chat..." />;
     if (!thread) return <div className="p-4 text-center">Chat ikke fundet.</div>;
 
-    const orgName = otherUser ? hostMap.get(otherUser.name) : undefined;
-    const displayName = orgName ? `${otherUser?.name} fra ${orgName}` : otherUser?.name;
+    // FIX: Identify host users by their bio instead of a fragile name map.
+    let displayName = otherUser?.name;
+    if (otherUser?.bio?.startsWith('Kontaktperson for ')) {
+        displayName = `${otherUser.name} fra ${otherUser.bio.replace('Kontaktperson for ', '')}`;
+    }
+    
     const headerTitle = thread.is_event_chat ? thread.event?.title : displayName;
     const headerAvatar = thread.is_event_chat ? null : otherUser?.avatar_url;
 

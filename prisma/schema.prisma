@@ -1,0 +1,583 @@
+// schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🧠 CORE ENUMS — Mirroring your TypeScript enums
+// ─────────────────────────────────────────────────────────────────
+
+enum PersonalityDimension {
+  EI
+  SN
+  TF
+  JP
+}
+
+enum DominantTrait {
+  E
+  I
+  S
+  N
+  T
+  F
+  J
+  P
+}
+
+enum EntityType {
+  event
+  place
+}
+
+enum NotificationType {
+  message
+  event
+  friend_request
+  system
+  profile_view
+}
+
+enum FriendshipStatus {
+  pending
+  accepted
+  blocked
+}
+
+enum ReportStatus {
+  new
+  under_review
+  resolved
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 👤 USER DOMAIN
+// ─────────────────────────────────────────────────────────────────
+
+model User {
+  id                        Int                          @id @default(autoincrement())
+  name                      String
+  age                       Int
+  avatar_url                String?
+  online                    Boolean                      @default(false)
+  bio                       String?
+  location                  String?
+  personality_type          String?                      // e.g., "INTJ"
+  emojis                    String[]?
+  personality_test_completed Boolean                     @default(false)
+  is_admin                  Boolean                      @default(false)
+  auth_id                   String?                      @unique // Supabase Auth ID
+
+  // Relations
+  personality_dimensions    UserPersonalityDimension[]
+  personality_tags          PersonalityTagOnUser[]
+  interests                 InterestOnUser[]
+  ai_descriptions           UserAiDescription[]
+  friendshipsInitiated      Friendship[]                 @relation("User1Friendships")
+  friendshipsReceived       Friendship[]                 @relation("User2Friendships")
+  reportsFiled              UserReport[]                 @relation("Reporter")
+  reportsReceived           UserReport[]                 @relation("Reported")
+  checkinsAsUser1           Checkin[]                    @relation("CheckinUser1")
+  checkinsAsUser2           Checkin[]                    @relation("CheckinUser2")
+  eventsCreated             Event[]
+  messagesSent              Message[]
+  notificationsReceived     Notification[]
+  messageThreadParticipants MessageThreadParticipant[]
+
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
+
+  @@index([auth_id])
+  @@index([personality_type])
+  @@index([location])
+  @@map("users")
+}
+
+model UserPersonalityDimension {
+  id             Int                     @id @default(autoincrement())
+  user_id        Int
+  user           User                    @relation(fields: [user_id], references: [id])
+  dimension      PersonalityDimension
+  dominant_trait DominantTrait
+  score          Int                     // e.g., -100 to +100 or 0-100
+  description    String
+
+  createdAt      DateTime                @default(now())
+  @@unique([user_id, dimension])
+  @@map("user_personality_dimensions")
+}
+
+model UserAiDescription {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  user        User     @relation(fields: [user_id], references: [id])
+  description String
+  created_at  DateTime @default(now())
+
+  @@map("user_ai_descriptions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🏷️ TAXONOMY: Categories, Interests, Tags
+// ─────────────────────────────────────────────────────────────────
+
+model Category {
+  id        Int        @id @default(autoincrement())
+  name      String
+  parent_id Int?
+  parent    Category?  @relation("CategoryParent", fields: [parent_id], references: [id])
+  children  Category[] @relation("CategoryParent")
+  type      EntityType
+
+  places    Place[]
+  events    Event[]
+
+  @@index([type])
+  @@map("categories")
+}
+
+model InterestCategory {
+  id   Int       @id @default(autoincrement())
+  name String    @unique
+  interests Interest[]
+
+  @@map("interest_categories")
+}
+
+model Interest {
+  id           Int                 @id @default(autoincrement())
+  name         String              @unique
+  category_id  Int
+  category     InterestCategory    @relation(fields: [category_id], references: [id])
+
+  users        InterestOnUser[]
+  events       EventInterest[]
+  places       PlaceInterest[]
+
+  @@index([category_id])
+  @@map("interests")
+}
+
+model InterestOnUser {
+  id          Int     @id @default(autoincrement())
+  user_id     Int
+  user        User    @relation(fields: [user_id], references: [id])
+  interest_id Int
+  interest    Interest @relation(fields: [interest_id], references: [id])
+
+  @@unique([user_id, interest_id])
+  @@map("interests_on_users")
+}
+
+model PersonalityTagCategory {
+  id   Int       @id @default(autoincrement())
+  name String    @unique
+  tags PersonalityTag[]
+
+  @@map("personality_tag_categories")
+}
+
+model PersonalityTag {
+  id           Int                    @id @default(autoincrement())
+  name         String                 @unique
+  category_id  Int
+  category     PersonalityTagCategory @relation(fields: [category_id], references: [id])
+
+  users        PersonalityTagOnUser[]
+
+  @@index([category_id])
+  @@map("personality_tags")
+}
+
+model PersonalityTagOnUser {
+  id          Int              @id @default(autoincrement())
+  user_id     Int
+  user        User             @relation(fields: [user_id], references: [id])
+  tag_id      Int
+  tag         PersonalityTag   @relation(fields: [tag_id], references: [id])
+
+  @@unique([user_id, tag_id])
+  @@map("personality_tags_on_users")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🎯 ACTIVITIES — Shared across Events, Places, Orgs
+// ─────────────────────────────────────────────────────────────────
+
+model Activity {
+  id   Int    @id @default(autoincrement())
+  name String
+  icon String
+
+  events    EventActivity[]
+  places    PlaceActivity[]
+  orgs      OrganizationActivity[]
+
+  @@map("activities")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 📍 PLACES
+// ─────────────────────────────────────────────────────────────────
+
+model Place {
+  id               Int        @id @default(autoincrement())
+  name             String
+  offer            String
+  address          String
+  user_count       Int        @default(0)
+  user_images      String[]   // Consider normalizing later if heavy usage
+  icon             String
+  description      String
+  is_sponsored     Boolean    @default(false)
+  phone            String
+  opening_hours    String
+  organization_id  Int?
+  organization     Organization? @relation(fields: [organization_id], references: [id])
+  image_url        String?
+  category_id      Int
+  category         Category   @relation(fields: [category_id], references: [id])
+  is_certified     Boolean    @default(false)
+
+  // Relations
+  images           ImageRecord[]
+  activities       PlaceActivity[]
+  interests        PlaceInterest[]
+  checkins         Checkin[]
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([category_id])
+  @@index([organization_id])
+  @@index([is_sponsored])
+  @@index([is_certified])
+  @@map("places")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🎉 EVENTS
+// ─────────────────────────────────────────────────────────────────
+
+model Event {
+  id                    Int        @id @default(autoincrement())
+  title                 String
+  time                  DateTime
+  end_time              DateTime?
+  participantCount      Int        @default(0)
+  host_name             String
+  host_avatar_url       String
+  icon                  String
+  color                 String
+  description           String?
+  organization_id       Int?
+  organization          Organization? @relation(fields: [organization_id], references: [id])
+  image_url             String?
+  address               String?
+  is_sponsored          Boolean    @default(false)
+  offer                 String?
+  category_id           Int
+  category              Category   @relation(fields: [category_id], references: [id])
+  creator_user_id       Int?
+  creator               User?      @relation(fields: [creator_user_id], references: [id])
+  is_diagnosis_friendly Boolean    @default(false)
+
+  // Relations
+  images                ImageRecord[]
+  participants          EventParticipant[]
+  interests             EventInterest[]
+  activities            EventActivity[]
+  message_thread_id     Int?
+  message_thread        MessageThread? @relation(fields: [message_thread_id], references: [id])
+
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([category_id])
+  @@index([organization_id])
+  @@index([creator_user_id])
+  @@index([time])
+  @@index([is_sponsored])
+  @@map("events")
+}
+
+model EventParticipant {
+  id         Int    @id @default(autoincrement())
+  event_id   Int
+  event      Event  @relation(fields: [event_id], references: [id])
+  user_id    Int
+  user       User   @relation(fields: [user_id], references: [id])
+
+  @@unique([event_id, user_id])
+  @@map("event_participants")
+}
+
+model EventInterest {
+  id          Int      @id @default(autoincrement())
+  event_id    Int
+  event       Event    @relation(fields: [event_id], references: [id])
+  interest_id Int
+  interest    Interest @relation(fields: [interest_id], references: [id])
+
+  @@unique([event_id, interest_id])
+  @@map("event_interests")
+}
+
+model EventActivity {
+  id          Int       @id @default(autoincrement())
+  event_id    Int
+  event       Event     @relation(fields: [event_id], references: [id])
+  activity_id Int
+  activity    Activity  @relation(fields: [activity_id], references: [id])
+
+  @@unique([event_id, activity_id])
+  @@map("event_activities")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🖼️ MEDIA
+// ─────────────────────────────────────────────────────────────────
+
+model ImageRecord {
+  id        Int    @id @default(autoincrement())
+  image_url String
+
+  // Polymorphic-ish — you can add type + entity_id if needed later
+  event_id  Int?
+  event     Event? @relation(fields: [event_id], references: [id])
+  place_id  Int?
+  place     Place? @relation(fields: [place_id], references: [id])
+  org_id    Int?
+  org       Organization? @relation(fields: [org_id], references: [id])
+
+  @@index([event_id])
+  @@index([place_id])
+  @@index([org_id])
+  @@map("image_records")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 💬 MESSAGING
+// ─────────────────────────────────────────────────────────────────
+
+model MessageThread {
+  id              Int                   @id @default(autoincrement())
+  last_message    String
+  timestamp       DateTime              @default(now())
+  unread_count    Int                   @default(0)
+  match_timestamp DateTime?
+  is_event_chat   Boolean               @default(false)
+  event_id        Int?
+  event           Event?                @relation(fields: [event_id], references: [id])
+
+  participants    MessageThreadParticipant[]
+  messages        Message[]
+
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([event_id])
+  @@index([is_event_chat])
+  @@map("message_threads")
+}
+
+model MessageThreadParticipant {
+  id             Int           @id @default(autoincrement())
+  thread_id      Int
+  thread         MessageThread @relation(fields: [thread_id], references: [id])
+  user_id        Int
+  user           User          @relation(fields: [user_id], references: [id])
+
+  @@unique([thread_id, user_id])
+  @@map("message_thread_participants")
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  text       String
+  created_at DateTime @default(now())
+  sender_id  Int
+  sender     User     @relation(fields: [sender_id], references: [id])
+  thread_id  Int
+  thread     MessageThread @relation(fields: [thread_id], references: [id])
+  image_url  String?
+
+  // Optional embedded card (event/place preview)
+  card_type   EntityType?
+  card_id     Int?
+  card_title  String?
+  card_image  String?
+  card_offer  String?
+  card_address String?
+
+  @@index([thread_id])
+  @@index([sender_id])
+  @@index([created_at])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🤝 SOCIAL & FRIENDSHIPS
+// ─────────────────────────────────────────────────────────────────
+
+model Friendship {
+  id              Int               @id @default(autoincrement())
+  user_id_1       Int
+  user1           User              @relation("User1Friendships", fields: [user_id_1], references: [id])
+  user_id_2       Int
+  user2           User              @relation("User2Friendships", fields: [user_id_2], references: [id])
+  status          FriendshipStatus  @default(pending)
+  action_user_id  Int               // who sent/accepted/blocked
+  action_user     User              @relation(fields: [action_user_id], references: [id])
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([user_id_1, user_id_2])
+  @@index([status])
+  @@index([action_user_id])
+  @@map("friendships")
+}
+
+model UserReport {
+  id                Int           @id @default(autoincrement())
+  reporter_user_id  Int
+  reporter          User          @relation("Reporter", fields: [reporter_user_id], references: [id])
+  reported_user_id  Int
+  reported          User          @relation("Reported", fields: [reported_user_id], references: [id])
+  reason            String
+  comment           String?
+  status            ReportStatus  @default(new)
+  created_at        DateTime      @default(now())
+
+  @@index([reporter_user_id])
+  @@index([reported_user_id])
+  @@index([status])
+  @@map("user_reports")
+}
+
+model Checkin {
+  id         Int      @id @default(autoincrement())
+  place_id   Int
+  place      Place    @relation(fields: [place_id], references: [id])
+  user_id_1  Int
+  user1      User     @relation("CheckinUser1", fields: [user_id_1], references: [id])
+  user_id_2  Int
+  user2      User     @relation("CheckinUser2", fields: [user_id_2], references: [id])
+  created_at DateTime @default(now())
+
+  @@index([place_id])
+  @@index([user_id_1])
+  @@index([user_id_2])
+  @@map("checkins")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🏢 ORGANIZATIONS
+// ─────────────────────────────────────────────────────────────────
+
+model Organization {
+  id                  Int           @id @default(autoincrement())
+  name                String
+  logo_url            String
+  address             String
+  description         String
+  phone               String?
+  email               String?
+  website             String?
+  host_name           String?
+  organization_type   String?
+  facebook_url        String?
+  emojis              String[]?
+  auth_id             String?       @unique // if tied to Supabase auth
+
+  // Relations
+  opportunities       OrganizationOpportunity[]
+  updates             OrganizationUpdate[]
+  activities          OrganizationActivity[]
+  places              Place[]
+  events              Event[]
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([auth_id])
+  @@map("organizations")
+}
+
+model OrganizationOpportunity {
+  id              Int            @id @default(autoincrement())
+  name            String
+  icon            String
+  organization_id Int
+  organization    Organization   @relation(fields: [organization_id], references: [id])
+
+  @@map("organization_opportunities")
+}
+
+model OrganizationUpdate {
+  id              Int            @id @default(autoincrement())
+  image_url       String
+  organization_id Int
+  organization    Organization   @relation(fields: [organization_id], references: [id])
+  created_at      DateTime       @default(now())
+
+  @@map("organization_updates")
+}
+
+model OrganizationActivity {
+  id              Int            @id @default(autoincrement())
+  organization_id Int
+  organization    Organization   @relation(fields: [organization_id], references: [id])
+  activity_id     Int
+  activity        Activity       @relation(fields: [activity_id], references: [id])
+
+  @@unique([organization_id, activity_id])
+  @@map("organization_activities")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🔔 NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────
+
+model Notification {
+  id                 Int              @id @default(autoincrement())
+  user_id            Int
+  user               User             @relation(fields: [user_id], references: [id])
+  actor_id           Int?
+  actor              User?            @relation(fields: [actor_id], references: [id])
+  type               NotificationType
+  message            String
+  related_entity_id  Int?
+  read               Boolean          @default(false)
+  created_at         DateTime         @default(now())
+
+  @@index([user_id])
+  @@index([actor_id])
+  @@index([type])
+  @@index([read])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🧭 OPTIONAL: EXTENSIONS (AI, ANALYTICS, etc.)
+// ─────────────────────────────────────────────────────────────────
+
+// Example: Add later for AI matching scores between users
+// model UserCompatibilityScore {
+//   id            Int     @id @default(autoincrement())
+//   user1_id      Int
+//   user1         User    @relation("CompatibilityUser1", fields: [user1_id], references: [id])
+//   user2_id      Int
+//   user2         User    @relation("CompatibilityUser2", fields: [user2_id], references: [id])
+//   score         Float   // 0.0 to 1.0
+//   algorithm     String  // e.g., "v1-personality", "v2-ai-embeddings"
+//   calculated_at DateTime @default(now())
+//
+//   @@unique([user1_id, user2_id, algorithm])
+// }

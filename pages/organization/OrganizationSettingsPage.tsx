@@ -256,17 +256,36 @@ const OrganizationSettingsPage: React.FC = () => {
         setError(null);
         setSuccessMessage(null);
         
+        const hostNameChanged = formData.host_name !== organization.host_name;
+        const orgNameChanged = formData.name !== organization.name;
+
         const interestNames = selectedInterests.map(i => i.name);
         const { emojis, ...profileData } = formData;
         const dataToUpdate = { ...profileData, emojis: interestNames };
 
-        const { error: updateError } = await supabase
+        const { data: updatedOrg, error: updateError } = await supabase
             .from('organizations')
             .update(dataToUpdate)
-            .eq('id', organization.id);
+            .eq('id', organization.id)
+            .select()
+            .single();
 
         if (updateError) {
             setError(updateError.message); setSaving(false); return;
+        }
+
+        if (hostNameChanged || orgNameChanged) {
+            const { error: rpcError } = await supabase.rpc('update_organization_host_user', {
+                p_old_host_name: organization.host_name || '',
+                p_new_host_name: formData.host_name || '',
+                p_old_org_name: organization.name || '',
+                p_new_org_name: formData.name || ''
+            });
+
+            if (rpcError) {
+                console.warn("Could not update host user profile:", rpcError);
+                setError("Profil gemt, men kontaktpersonens profil kunne ikke synkroniseres. Kontakt support hvis problemer opstår.");
+            }
         }
 
         const { error: deleteError } = await supabase.from('organization_activities').delete().eq('organization_id', organization.id);
@@ -283,6 +302,10 @@ const OrganizationSettingsPage: React.FC = () => {
             if (insertError) {
                 setError(`Profil opdateret, men kunne ikke gemme nye aktiviteter: ${insertError.message}`); setSaving(false); return;
             }
+        }
+        
+        if (updatedOrg) {
+            setOrganization(updatedOrg);
         }
         
         setSuccessMessage('Profil opdateret!');

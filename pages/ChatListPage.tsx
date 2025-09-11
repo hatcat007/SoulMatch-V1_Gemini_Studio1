@@ -47,7 +47,6 @@ const ChatListPage: React.FC = () => {
     const [threads, setThreads] = useState<MessageThread[]>([]);
     const [loading, setLoading] = useState(true);
     const { user: currentUser, loading: authLoading } = useAuth();
-    const [hostMap, setHostMap] = useState<Map<string, string>>(new Map());
 
     const aiMentorThread: MessageThread = {
       id: 'ai-mentor',
@@ -73,21 +72,6 @@ const ChatListPage: React.FC = () => {
             setLoading(true); // Start loading chat data
             const userId = currentUser.id;
             
-            // Fetch organizations to map hosts
-            const { data: orgsData, error: orgsError } = await supabase.from('organizations').select('name, host_name');
-            if (orgsError) {
-                console.error('Error fetching organizations for host mapping:', orgsError);
-            } else if (orgsData) {
-                const newHostMap = new Map<string, string>();
-                orgsData.forEach(org => {
-                    if (org.host_name && org.name) {
-                        newHostMap.set(org.host_name, org.name);
-                    }
-                });
-                setHostMap(newHostMap);
-            }
-
-
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
                 .select('*')
@@ -211,8 +195,13 @@ const ChatListPage: React.FC = () => {
                             if (!otherUser) return null;
 
                             const formattedTimestamp = thread.timestamp ? new Date(thread.timestamp).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
-                            const orgName = hostMap.get(otherUser.name);
-                            const displayName = orgName ? `${otherUser.name} fra ${orgName}` : otherUser.name;
+                            
+                            // FIX: Identify host users by their bio instead of a fragile name map.
+                            // This is more reliable and avoids incorrect labeling if a regular user has the same name as a host.
+                            let displayName = otherUser.name;
+                            if (otherUser.bio?.startsWith('Kontaktperson for ')) {
+                                displayName = `${otherUser.name} fra ${otherUser.bio.replace('Kontaktperson for ', '')}`;
+                            }
 
 
                             return (

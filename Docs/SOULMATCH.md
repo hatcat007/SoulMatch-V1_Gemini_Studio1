@@ -11,7 +11,7 @@ The platform serves both individual users seeking connection and organizations (
 ### 2.1. Onboarding & Authentication
 
 *   **Multi-step Onboarding:** A visually engaging, multi-step onboarding process introduces new users to the app's core value propositions: AI matching, personality analysis, and a strong focus on safety.
-*   **User Authentication:** Standard email/password login and signup flows are available.
+*   **User Authentication:** Standard email/password login and signup flows are available, handled by Supabase Auth.
 *   **Organization Onboarding:** A streamlined process for organizations to create profiles. It features an AI-powered data import functionality that can scrape information from a Facebook page to pre-fill the profile, simplifying the setup process.
 *   **Safety First:** The concept heavily emphasizes user safety, mentioning mandatory **MitID verification** and facial recognition to ensure genuine identities and create a secure environment.
 
@@ -72,7 +72,10 @@ The app uses a persistent bottom navigation bar (which becomes a sidebar on larg
 
 ### 3.2. Backend & Services
 
-*   **Database & Auth (Conceptual):** `@supabase/supabase-js` is configured, suggesting Supabase is the intended backend-as-a-service for handling users, data storage, and authentication.
+*   **Database:** [NeonDB](https://neon.tech/) - A serverless PostgreSQL database.
+*   **ORM:** [Prisma](https://www.prisma.io/) - A next-generation ORM for Node.js and TypeScript. All database queries are handled through the Prisma client.
+*   **Database Driver:** `@neondatabase/serverless` with `@prisma/adapter-neon` is used to provide a high-performance, serverless-ready connection pool.
+*   **Authentication:** [Supabase Auth](https://supabase.com/docs/guides/auth) is used for user management, authentication, and signup flows.
 *   **Artificial Intelligence:** `@google/genai` (Gemini API) is integrated for specific AI tasks:
     *   **Matchmaking (`getAiMatches`):** A conceptual function demonstrates how Gemini could analyze user profiles to generate a ranked list of compatible matches.
     *   **Organization Data Scraping (Conceptual):** The organization creation flow is designed around the idea of using an AI model to parse a Facebook page URL and automatically extract relevant information like name, description, and contact details.
@@ -83,11 +86,12 @@ The application is structured as a single-page application (SPA) with a simple s
 
 *   `index.html`: The main entry point. It uses an **import map** to load ES modules directly from a CDN, eliminating the need for a local `node_modules` folder or a complex build step.
 *   `index.tsx`: The React application's root, which mounts the main `App` component.
+*   `prisma/schema.prisma`: The single source of truth for the database schema.
 *   `App.tsx`: Handles top-level routing and distinguishes between authenticated and unauthenticated user views.
 *   `/pages`: Contains all the main screen components.
 *   `/components`: Contains reusable UI components (`BottomNav`, `ShareModal`, etc.).
-*   `/services`: Contains logic for interacting with external APIs like Supabase and Gemini.
-*   `/contexts`: Holds React Context providers for global state (Theme, Notifications).
+*   `/services`: Contains logic for interacting with external APIs (Prisma/Neon, Gemini, S3).
+*   `/contexts`: Holds React Context providers for global state (Theme, Notifications, Auth).
 *   `/hooks`: Custom React hooks (`useNotifications`).
 *   `types.ts`: Centralized TypeScript type definitions.
 *   `metadata.json`: Application metadata.

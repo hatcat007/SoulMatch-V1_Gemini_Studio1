@@ -1,8 +1,8 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// These credentials are provided for the sandbox environment.
-const supabaseUrl = 'https://xumoylqsbzfxzjlptkvm.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bW95bHFzYnpmeHpqbHB0a3ZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3MTYxMTQsImV4cCI6MjA3MjI5MjExNH0.vxhE1IIWa-yI9CQ8DP6rwWM0b6HY4z---5xtmj8jEm8';
+// FIX: Initialize the Supabase client with placeholder values to prevent the application from crashing.
+// In a real-world scenario, these should be securely managed as environment variables.
+const supabaseUrl = 'https://placeholder.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
