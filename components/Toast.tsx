@@ -1,6 +1,5 @@
-
-
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 // FIX: Added `Eye` icon for profile view notifications.
 import { X, MessageSquare, Calendar, UserPlus, Info, Eye } from 'lucide-react';
 import type { ToastNotification, } from '../contexts/NotificationContext';
@@ -22,6 +21,7 @@ const ICONS: Record<NotificationType, React.ReactNode> = {
 
 const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
   const [visible, setVisible] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Animate in
@@ -40,20 +40,44 @@ const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
     setTimeout(() => onClose(toast.toastId), 300); 
   };
   
+  const handleClick = () => {
+    if (toast.type !== 'system') {
+        switch (toast.type) {
+            case 'message':
+                if (toast.related_entity_id) navigate(`/chat/${toast.related_entity_id}`);
+                break;
+            case 'event':
+                if (toast.related_entity_id) navigate(`/event/${toast.related_entity_id}`);
+                break;
+            case 'friend_request':
+                navigate('/friends');
+                break;
+            case 'profile_view':
+                if (toast.actor_id) navigate(`/user/${toast.actor_id}`);
+                break;
+            default:
+                break;
+        }
+    }
+    // Close the toast after clicking it
+    handleClose();
+  };
+  
   const icon = ICONS[toast.type] || <Info className="h-6 w-6 text-gray-500" />;
 
   return (
     <div
       role="alert"
       aria-live="polite"
-      className={`w-full max-w-sm bg-white rounded-xl shadow-2xl flex items-start p-4 space-x-3 transition-all duration-300 ease-in-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+      onClick={handleClick}
+      className={`w-full max-w-sm bg-white rounded-xl shadow-2xl flex items-start p-4 space-x-3 transition-all duration-300 ease-in-out ${toast.type !== 'system' ? 'cursor-pointer' : ''} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
     >
         <div className="flex-shrink-0">{icon}</div>
         <div className="flex-1">
             <p className="text-sm font-semibold text-text-primary">{toast.message}</p>
         </div>
         <button 
-            onClick={handleClose} 
+            onClick={(e) => { e.stopPropagation(); handleClose(); }} 
             className="p-1 -m-1 text-gray-400 hover:text-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-primary"
             aria-label="Close notification"
         >

@@ -1,5 +1,66 @@
+
 import { Session } from '@supabase/supabase-js';
 
+// Forward declarations are not a thing in TS interfaces, so we must order them.
+
+// Basic types that are used by others but don't have complex dependencies
+export interface ImageRecord {
+  id: number;
+  image_url: string;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  type: 'event' | 'place';
+}
+
+export interface Activity {
+    id: number;
+    name: string;
+    icon: string;
+}
+
+export interface InterestCategory {
+    id: number;
+    name: string;
+}
+
+export interface Interest {
+    id: number;
+    name: string;
+    category_id: number;
+}
+
+export interface PersonalityTagCategory {
+    id: number;
+    name: string;
+}
+
+export interface PersonalityTag {
+    id: number;
+    name: string;
+    category_id: number;
+}
+
+export interface UserAiDescription {
+  id: number;
+  user_id: number;
+  description: string;
+  created_at: string;
+}
+
+export interface UserPersonalityDimension {
+  id: number;
+  user_id: number;
+  dimension: 'EI' | 'SN' | 'TF' | 'JP';
+  dominant_trait: 'E' | 'I' | 'S' | 'N' | 'T' | 'F' | 'J' | 'P';
+  score: number;
+  description: string;
+}
+
+// User interface, depends on some basic types above
 export interface User {
   id: number;
   name: string;
@@ -19,27 +80,37 @@ export interface User {
   ai_descriptions?: UserAiDescription[];
 }
 
-export interface UserPersonalityDimension {
-  id: number;
-  user_id: number;
-  dimension: 'EI' | 'SN' | 'TF' | 'JP';
-  dominant_trait: 'E' | 'I' | 'S' | 'N' | 'T' | 'F' | 'J' | 'P';
-  score: number;
-  description: string;
+// Organization-related types
+export interface OrganizationOpportunity {
+    name: string;
+    icon: string;
 }
 
-export interface ImageRecord {
-  id: number;
-  image_url: string;
+export interface OrganizationUpdate {
+    id: number;
+    image_url: string;
 }
 
-export interface Category {
+export interface Organization {
   id: number;
   name: string;
-  parent_id: number | null;
-  type: 'event' | 'place';
+  logo_url: string;
+  address: string;
+  description: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  host_name?: string;
+  organization_type?: string;
+  facebook_url?: string;
+  emojis?: string[];
+  opportunities?: OrganizationOpportunity[];
+  updates?: OrganizationUpdate[];
+  auth_id?: string;
+  activities?: { activity: Activity }[];
 }
 
+// Core app entities that depend on User, Organization, etc.
 export interface Event {
   id: number;
   title: string;
@@ -53,11 +124,8 @@ export interface Event {
   description?: string;
   participants?: User[];
   organization_id: number | null;
-  organization?: {
-    name: string;
-    logo_url: string;
-    activities?: { activity: Activity }[];
-  };
+  // FIX: Use the full Organization interface for better type safety and to match query data.
+  organization?: Organization;
   image_url?: string;
   images?: ImageRecord[];
   address?: string;
@@ -85,10 +153,8 @@ export interface Place {
   phone: string;
   opening_hours: string;
   organization_id?: number;
-  organization?: {
-    id: number;
-    name: string;
-  };
+  // FIX: Use the full Organization interface to ensure all properties are available as per the Supabase query.
+  organization?: Organization;
   image_url?: string;
   images?: ImageRecord[];
   category: Category;
@@ -132,35 +198,7 @@ export interface Message {
   };
 }
 
-export interface OrganizationOpportunity {
-    name: string;
-    icon: string;
-}
-
-export interface OrganizationUpdate {
-    id: number;
-    image_url: string;
-}
-
-export interface Organization {
-  id: number;
-  name: string;
-  logo_url: string;
-  address: string;
-  description: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  host_name?: string;
-  organization_type?: string;
-  facebook_url?: string;
-  emojis?: string[];
-  opportunities?: OrganizationOpportunity[];
-  updates?: OrganizationUpdate[];
-  auth_id?: string;
-  activities?: { activity: Activity }[];
-}
-
+// Other related types
 export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';
 
 export interface Notification {
@@ -174,28 +212,6 @@ export interface Notification {
   created_at: string;
   // Eager-loaded on the client
   actor: User | null;
-}
-
-export interface InterestCategory {
-    id: number;
-    name: string;
-}
-
-export interface Interest {
-    id: number;
-    name: string;
-    category_id: number;
-}
-
-export interface PersonalityTagCategory {
-    id: number;
-    name: string;
-}
-
-export interface PersonalityTag {
-    id: number;
-    name: string;
-    category_id: number;
 }
 
 export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';
@@ -226,19 +242,6 @@ export interface Checkin {
   place_id: number;
   user_id_1: number;
   user_id_2: number;
-  created_at: string;
-}
-
-export interface Activity {
-    id: number;
-    name: string;
-    icon: string;
-}
-
-export interface UserAiDescription {
-  id: number;
-  user_id: number;
-  description: string;
   created_at: string;
 }
 

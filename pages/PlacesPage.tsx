@@ -102,9 +102,17 @@ const PlacesPage: React.FC<PlacesPageProps> = ({ places }) => {
 
     const filteredPlaces = useMemo(() => {
         let placesToFilter = places;
+
         if (selectedCategoryId) {
-            placesToFilter = placesToFilter.filter(place => place.category?.id === parseInt(selectedCategoryId, 10));
+            const categoryIdNum = parseInt(selectedCategoryId, 10);
+            // FIX: The filtering logic is now more robust. It checks both the joined category object
+            // and the direct foreign key ID. This prevents errors if the data structure is inconsistent
+            // and ensures the category filter works reliably.
+            placesToFilter = placesToFilter.filter(place => {
+                return place.category?.id === categoryIdNum || place.category_id === categoryIdNum;
+            });
         }
+
         if (searchTerm.trim()) {
             const lowerCaseSearch = searchTerm.toLowerCase();
             placesToFilter = placesToFilter.filter(place => {
@@ -120,8 +128,9 @@ const PlacesPage: React.FC<PlacesPageProps> = ({ places }) => {
     
     const selectedCategoryName = useMemo(() => {
         if (!selectedCategoryId) return null;
-        const place = places.find(p => p.category?.id === parseInt(selectedCategoryId, 10));
-        return place?.category?.name || null;
+        const categoryIdNum = parseInt(selectedCategoryId, 10);
+        const placeWithCategory = places.find(p => p.category?.id === categoryIdNum || p.category_id === categoryIdNum);
+        return placeWithCategory?.category?.name || null;
     }, [selectedCategoryId, places]);
 
     return (

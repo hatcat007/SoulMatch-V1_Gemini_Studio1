@@ -1,136 +1,41 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import type { Interest, InterestCategory, PersonalityTag, PersonalityTagCategory } from '../types';
-import { X, Plus, Loader2, Image as ImageIcon, Search, ChevronDown } from 'lucide-react';
-import { uploadFile } from '../services/s3Service';
+import { Loader2, Heart, BrainCircuit, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const INTEREST_GOAL = 35;
-const TAGS_PER_PAGE = 10;
+import TagSelector from '../components/TagSelector';
+import AnimatedAvatarGraphic from '../components/AnimatedAvatarGraphic';
 
 interface CreateProfilePageProps {
   onProfileCreated: () => void;
 }
 
-const SmartImage: React.FC<{ src: string; alt: string; className: string; }> = ({ src, alt, className }) => {
-    const [displayUrl, setDisplayUrl] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
-    useEffect(() => {
-        let objectUrlToRevoke: string | null = null;
-        if (src.startsWith('blob:')) {
-            setDisplayUrl(src);
-            setIsLoading(false);
-        } else {
-            setIsLoading(true);
-            uploadFile(new File([], src)).then(url => {
-                objectUrlToRevoke = url;
-                setDisplayUrl(url);
-            }).finally(() => setIsLoading(false));
-        }
-        return () => { if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke); };
-    }, [src]);
+const INTEREST_GOAL = 35;
 
-    if (isLoading) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center`}><Loader2 className="animate-spin text-gray-400" size={24} /></div>;
-    if (!displayUrl) return <div className={`${className} bg-gray-200 dark:bg-dark-surface-light rounded-lg flex items-center justify-center`}><ImageIcon className="text-gray-400" size={24} /></div>;
-    return <img src={displayUrl} alt={alt} className={className} />;
-};
-
-const TagSelector: React.FC<{
-    title: string;
-    categories: (InterestCategory | PersonalityTagCategory)[];
-    allTags: (Interest | PersonalityTag)[];
-    selectedTags: (Interest | PersonalityTag)[];
-    onToggleTag: (tag: Interest | PersonalityTag) => void;
-    goal?: number;
-}> = ({ title, categories, allTags, selectedTags, onToggleTag, goal }) => {
-    const [activeCategory, setActiveCategory] = useState<(InterestCategory | PersonalityTagCategory) | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [visibleCount, setVisibleCount] = useState(TAGS_PER_PAGE);
-
-    useEffect(() => {
-        if (!activeCategory && categories.length > 0) {
-            setActiveCategory(categories[0]);
-        }
-    }, [categories, activeCategory]);
-
-    const filteredTags = useMemo(() => {
-        let tags = allTags;
-        if (searchTerm) {
-            tags = tags.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        } else if (activeCategory) {
-            tags = tags.filter(i => i.category_id === activeCategory.id);
-        }
-        return tags;
-    }, [allTags, activeCategory, searchTerm]);
-    
-    const progress = goal ? Math.min(100, (selectedTags.length / goal) * 100) : 0;
-
-    return (
-        <div className="flex flex-col h-[500px] w-full">
-            <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-3">{title}</h2>
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 border border-gray-200 dark:border-dark-border rounded-lg p-3 overflow-hidden">
-                <div className="col-span-1 flex flex-col space-y-1 overflow-y-auto pr-1 scrollbar-hide">
-                    <div className="relative mb-1">
-                        <input type="text" placeholder="Søg..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setVisibleCount(TAGS_PER_PAGE);}} className="w-full text-sm pl-8 pr-2 py-1.5 border border-gray-300 dark:border-dark-border rounded-md bg-white dark:bg-dark-surface-light"/>
-                        <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/>
-                    </div>
-                    {categories.map(cat => {
-                        const count = selectedTags.filter(i => i.category_id === cat.id).length;
-                        return (
-                            <button key={cat.id} type="button" onClick={() => { setActiveCategory(cat); setSearchTerm(''); setVisibleCount(TAGS_PER_PAGE); }}
-                                className={`w-full text-left text-sm font-semibold p-2 rounded-md flex justify-between items-center transition-colors ${activeCategory?.id === cat.id && !searchTerm ? 'bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light' : 'hover:bg-gray-100 dark:hover:bg-dark-surface-light'}`}>
-                                <span>{cat.name}</span>
-                                {count > 0 && <span className="bg-primary text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">{count}</span>}
-                            </button>
-                        );
-                    })}
-                </div>
-                <div className="col-span-1 md:col-span-2 overflow-y-auto flex flex-wrap gap-2 content-start pr-1 scrollbar-hide">
-                    <AnimatePresence>
-                        {filteredTags.slice(0, visibleCount).map(tag => {
-                            const isSelected = selectedTags.some(i => i.id === tag.id);
-                            return (
-                                <motion.button key={tag.id} type="button" onClick={() => onToggleTag(tag)}
-                                    initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                                    className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${isSelected ? 'bg-primary border-primary text-white' : 'bg-gray-100 dark:bg-dark-surface-light border-transparent hover:border-gray-300 dark:hover:border-dark-border'}`}>
-                                    {tag.name}
-                                </motion.button>
-                            );
-                        })}
-                    </AnimatePresence>
-                    {visibleCount < filteredTags.length && (
-                        <button type="button" onClick={() => setVisibleCount(c => c + TAGS_PER_PAGE)} className="w-full text-center text-sm font-semibold text-primary py-2 flex items-center justify-center">
-                            Vis flere <ChevronDown size={16} className="ml-1"/>
-                        </button>
-                    )}
-                </div>
-            </div>
-             <div className="flex-shrink-0 mt-2 p-2 bg-gray-50 dark:bg-dark-surface-light rounded-lg">
-                <div className="flex justify-between items-center">
-                    <p className="text-xs font-semibold text-gray-600 dark:text-dark-text-secondary mb-2">Valgte: {selectedTags.length}{goal && ` / ${goal}`}</p>
-                    {goal && <p className="text-xs font-bold text-primary">{Math.round(progress)}%</p>}
-                </div>
-                {goal && <div className="w-full bg-gray-200 dark:bg-dark-border rounded-full h-1.5 mb-2"><motion.div className="bg-primary h-1.5 rounded-full" animate={{ width: `${progress}%` }} /></div>}
-                <div className="h-12 overflow-y-auto flex flex-wrap gap-1">
-                    <AnimatePresence>
-                    {selectedTags.map(tag => (
-                        <motion.div key={tag.id} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -10 }}
-                            className="flex items-center bg-primary text-white px-2 py-1 rounded-full text-xs">
-                            <span>{tag.name}</span>
-                            <button type="button" onClick={() => onToggleTag(tag)} className="ml-1.5 text-white/70 hover:text-white"><X size={12}/></button>
-                        </motion.div>
-                    ))}
-                    </AnimatePresence>
-                </div>
-            </div>
+const ProgressBar: React.FC<{ step: number; totalSteps: number }> = ({ step, totalSteps }) => (
+    <div className="mb-8">
+        <div className="flex justify-between items-center mb-1">
+            <p className="text-sm font-semibold text-primary">Trin {step} af {totalSteps}</p>
         </div>
-    );
-};
+        <div className="w-full bg-gray-200 dark:bg-dark-border rounded-full h-2">
+            <motion.div
+                className="bg-primary h-2 rounded-full"
+                animate={{ width: `${(step / totalSteps) * 100}%` }}
+                // FIX: Removed the `ease` property to resolve a TypeScript type error. Framer Motion's default easing will be used.
+                transition={{ duration: 0.5 }}
+            />
+        </div>
+    </div>
+);
 
 
 const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated }) => {
     const navigate = useNavigate();
+    const [step, setStep] = useState(1);
+    const totalSteps = 3;
+
     const [name, setName] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
@@ -170,6 +75,26 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
     
     const handlePersonalityTagToggle = (tag: PersonalityTag) => {
         setSelectedPersonalityTags(prev => prev.some(t => t.id === tag.id) ? prev.filter(t => t.id !== tag.id) : [...prev, tag]);
+    };
+
+    const handleNext = () => {
+        if (step === 1) {
+            if (!name.trim() || !age.trim() || !location.trim() || !bio.trim()) {
+                setError('Udfyld venligst alle felter for at fortsætte.');
+                return;
+            }
+             const ageNumber = parseInt(age, 10);
+             if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 120) {
+                setError('Indtast venligst en gyldig alder.');
+                return;
+            }
+        }
+        setError(null);
+        if (step < totalSteps) setStep(s => s + 1);
+    };
+
+    const handleBack = () => {
+        if (step > 1) setStep(s => s + 1);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -220,69 +145,131 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
         onProfileCreated();
     };
 
+    const renderStepContent = () => {
+        const stepVariants = {
+            hidden: { opacity: 0, x: 50 },
+            visible: { opacity: 1, x: 0 },
+            exit: { opacity: 0, x: -50 }
+        };
+
+        return (
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={step}
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    // FIX: Removed the `ease` property to resolve a TypeScript type error. Framer Motion's default easing will be used.
+                    transition={{ duration: 0.4 }}
+                >
+                    {step === 1 && (
+                        <div className="space-y-4">
+                             <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary mb-1">Grundlæggende oplysninger</h2>
+                             <p className="text-sm text-text-secondary dark:text-dark-text-secondary mb-4">Start med det basale. Dette hjælper andre med at lære dig at kende.</p>
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div><label htmlFor="name" className="input-label">Navn</label><input type="text" id="name" value={name} onChange={e => setName(e.target.value)} className="input-field" required /></div>
+                                <div><label htmlFor="age" className="input-label">Alder</label><input type="number" id="age" value={age} onChange={e => setAge(e.target.value)} className="input-field" required /></div>
+                            </div>
+                            <div><label htmlFor="location" className="input-label">Lokation</label><input type="text" id="location" value={location} onChange={e => setLocation(e.target.value)} placeholder="F.eks. Aalborg, Danmark" className="input-field" required /></div>
+                            <div><label htmlFor="bio" className="input-label">Kort bio</label><textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} rows={3} placeholder="Fortæl lidt om dine interesser..." className="input-field" required /></div>
+                        </div>
+                    )}
+                    {step === 2 && (
+                        <div className="min-h-[450px]">
+                            <TagSelector title="Vælg dine interesser" categories={interestCategories} allTags={allInterests} selectedTags={selectedInterests} onToggleTag={tag => handleInterestToggle(tag as Interest)} goal={INTEREST_GOAL} containerHeight="h-full" />
+                        </div>
+                    )}
+                    {step === 3 && (
+                        <div className="min-h-[450px]">
+                            <TagSelector title="Beskriv din personlighed" categories={personalityTagCategories} allTags={allPersonalityTags} selectedTags={selectedPersonalityTags} onToggleTag={tag => handlePersonalityTagToggle(tag as PersonalityTag)} containerHeight="h-full" />
+                        </div>
+                    )}
+                </motion.div>
+            </AnimatePresence>
+        );
+    };
+    
+    const renderGraphic = () => {
+         const graphicVariants = {
+            hidden: { opacity: 0, scale: 0.8 },
+            visible: { opacity: 1, scale: 1 },
+            exit: { opacity: 0, scale: 0.8 }
+        };
+        // FIX: Removed the `ease` property to resolve a TypeScript type error. Framer Motion's default easing will be used.
+        const graphicTransition = { duration: 0.5 };
+
+        switch(step) {
+            case 1:
+                return (
+                    <motion.div key="step1graphic" variants={graphicVariants} initial="hidden" animate="visible" exit="exit" transition={graphicTransition} className="text-center">
+                        <AnimatedAvatarGraphic />
+                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-8">Velkommen til SoulMatch</h2>
+                        <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-2">Lad os få oprettet din profil.</p>
+                    </motion.div>
+                );
+            case 2:
+                return (
+                    <motion.div key="step2graphic" variants={graphicVariants} initial="hidden" animate="visible" exit="exit" transition={graphicTransition} className="text-center">
+                        <Heart size={128} className="text-primary mx-auto" strokeWidth={1.5}/>
+                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-8">Hvad brænder du for?</h2>
+                        <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-2">Dine interesser er nøglen til gode matches.</p>
+                    </motion.div>
+                );
+            case 3:
+                 return (
+                    <motion.div key="step3graphic" variants={graphicVariants} initial="hidden" animate="visible" exit="exit" transition={graphicTransition} className="text-center">
+                        <BrainCircuit size={128} className="text-primary mx-auto" strokeWidth={1.5}/>
+                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-8">Hvem er du?</h2>
+                        <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-2">Vælg de ord der bedst beskriver dig.</p>
+                    </motion.div>
+                );
+            default: return null;
+        }
+    }
+
     return (
-        <div className="min-h-screen w-full bg-gray-50 dark:bg-dark-background p-4 md:p-8 flex items-center justify-center">
-            <form className="w-full max-w-3xl space-y-8" onSubmit={handleSubmit}>
-                <div className="text-center">
-                    <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mb-2">Fortæl os lidt om dig selv</h1>
-                    <p className="text-text-secondary dark:text-dark-text-secondary">Disse oplysninger hjælper os med at finde de bedste matches til dig.</p>
-                </div>
-                {error && <p className="text-red-500 text-center bg-red-100 p-3 rounded-lg text-sm">{error}</p>}
-                
-                {/* Basic Info Section */}
-                <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-lg">
-                    <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Grundlæggende oplysninger</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Navn</label>
-                            <input type="text" id="name" value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-md" required />
-                        </div>
-                        <div>
-                            <label htmlFor="age" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Alder</label>
-                            <input type="number" id="age" value={age} onChange={e => setAge(e.target.value)} className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-md" required />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Lokation</label>
-                            <input type="text" id="location" value={location} onChange={e => setLocation(e.target.value)} placeholder="F.eks. Aalborg, Danmark" className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-md" required />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-1">Kort bio</label>
-                            <textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} rows={3} placeholder="Fortæl lidt om dine interesser..." className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-surface-light border border-gray-300 dark:border-dark-border rounded-md" required />
-                        </div>
+        <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-gray-50 dark:bg-dark-background">
+             <style>{`
+                .input-label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; font-weight: 500; color: #4B5563; }
+                .dark .input-label { color: #9CA3AF; }
+                .input-field { display: block; width: 100%; padding: 0.75rem 1rem; color: #212529; background-color: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 0.5rem; } 
+                .dark .input-field { background-color: #2a3343; border-color: #3c465b; color: #e2e8f0; }
+                .input-field:focus { outline: 2px solid transparent; outline-offset: 2px; border-color: #006B76; box-shadow: 0 0 0 2px #006B76; }
+            `}</style>
+             <div className="hidden lg:flex flex-col items-center justify-center bg-primary-light dark:bg-dark-surface p-12 relative overflow-hidden">
+                 <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent dark:from-black/30"></div>
+                 <AnimatePresence mode="wait">
+                    {renderGraphic()}
+                 </AnimatePresence>
+            </div>
+            
+            <div className="flex flex-col justify-center items-center p-4 sm:p-8">
+                <form className="w-full max-w-lg space-y-6 bg-white dark:bg-dark-surface p-6 sm:p-8 rounded-2xl shadow-xl" onSubmit={handleSubmit}>
+                    <ProgressBar step={step} totalSteps={totalSteps} />
+                    
+                    {error && <p className="text-red-500 text-center bg-red-100 dark:bg-red-900/20 dark:text-red-400 p-3 rounded-lg text-sm">{error}</p>}
+
+                    {renderStepContent()}
+                    
+                    <div className="flex justify-between items-center pt-4">
+                        <button type="button" onClick={handleBack} disabled={step === 1} className="px-6 py-2 rounded-full font-semibold text-text-secondary dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-surface-light disabled:opacity-50">
+                            Tilbage
+                        </button>
+
+                        {step < totalSteps ? (
+                             <button type="button" onClick={handleNext} className="px-8 py-3 rounded-full bg-primary text-white font-bold hover:bg-primary-dark transition shadow-md">
+                                Næste
+                            </button>
+                        ) : (
+                             <button type="submit" disabled={loading} className="px-8 py-3 rounded-full bg-primary text-white font-bold hover:bg-primary-dark transition shadow-md flex items-center justify-center disabled:opacity-50">
+                                {loading && <Loader2 className="animate-spin mr-2" />}
+                                Fortsæt til Personlighedstest
+                            </button>
+                        )}
                     </div>
-                </div>
-
-                {/* Interests Section */}
-                <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-lg">
-                     <TagSelector
-                        title="Vælg dine interesser"
-                        categories={interestCategories}
-                        allTags={allInterests}
-                        selectedTags={selectedInterests}
-                        onToggleTag={tag => handleInterestToggle(tag as Interest)}
-                        goal={INTEREST_GOAL}
-                    />
-                </div>
-
-                {/* Personality Tags Section */}
-                 <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-lg">
-                    <TagSelector
-                        title="Beskriv din personlighed"
-                        categories={personalityTagCategories}
-                        allTags={allPersonalityTags}
-                        selectedTags={selectedPersonalityTags}
-                        onToggleTag={tag => handlePersonalityTagToggle(tag as PersonalityTag)}
-                    />
-                </div>
-
-                {/* Submit Button */}
-                <div>
-                    <button type="submit" disabled={loading} className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50 flex items-center justify-center">
-                        {loading && <Loader2 className="animate-spin mr-2" />}
-                        Fortsæt til Personlighedstest
-                    </button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     );
 };

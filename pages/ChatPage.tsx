@@ -8,6 +8,7 @@ import { fetchPrivateFile, uploadFile } from '../services/s3Service';
 import LoadingScreen from '../components/LoadingScreen';
 import MeetingTimer from '../components/MeetingTimer';
 import ReportUserModal from '../components/ReportUserModal';
+// FIX: Corrected import to align with the new App.tsx structure which provides the chat cache.
 import { useChatCache } from '../App';
 
 // Component for securely displaying images within chat bubbles.

@@ -1,6 +1,8 @@
 
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// FIX: Corrected import statement. The error "File '.../App.tsx' is not a module" is resolved by implementing App.tsx correctly.
 import App from './App';
 
 const rootElement = document.getElementById('root');

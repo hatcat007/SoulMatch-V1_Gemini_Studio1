@@ -1,394 +1,279 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, Calendar, Users, LogOut, Shield, MapPin, Loader2, Image as ImageIcon, Edit, Save, BrainCircuit, X, Trash2, Camera } from 'lucide-react';
+import { Settings, Edit, LogOut, Sun, Moon, Heart, BrainCircuit, Users, Award, Trash2, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../services/supabase';
-import type { User, Interest, PersonalityTag, UserPersonalityDimension, InterestCategory, PersonalityTagCategory, UserAiDescription } from '../types';
+import type { User, Interest, PersonalityTag, UserAiDescription } from '../types';
 import LoadingScreen from '../components/LoadingScreen';
+import { fetchPrivateFile } from '../services/s3Service';
 import PersonalityDimensionChart from '../components/PersonalityDimensionChart';
-import { uploadFile, fetchPrivateFile } from '../services/s3Service';
-import TagSelector from '../components/TagSelector';
-import { generateProfileDescription } from '../services/geminiService';
 import { motion, AnimatePresence } from 'framer-motion';
+import { generateProfileDescription } from '../services/geminiService';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
-    const [displayUrl, setDisplayUrl] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
-
+    const [imageUrl, setImageUrl] = useState<string>('');
     useEffect(() => {
-        let objectUrlToRevoke: string | null = null;
-        let isMounted = true;
-
-        const processUrl = async () => {
-            setIsLoading(true);
-            if (!src) {
-                if(isMounted) { setDisplayUrl(''); setIsLoading(false); }
-                return;
-            }
-
-            if (src.startsWith('blob:') || src.startsWith('data:')) {
-                 if (isMounted) { setDisplayUrl(src); setIsLoading(false); }
-                 return;
-            }
-            
-            try {
-                const url = await fetchPrivateFile(src);
-                if (isMounted) {
-                    if (url.startsWith('blob:')) objectUrlToRevoke = url;
-                    setDisplayUrl(url);
-                }
-            } catch (e) {
-                console.error("Failed to process image source:", e);
-                if(isMounted) setDisplayUrl('');
-            } finally {
-                if(isMounted) setIsLoading(false);
-            }
-        };
-
-        processUrl();
-
+        let objectUrl: string | null = null;
+        if (src) {
+            fetchPrivateFile(src).then(url => {
+                objectUrl = url;
+                setImageUrl(url);
+            });
+        }
         return () => {
-            isMounted = false;
-            if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
+            if (objectUrl && objectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(objectUrl);
+            }
         };
     }, [src]);
-    
-    if(isLoading) {
-        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light rounded-full`}><Loader2 className="animate-spin text-gray-400" size={24}/></div>;
-    }
-    if(!displayUrl) {
-        return <div className={`${className} flex items-center justify-center bg-gray-200 dark:bg-dark-surface-light rounded-full`}><ImageIcon className="text-gray-400" size={24}/></div>;
-    }
-    return <img src={displayUrl} alt={alt} className={className} />;
+
+    if (!imageUrl) return <div className={`${className} bg-gray-200 animate-pulse`} />;
+    return <img src={imageUrl} alt={alt} className={className} />;
 };
 
-
 const ProfilePage: React.FC = () => {
-    const navigate = useNavigate();
-    const { user: authUser, loading: authLoading, refetchUserProfile } = useAuth();
-    
-    // Data state
-    const [user, setUser] = useState<User | null>(null);
-    const [interests, setInterests] = useState<Interest[]>([]);
-    const [personalityTags, setPersonalityTags] = useState<PersonalityTag[]>([]);
-    const [personalityDimensions, setPersonalityDimensions] = useState<UserPersonalityDimension[]>([]);
-    const [savedAiDescriptions, setSavedAiDescriptions] = useState<UserAiDescription[]>([]);
-    
-    // For editing
-    const [isEditing, setIsEditing] = useState(false);
-    const [formData, setFormData] = useState({ bio: '', name: '', age: '', location: '' });
-    const [allInterests, setAllInterests] = useState<Interest[]>([]);
-    const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
-    const [allPersonalityTags, setAllPersonalityTags] = useState<PersonalityTag[]>([]);
-    const [personalityTagCategories, setPersonalityTagCategories] = useState<PersonalityTagCategory[]>([]);
-    const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
-    const [selectedPersonalityTags, setSelectedPersonalityTags] = useState<PersonalityTag[]>([]);
-    const [isSaving, setIsSaving] = useState(false);
-    const avatarInputRef = useRef<HTMLInputElement>(null);
-    const [newAvatarFile, setNewAvatarFile] = useState<File | null>(null);
-    const [newAvatarPreview, setNewAvatarPreview] = useState<string | null>(null);
-    
-    // AI Description state
-    const [aiDescription, setAiDescription] = useState<string | null>(null);
-    const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
-    const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const navigate = useNavigate();
+  const { user, loading: authLoading, refetchUserProfile } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const [activeTab, setActiveTab] = useState<'about' | 'personality' | 'interests'>('about');
+  
+  const [fullUser, setFullUser] = useState<User | null>(null);
+  const [aiDescriptions, setAiDescriptions] = useState<UserAiDescription[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-    const [loading, setLoading] = useState(true);
-    
-    const fetchProfileData = useCallback(async () => {
-        if (!authUser) {
-            if (!authLoading) navigate('/login');
-            return;
-        }
-        
+  useEffect(() => {
+    const fetchFullUserData = async () => {
+      if (user) {
         setLoading(true);
-
         const { data, error } = await supabase
             .from('users')
-            .select(`
-                *,
-                user_interests(interest:interests(*, category:interest_categories(*))),
-                user_personality_tags(tag:personality_tags(*, category:personality_tag_categories(*))),
-                personality_dimensions:user_personality_dimensions(*),
-                user_ai_descriptions(*)
-            `)
-            .order('created_at', { foreignTable: 'user_ai_descriptions', ascending: false })
-            .eq('id', authUser.id)
+            .select('*, interests(*), personality_tags(*), personality_dimensions:user_personality_dimensions(*)')
+            .eq('id', user.id)
             .single();
-
-        if (error || !data) {
-            console.error("Error fetching full user profile:", error);
-            setLoading(false);
-            return;
-        }
         
-        const fetchedUser: User = {
-            ...data,
-            interests: data.user_interests.map((i: any) => i.interest).filter(Boolean),
-            personality_tags: data.user_personality_tags.map((t: any) => t.tag).filter(Boolean),
-            ai_descriptions: data.user_ai_descriptions,
-            personality_dimensions: data.personality_dimensions,
-        };
-        
-        setUser(fetchedUser);
-        setInterests(fetchedUser.interests || []);
-        setPersonalityTags(fetchedUser.personality_tags || []);
-        setPersonalityDimensions(fetchedUser.personality_dimensions || []);
-        setSavedAiDescriptions(data.user_ai_descriptions || []);
-
-        const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
-        const { data: iData } = await supabase.from('interests').select('*');
-        const { data: pCatData } = await supabase.from('personality_tag_categories').select('*').order('name');
-        const { data: pData } = await supabase.from('personality_tags').select('*');
-
-        setAllInterests(iData || []);
-        setInterestCategories(iCatData || []);
-        setAllPersonalityTags(pData || []);
-        setPersonalityTagCategories(pCatData || []);
-        
-        setLoading(false);
-    }, [authUser, authLoading, navigate]);
-
-    useEffect(() => {
-        if (!authLoading) {
-            fetchProfileData();
-        }
-    }, [authLoading, fetchProfileData]);
-
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        navigate('/');
-    };
-
-    const handleEditToggle = () => {
-        if (!user) return;
-        if (!isEditing) {
-            setFormData({ 
-                bio: user.bio || '',
-                name: user.name || '',
-                age: user.age?.toString() || '',
-                location: user.location || '',
-            });
-            setSelectedInterests(interests);
-            setSelectedPersonalityTags(personalityTags);
-        } else {
-            setNewAvatarFile(null);
-            setNewAvatarPreview(null);
-        }
-        setIsEditing(!isEditing);
-    };
-    
-    const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setNewAvatarFile(file);
-            if (newAvatarPreview) {
-                URL.revokeObjectURL(newAvatarPreview);
-            }
-            setNewAvatarPreview(URL.createObjectURL(file));
-        }
-    };
-
-    const handleSaveProfile = async () => {
-        if (!user) return;
-        setIsSaving(true);
-        let newAvatarUrl = user.avatar_url;
-
-        try {
-            if (newAvatarFile) {
-                newAvatarUrl = await uploadFile(newAvatarFile);
-            }
-
-            const updates: Partial<User> = {
-                bio: formData.bio, name: formData.name, age: parseInt(formData.age, 10) || user.age,
-                location: formData.location, avatar_url: newAvatarUrl,
-            };
-
-            const { error: userUpdateError } = await supabase.from('users').update(updates).eq('id', user.id);
-            if (userUpdateError) throw userUpdateError;
-
-            await supabase.from('user_interests').delete().eq('user_id', user.id);
-            const interestLinks = selectedInterests.map(i => ({ user_id: user.id, interest_id: i.id }));
-            if (interestLinks.length > 0) await supabase.from('user_interests').insert(interestLinks);
-
-            await supabase.from('user_personality_tags').delete().eq('user_id', user.id);
-            const tagLinks = selectedPersonalityTags.map(t => ({ user_id: user.id, tag_id: t.id }));
-            if (tagLinks.length > 0) await supabase.from('user_personality_tags').insert(tagLinks);
-            
-            setNewAvatarFile(null);
-            setNewAvatarPreview(null);
-            await fetchProfileData();
-            refetchUserProfile();
-            setIsEditing(false);
-        } catch (err: any) {
-            console.error("Error saving profile:", err);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleGenerateDescription = async () => {
-        if (!user || personalityDimensions.length === 0) return;
-        setIsGeneratingDescription(true);
-        setAiDescription(null);
-        try {
-            const description = await generateProfileDescription({
-                bio: user.bio || '',
-                personality_type: user.personality_type || '',
-                dimensions: personalityDimensions,
-                interests,
-                tags: personalityTags
-            });
-            setAiDescription(description);
-        } catch (e) {
-            console.error("Error generating AI description:", e);
-            setAiDescription("Kunne ikke generere en beskrivelse. Prøv venligst igen.");
-        } finally {
-            setIsGeneratingDescription(false);
-        }
-    };
-    
-    const handleSaveAiDescription = async () => {
-        if (!aiDescription || !user) return;
-        setIsSavingDescription(true);
-        const { data, error } = await supabase
+        const { data: aiDescData, error: aiDescError } = await supabase
             .from('user_ai_descriptions')
-            .insert({ user_id: user.id, description: aiDescription })
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+
+        if (aiDescError) console.error("Error fetching AI descriptions:", aiDescError);
+        else setAiDescriptions(aiDescData || []);
+        
+        if (error) {
+            console.error("Error fetching full user profile:", error);
+        } else if (data) {
+            setFullUser(data as User);
+        }
+        setLoading(false);
+      } else if (!authLoading) {
+         setLoading(false);
+      }
+    };
+    fetchFullUserData();
+  }, [user, authLoading]);
+
+  const handleGenerateDescription = async () => {
+    if (!fullUser) return;
+    setIsGenerating(true);
+    try {
+        const description = await generateProfileDescription({
+            bio: fullUser.bio || '',
+            personality_type: fullUser.personality_type || '',
+            dimensions: fullUser.personality_dimensions || [],
+            interests: fullUser.interests || [],
+            tags: fullUser.personality_tags || [],
+        });
+        
+        const { data: newDesc, error } = await supabase
+            .from('user_ai_descriptions')
+            .insert({ user_id: fullUser.id, description })
             .select()
             .single();
 
-        if (error) {
-            console.error("Error saving AI description:", error);
-        } else if (data) {
-            setSavedAiDescriptions(prev => [data, ...prev]);
-            setAiDescription(null);
-        }
-        setIsSavingDescription(false);
-    };
+        if (error) throw error;
+        
+        setAiDescriptions(prev => [newDesc, ...prev]);
 
-    const handleDeleteAiDescription = async (descriptionId: number) => {
-        const originalDescriptions = savedAiDescriptions;
-        setSavedAiDescriptions(prev => prev.filter(d => d.id !== descriptionId));
-        const { error } = await supabase.from('user_ai_descriptions').delete().eq('id', descriptionId);
-        if (error) {
-            setSavedAiDescriptions(originalDescriptions);
-            console.error("Error deleting AI description:", error);
-        }
-    };
-
-    if (loading || authLoading) {
-        return <LoadingScreen message="Indlæser profil..." />;
+    } catch (e: any) {
+        console.error("Error generating description:", e);
+    } finally {
+        setIsGenerating(false);
     }
+  };
+  
+  const handleDeleteDescription = async (descId: number) => {
+    const originalDescriptions = aiDescriptions;
+    setAiDescriptions(prev => prev.filter(d => d.id !== descId));
 
-    if (!user) {
-        return (
-            <div className="p-4 text-center">
-                <p>Kunne ikke indlæse brugerprofil.</p>
-                <Link to="/login" className="text-primary mt-4">Log ind</Link>
-            </div>
-        );
-    }
+    const { error } = await supabase
+        .from('user_ai_descriptions')
+        .delete()
+        .eq('id', descId);
     
-    return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-dark-background">
-            <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface">
-                <div className="w-8"></div>
-                <h1 className="text-xl font-bold text-text-primary dark:text-dark-text-primary">Profil</h1>
-                <Link to="/settings" className="p-2 -mr-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary"><Settings size={24} /></Link>
-            </header>
+    if (error) {
+        console.error("Error deleting description:", error);
+        setAiDescriptions(originalDescriptions); // revert on error
+    }
+  };
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">
-                <div className="max-w-3xl mx-auto space-y-6">
-                     <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm flex flex-col items-center text-center">
-                        <div className="relative mb-4 group">
-                             <PrivateImage 
-                                src={newAvatarPreview || user.avatar_url}
-                                alt={user.name} 
-                                className="w-36 h-36 rounded-full object-cover ring-4 ring-white dark:ring-dark-surface" 
-                            />
-                             {isEditing && (
-                                <>
-                                    <input type="file" ref={avatarInputRef} onChange={handleAvatarChange} accept="image/*" className="hidden" />
-                                    <button type="button" onClick={() => avatarInputRef.current?.click()} className="absolute inset-0 w-full h-full bg-black/60 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Camera size={32} />
-                                    </button>
-                                </>
-                            )}
-                            {user.online && !isEditing && <span className="absolute bottom-2 right-2 block h-5 w-5 rounded-full bg-green-400 border-2 border-white dark:border-dark-surface"></span>}
-                        </div>
-                        <div className="w-full max-w-xs">
-                            {isEditing ? (
-                                <div className="space-y-2">
-                                    <input value={formData.name} onChange={e => setFormData(p => ({...p, name: e.target.value}))} className="w-full p-2 text-center text-2xl font-bold bg-gray-50 dark:bg-dark-surface-light border rounded-md"/>
-                                    <input value={formData.age} type="number" onChange={e => setFormData(p => ({...p, age: e.target.value}))} className="w-full p-2 text-center bg-gray-50 dark:bg-dark-surface-light border rounded-md"/>
-                                    <input value={formData.location} onChange={e => setFormData(p => ({...p, location: e.target.value}))} className="w-full p-2 text-center bg-gray-50 dark:bg-dark-surface-light border rounded-md"/>
-                                </div>
-                            ) : (
-                                <>
-                                    <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">{user.name}, {user.age}</h2>
-                                    {user.location && <p className="text-text-secondary dark:text-dark-text-secondary mt-1 flex items-center justify-center"><MapPin size={14} className="mr-1.5"/>{user.location}</p>}
-                                </>
-                            )}
-                        </div>
-                        <div className="mt-4 flex space-x-2 w-full">
-                            {isEditing ? (
-                                <>
-                                <button onClick={handleEditToggle} className="flex-1 bg-gray-200 dark:bg-dark-surface-light font-bold py-2 px-4 rounded-full">Annuller</button>
-                                <button onClick={handleSaveProfile} disabled={isSaving} className="flex-1 bg-primary text-white font-bold py-2 px-4 rounded-full flex items-center justify-center disabled:opacity-50">
-                                    {isSaving ? <Loader2 className="animate-spin mr-2"/> : <Save size={16} className="mr-2"/>} Gem
-                                </button>
-                                </>
-                            ) : (
-                                <>
-                                <Link to="/my-events" className="flex-1 bg-gray-100 dark:bg-dark-surface-light text-text-primary dark:text-dark-text-primary font-bold py-2 px-4 rounded-full text-sm flex items-center justify-center hover:bg-gray-200 dark:hover:bg-dark-border"><Calendar size={16} className="mr-1.5"/> Mine Events</Link>
-                                <Link to="/friends" className="flex-1 bg-gray-100 dark:bg-dark-surface-light text-text-primary dark:text-dark-text-primary font-bold py-2 px-4 rounded-full text-sm flex items-center justify-center hover:bg-gray-200 dark:hover:bg-dark-border"><Users size={16} className="mr-1.5"/> Venner</Link>
-                                <button onClick={handleEditToggle} className="flex-shrink-0 bg-primary text-white font-bold p-2.5 rounded-full"><Edit size={20}/></button>
-                                </>
-                            )}
-                        </div>
-                    </section>
-                    
-                    {isEditing ? (
-                        <>
-                         <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><label htmlFor="bio-edit" className="font-bold text-text-primary dark:text-dark-text-primary mb-2 block">Om mig</label><textarea id="bio-edit" value={formData.bio} onChange={e => setFormData(p => ({...p, bio: e.target.value}))} rows={4} className="w-full p-2 bg-gray-50 dark:bg-dark-surface-light border rounded-md"></textarea></section>
-                         <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><TagSelector title="Rediger Interesser" categories={interestCategories} allTags={allInterests} selectedTags={selectedInterests} onToggleTag={tag => setSelectedInterests(prev => prev.some(i => i.id === tag.id) ? prev.filter(i => i.id !== tag.id) : [...prev, tag as Interest])} containerHeight="h-[400px]" /></section>
-                         <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><TagSelector title="Rediger Personlighed" categories={personalityTagCategories} allTags={allPersonalityTags} selectedTags={selectedPersonalityTags} onToggleTag={tag => setSelectedPersonalityTags(prev => prev.some(t => t.id === tag.id) ? prev.filter(t => t.id !== tag.id) : [...prev, tag as PersonalityTag])} containerHeight="h-[400px]" /></section>
-                        </>
-                    ) : (
-                        <>
-                            {user.bio && <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><h3 className="font-bold text-text-primary dark:text-dark-text-primary mb-2">Om mig</h3><p className="text-text-secondary dark:text-dark-text-secondary whitespace-pre-wrap">{user.bio}</p></section>}
-                            {interests.length > 0 && <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><h3 className="font-bold text-text-primary dark:text-dark-text-primary mb-3">Interesser</h3><div className="flex flex-wrap gap-2">{interests.map(interest => (<span key={interest.id} className="bg-primary-light dark:bg-primary/20 text-primary-dark dark:text-primary-light px-3 py-1.5 rounded-full text-sm font-medium">{interest.name}</span>))}</div></section>}
-                            {personalityTags.length > 0 && <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><h3 className="font-bold text-text-primary dark:text-dark-text-primary mb-3">Personlighed</h3><div className="flex flex-wrap gap-2">{personalityTags.map(tag => (<span key={tag.id} className="bg-gray-100 dark:bg-dark-surface-light text-text-secondary dark:text-dark-text-secondary px-3 py-1.5 rounded-full text-sm font-medium">{tag.name}</span>))}</div></section>}
-                            {personalityDimensions.length > 0 && (
-                                <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm">
-                                    <div className="text-center mb-8">
-                                        <h3 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">Din Personlighedstype</h3>
-                                        <p className="text-5xl font-bold text-primary mt-1">{user.personality_type}</p>
-                                    </div>
-                                    <PersonalityDimensionChart dimensions={personalityDimensions} />
-                                    <div className="text-center mt-12"><button onClick={handleGenerateDescription} disabled={isGeneratingDescription} className="bg-primary text-white font-semibold py-3 px-6 rounded-full flex items-center justify-center mx-auto disabled:opacity-70">{isGeneratingDescription ? <Loader2 className="animate-spin" /> : <><BrainCircuit size={18} className="mr-2"/> Beskriv mig</>}</button>
-                                        <AnimatePresence>
-                                        {aiDescription && (
-                                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-4 text-left p-4 bg-primary-light/50 dark:bg-primary/10 rounded-lg text-text-secondary dark:text-dark-text-secondary">
-                                               <p className="whitespace-pre-wrap">{aiDescription}</p>
-                                               <div className="mt-4 flex justify-end"><button onClick={handleSaveAiDescription} disabled={isSavingDescription} className="flex items-center bg-green-500 text-white font-semibold py-2 px-4 rounded-full text-sm hover:bg-green-600 transition disabled:opacity-70">{isSavingDescription ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}Gem</button></div>
-                                            </motion.div>
-                                        )}
-                                        </AnimatePresence>
-                                    </div>
-                                </section>
-                            )}
-                            {savedAiDescriptions.length > 0 && (
-                                <section className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm"><h3 className="font-bold text-text-primary dark:text-dark-text-primary mb-3">Beskrivelser fra min AI-analyse</h3><div className="space-y-4">{savedAiDescriptions.map(desc => (<div key={desc.id} className="bg-gray-50 dark:bg-dark-surface-light p-4 rounded-lg relative group"><p className="text-text-secondary dark:text-dark-text-secondary whitespace-pre-wrap">{desc.description}</p><button onClick={() => handleDeleteAiDescription(desc.id)} className="absolute top-2 right-2 p-1.5 bg-white/50 dark:bg-dark-surface/50 rounded-full text-gray-500 hover:text-red-500 hover:bg-white dark:hover:bg-dark-surface opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Slet beskrivelse"><Trash2 size={14} /></button></div>))}</div></section>
-                            )}
-                            {user.is_admin && <section><Link to="/admin" className="w-full flex items-center justify-center bg-red-100 text-red-700 font-bold py-3 px-4 rounded-lg text-lg hover:bg-red-200 transition duration-300"><Shield className="w-5 h-5 mr-3"/>Admin Panel</Link></section>}
-                            <section><button onClick={handleLogout} className="w-full flex items-center justify-center bg-white dark:bg-dark-surface text-red-500 font-bold py-3 px-4 rounded-lg text-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition duration-300 shadow-sm border border-gray-200 dark:border-dark-border"><LogOut className="w-5 h-5 mr-3"/>Log ud</button></section>
-                        </>
-                    )}
-                </div>
-            </main>
-        </div>
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login', { replace: true });
+  };
+  
+  if (loading || authLoading) {
+    return <LoadingScreen message="Indlæser profil..." />;
+  }
+
+  if (!fullUser) {
+    return (
+      <div className="p-4 text-center">
+        <p>Kunne ikke indlæse brugerprofil.</p>
+        <button onClick={() => refetchUserProfile()} className="text-primary mt-2">Prøv igen</button>
+      </div>
     );
+  }
+  
+  const interests: Interest[] = fullUser.interests || [];
+  const tags: PersonalityTag[] = fullUser.personality_tags || [];
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-dark-background">
+        <header className="flex-shrink-0 bg-white dark:bg-dark-surface p-4 border-b border-gray-200 dark:border-dark-border">
+            <div className="flex items-center justify-between max-w-5xl mx-auto">
+                <button onClick={() => theme === 'dark' ? toggleTheme() : undefined} className={`p-2 rounded-full ${theme !== 'dark' ? 'text-primary bg-primary-light' : 'text-gray-500'}`}><Sun /></button>
+                <h1 className="text-xl font-bold text-primary">SoulMatch</h1>
+                <button onClick={() => theme === 'light' ? toggleTheme() : undefined} className={`p-2 rounded-full ${theme !== 'light' ? 'text-primary bg-primary-light' : 'text-gray-500'}`}><Moon /></button>
+            </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto pb-4">
+             <div className="max-w-xl mx-auto p-4">
+                <section className="text-center mb-6">
+                    <div className="relative inline-block">
+                        <PrivateImage src={fullUser.avatar_url} alt={fullUser.name} className="w-32 h-32 rounded-full mx-auto object-cover border-4 border-white dark:border-dark-surface shadow-lg" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-4">{fullUser.name}, {fullUser.age}</h2>
+                    <p className="text-text-secondary dark:text-dark-text-secondary">{fullUser.location}</p>
+                    {fullUser.personality_type && <p className="mt-2 text-lg font-bold text-primary">{fullUser.personality_type}</p>}
+                    <div className="flex justify-center space-x-2 mt-4">
+                        <Link to="/settings" className="btn-secondary"><Settings size={18} className="mr-2"/> Indstillinger</Link>
+                        <Link to="/edit-profile" className="btn-secondary"><Edit size={18} className="mr-2"/> Rediger profil</Link>
+                    </div>
+                </section>
+                
+                <nav className="flex justify-center border-b border-gray-200 dark:border-dark-border mb-6">
+                    <button onClick={() => setActiveTab('about')} className={`tab-button ${activeTab === 'about' ? 'active' : ''}`}><Users size={18} className="mr-2"/> Om Mig</button>
+                    <button onClick={() => setActiveTab('personality')} className={`tab-button ${activeTab === 'personality' ? 'active' : ''}`}><BrainCircuit size={18} className="mr-2"/> Personlighed</button>
+                    <button onClick={() => setActiveTab('interests')} className={`tab-button ${activeTab === 'interests' ? 'active' : ''}`}><Heart size={18} className="mr-2"/> Interesser</button>
+                </nav>
+
+                <div className="bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm min-h-[300px]">
+                    <AnimatePresence mode="wait">
+                        <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
+                            {activeTab === 'about' && (
+                                <div>
+                                    <h3 className="font-bold text-lg mb-2 text-text-primary dark:text-dark-text-primary">Bio</h3>
+                                    <p className="text-text-secondary dark:text-dark-text-secondary whitespace-pre-wrap">{fullUser.bio || "Ingen bio tilføjet."}</p>
+                                </div>
+                            )}
+                            {activeTab === 'personality' && (
+                                <PersonalityDimensionChart dimensions={fullUser.personality_dimensions || []} />
+                            )}
+                            {activeTab === 'interests' && (
+                                <div>
+                                    <div className="mb-6">
+                                        <h3 className="font-bold text-lg mb-3 text-text-primary dark:text-dark-text-primary">Interesser</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {interests.length > 0 ? interests.map(i => <span key={i.id} className="tag-interest">{i.name}</span>) : <p className="text-sm text-text-secondary">Ingen interesser valgt.</p>}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg mb-3 text-text-primary dark:text-dark-text-primary">Personlighed</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {tags.length > 0 ? tags.map(t => <span key={t.id} className="tag-personality">{t.name}</span>) : <p className="text-sm text-text-secondary">Ingen personlighedstags valgt.</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
+
+                 <section className="mt-8">
+                    <h3 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Beskrivelser fra min AI-analyse</h3>
+                    <motion.div layout className="space-y-4">
+                        <AnimatePresence>
+                            {aiDescriptions.map((desc, index) => (
+                                <motion.div
+                                    key={desc.id}
+                                    layout
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                                    transition={{ duration: 0.3, delay: index * 0.05 }}
+                                    className="relative bg-white dark:bg-dark-surface p-5 rounded-lg shadow-sm border-l-4 border-accent overflow-hidden"
+                                >
+                                    <div className="absolute top-4 right-4 text-accent/80">
+                                        <BrainCircuit size={24} />
+                                    </div>
+                                    <h4 className="font-semibold text-accent mb-2">AI-genereret biografi</h4>
+                                    <p className="text-text-secondary dark:text-dark-text-secondary pr-8">
+                                        {desc.description}
+                                    </p>
+                                    <button
+                                        onClick={() => handleDeleteDescription(desc.id)}
+                                        className="absolute bottom-2 right-2 p-1.5 text-gray-400 hover:text-red-500 rounded-full hover:bg-gray-100 dark:hover:bg-dark-surface-light"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                    </motion.div>
+                    <div className="mt-6 text-center">
+                        <button 
+                            onClick={handleGenerateDescription}
+                            disabled={isGenerating}
+                            className="inline-flex items-center justify-center bg-accent text-white font-bold py-2 px-5 rounded-full text-sm hover:bg-opacity-80 transition-colors shadow-md disabled:opacity-70 disabled:cursor-wait"
+                        >
+                            {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Sparkles size={16} className="mr-2" />}
+                            {isGenerating ? 'Genererer...' : 'Generer ny biografi med AI'}
+                        </button>
+                    </div>
+                </section>
+                
+                 <div className="mt-8 grid grid-cols-2 gap-4">
+                    <Link to="/friends" className="profile-grid-link"><Users size={20} className="mr-2"/> Mine Venner</Link>
+                    <Link to="/my-events" className="profile-grid-link"><Award size={20} className="mr-2"/> Mine Events</Link>
+                 </div>
+                 
+                 <div className="mt-8 flex justify-center">
+                    <button onClick={handleLogout} className="flex items-center text-red-500 font-bold py-2 px-4 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20">
+                        <LogOut size={18} className="mr-2"/> Log ud
+                    </button>
+                 </div>
+             </div>
+        </main>
+        <style>{`
+            .btn-secondary { display: inline-flex; align-items: center; background-color: #F3F4F6; color: #374151; font-weight: 600; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; }
+            .dark .btn-secondary { background-color: #374151; color: #D1D5DB; }
+            .tab-button { padding: 0.75rem 1rem; font-weight: 600; border-bottom: 2px solid transparent; color: #6B7280; display: inline-flex; align-items: center; }
+            .dark .tab-button { color: #9CA3AF; }
+            .tab-button.active { color: #006B76; border-color: #006B76; }
+            .tag-interest { background-color: #DBEAFE; color: #1E40AF; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; }
+            .dark .tag-interest { background-color: #1E3A8A; color: #BFDBFE; }
+            .tag-personality { background-color: #E0E7FF; color: #4338CA; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; }
+            .dark .tag-personality { background-color: #3730A3; color: #C7D2FE; }
+            .profile-grid-link { display: flex; align-items: center; justify-content: center; background-color: #fff; border-radius: 0.5rem; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); font-weight: 600; padding: 1rem; }
+            .dark .profile-grid-link { background-color: #1f2937; color: #D1D5DB; }
+        `}</style>
+    </div>
+  );
 };
 
 export default ProfilePage;

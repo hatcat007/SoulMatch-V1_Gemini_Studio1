@@ -10,7 +10,7 @@ CREATE TABLE "public"."users" (
     "emojis" text[],
     "personality_test_completed" boolean DEFAULT false NOT NULL,
     "is_admin" boolean DEFAULT false NOT NULL,
-    "created_at" timestamptz DEFAULT now() NOT NULL,
+    "created_at" timestamz DEFAULT now() NOT NULL,
     "auth_id" uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
@@ -196,14 +196,78 @@ CREATE TABLE "public"."drop_in_invitations" (
     "created_at" timestamptz DEFAULT now() NOT NULL
 );
 
+-- Function to get the current user's public.users.id from their auth.uid()
+-- This is more secure as it avoids giving broad SELECT permissions on the users table
+-- for RLS policies on other tables.
+CREATE OR REPLACE FUNCTION get_current_user_id()
+RETURNS bigint AS $$
+  SELECT id FROM public.users WHERE auth_id = auth.uid() LIMIT 1;
+$$ LANGUAGE sql SECURITY DEFINER;
+
+
+-- RLS Policies for Users
+ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can see all users" ON "public"."users";
+CREATE POLICY "Authenticated users can see all users" ON "public"."users"
+AS PERMISSIVE FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Users can insert their own profile" ON "public"."users";
+CREATE POLICY "Users can insert their own profile" ON "public"."users"
+AS PERMISSIVE FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = auth_id);
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON "public"."users";
+CREATE POLICY "Users can update their own profile" ON "public"."users"
+AS PERMISSIVE FOR UPDATE
+TO authenticated
+USING (auth.uid() = auth_id)
+WITH CHECK (auth.uid() = auth_id);
+
+DROP POLICY IF EXISTS "Users can delete their own profile" ON "public"."users";
+CREATE POLICY "Users can delete their own profile" ON "public"."users"
+AS PERMISSIVE FOR DELETE
+TO authenticated
+USING (auth.uid() = auth_id);
+
+
+-- RLS Policies for Drop-in Invitations
 ALTER TABLE "public"."drop_in_invitations" ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow authenticated users to read all drop-ins" ON "public"."drop_in_invitations";
 CREATE POLICY "Allow authenticated users to read all drop-ins" ON "public"."drop_in_invitations"
 AS PERMISSIVE FOR SELECT
 TO authenticated
 USING (true);
 
+DROP POLICY IF EXISTS "Allow users to create their own drop-ins" ON "public"."drop_in_invitations";
 CREATE POLICY "Allow users to create their own drop-ins" ON "public"."drop_in_invitations"
 AS PERMISSIVE FOR INSERT
 TO authenticated
-WITH CHECK (auth.uid() = (SELECT auth_id FROM users WHERE id = creator_user_id));
+WITH CHECK (creator_user_id = get_current_user_id());
+
+-- RLS Policies for Event Participation
+ALTER TABLE "public"."event_participants" ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated users to read event participants" ON "public"."event_participants";
+CREATE POLICY "Allow authenticated users to read event participants" ON "public"."event_participants"
+AS PERMISSIVE FOR SELECT
+TO authenticated
+USING (true);
+
+-- FIX: Replaced subquery with a SECURITY DEFINER function call to avoid permission issues.
+DROP POLICY IF EXISTS "Allow users to join events for themselves" ON "public"."event_participants";
+CREATE POLICY "Allow users to join events for themselves" ON "public"."event_participants"
+AS PERMISSIVE FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- FIX: Replaced subquery with a SECURITY DEFINER function call to avoid permission issues.
+DROP POLICY IF EXISTS "Allow users to leave events they have joined" ON "public"."event_participants";
+CREATE POLICY "Allow users to leave events they have joined" ON "public"."event_participants"
+AS PERMISSIVE FOR DELETE
+TO authenticated
+USING (user_id = get_current_user_id());

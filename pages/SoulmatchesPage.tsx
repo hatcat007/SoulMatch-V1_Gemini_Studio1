@@ -118,7 +118,7 @@ const SoulmatchesPage: React.FC = () => {
 
         const { data: allUsersData, error: usersError } = await supabase
             .from('users')
-            .select(`*, interests:user_interests(interest:interests(id, name, category_id)), dimensions:user_personality_dimensions(dimension, dominant_trait, score), personality_tags:user_personality_tags(tag:personality_tags(id, name, category_id))`)
+            .select(`*, interests(id, name, category_id), personality_tags(id, name, category_id), dimensions:user_personality_dimensions(dimension, dominant_trait, score)`)
             .eq('personality_test_completed', true)
             .not('bio', 'ilike', 'Kontaktperson for %');
         
@@ -130,9 +130,9 @@ const SoulmatchesPage: React.FC = () => {
         
         const mapUserData = (user: any) => ({
             ...user,
-            interests: user.interests.map((i: any) => i.interest).filter(Boolean),
+            interests: user.interests || [],
             dimensions: user.dimensions || [],
-            personality_tags: user.personality_tags.map((t: any) => t.tag).filter(Boolean),
+            personality_tags: user.personality_tags || [],
         });
 
         const currentUserData = allUsersData.find(u => u.id === userId);

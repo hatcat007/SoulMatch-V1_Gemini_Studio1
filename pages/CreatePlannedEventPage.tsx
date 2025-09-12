@@ -219,8 +219,7 @@ const CreatePlannedEventPage: React.FC = () => {
 
         setIsSubmitting(true);
         setError(null);
-        let submissionError: string | null = null;
-
+        
         try {
             // 1. Create the event
             const { data: newEvent, error: eventError } = await supabase.from('events').insert({
@@ -244,57 +243,52 @@ const CreatePlannedEventPage: React.FC = () => {
             if (eventError) throw eventError;
             if (!newEvent) throw new Error("Event data not returned after creation.");
 
+            // Automatically add the creator as a participant
+            const { error: participantError } = await supabase
+                .from('event_participants')
+                .insert({ event_id: newEvent.id, user_id: user.id });
+
+            if (participantError) {
+                // This isn't fatal, but we should let the user know by throwing the error.
+                throw new Error(`Event oprettet, men du kunne ikke tilføjes som deltager automatisk: ${participantError.message}`);
+            }
+
             // 2. Link images
             if (formData.images.length > 0) {
                 const eventImages = formData.images.map(imageUrl => ({ event_id: newEvent.id, image_url: imageUrl }));
                 const { error: imageError } = await supabase.from('event_images').insert(eventImages);
-                if (imageError) {
-                    submissionError = `Fejl ved linkning af billeder: ${imageError.message}`;
-                }
+                if (imageError) console.warn(`Fejl ved linkning af billeder: ${imageError.message}`);
             }
 
             // 3. Link interests
             if (formData.selectedInterestIds.length > 0) {
                 const { error: interestError } = await supabase.rpc('add_interests_to_event', { p_event_id: newEvent.id, p_interest_ids: formData.selectedInterestIds });
-                if (interestError) {
-                    submissionError = (submissionError ? submissionError + "\n" : "") + `Fejl ved linkning af interesser: ${interestError.message}`;
-                }
+                if (interestError) console.warn(`Fejl ved linkning af interesser: ${interestError.message}`);
             }
             
             // 4. Link activities
             if (formData.selectedActivityIds.length > 0) {
                 const { error: activityError } = await supabase.rpc('add_activities_to_event', { p_event_id: newEvent.id, p_activity_ids: formData.selectedActivityIds });
-                if (activityError) {
-                    submissionError = (submissionError ? submissionError + "\n" : "") + `Fejl ved linkning af aktiviteter: ${activityError.message}`;
-                }
+                if (activityError) console.warn(`Fejl ved linkning af aktiviteter: ${activityError.message}`);
             }
             
-            if (!submissionError) {
-                 // 5. Create notification
-                const notificationMessage = `Du oprettede event "${formData.eventName}", SÅDAN!, den er nu online på SoulMatch!🌍🤩`;
-                const { error: notificationError } = await supabase.from('notifications').insert({
-                    user_id: user.id,
-                    actor_id: user.id,
-                    type: 'event',
-                    message: notificationMessage,
-                    related_entity_id: newEvent.id,
-                });
-
-                if (notificationError) {
-                    console.warn("Could not create success notification:", notificationError);
-                }
-                
-                // 6. Clean up and navigate with a delay
-                setFormData(initialFormState);
-                setSelectedInterests([]);
-                setSelectedActivities([]);
-                // Add a short delay to allow the toast notification to appear before navigating.
-                setTimeout(() => {
-                    navigate('/home');
-                }, 300);
-            } else {
-                setError(submissionError);
-            }
+            // 5. Create notification
+            const notificationMessage = `Du oprettede event "${formData.eventName}", SÅDAN!, den er nu online på SoulMatch!🌍🤩`;
+            await supabase.from('notifications').insert({
+                user_id: user.id,
+                actor_id: user.id,
+                type: 'event',
+                message: notificationMessage,
+                related_entity_id: newEvent.id,
+            });
+            
+            // 6. Clean up and navigate
+            setFormData(initialFormState);
+            setSelectedInterests([]);
+            setSelectedActivities([]);
+            setTimeout(() => {
+                navigate('/home');
+            }, 300);
            
         } catch (err: any) {
             console.error("Failed to create event:", err);

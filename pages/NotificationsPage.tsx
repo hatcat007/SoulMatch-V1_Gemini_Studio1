@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, Info, Loader2, Image as ImageIcon } from 'lucide-react';
@@ -82,8 +81,34 @@ const groupNotificationsByDate = (notifications: Notification[]) => {
 };
 
 const NotificationItem: React.FC<{ notification: Notification }> = ({ notification }) => {
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    switch (notification.type) {
+      case 'message':
+        if (notification.related_entity_id) navigate(`/chat/${notification.related_entity_id}`);
+        break;
+      case 'event':
+        if (notification.related_entity_id) navigate(`/event/${notification.related_entity_id}`);
+        break;
+      case 'friend_request':
+        navigate('/friends');
+        break;
+      case 'profile_view':
+        if (notification.actor_id) navigate(`/user/${notification.actor_id}`);
+        break;
+      default:
+        break; // System notifications are not clickable
+    }
+  };
+
   return (
-    <div className={`flex items-start space-x-4 py-3 px-2 rounded-lg ${!notification.read ? 'bg-primary-light/50 dark:bg-primary/10' : ''}`}>
+    <div 
+        onClick={handleClick}
+        className={`flex items-start space-x-4 py-3 px-2 rounded-lg transition-colors duration-200 
+                   ${!notification.read ? 'bg-primary-light/50 dark:bg-primary/10' : ''} 
+                   ${notification.type !== 'system' ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-surface-light' : ''}`}
+    >
       <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center">
         {notification.actor ? (
           <PrivateImage src={notification.actor.avatar_url} alt={notification.actor.name} className="w-full h-full rounded-full object-cover ring-1 ring-gray-200 dark:ring-dark-border" />
