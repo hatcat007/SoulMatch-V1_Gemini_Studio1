@@ -90,7 +90,7 @@ const SettingsPage: React.FC = () => {
     }, [googleCalendar?.connected]);
 
     const handleConnectGoogle = () => {
-        const GOOGLE_CLIENT_ID = 'DIT_GOOGLE_CLIENT_ID_HER'; // <-- VIGTIGT: Udskift med dit rigtige Client ID
+        const GOOGLE_CLIENT_ID = '166465116380-etd98slspbsnp9thds7v4b2rspsiile9.apps.googleusercontent.com'; // <-- VIGTIGT: Udskift med dit rigtige Client ID
 
         // VIGTIGT: Redirect URI må IKKE indeholde et hash (#) og skal matche
         // præcis det, du har indtastet i Google Cloud Console.
