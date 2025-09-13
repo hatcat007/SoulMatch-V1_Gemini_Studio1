@@ -4,6 +4,7 @@ import { Search, SlidersHorizontal, X, ImageIcon, Users, Award } from 'lucide-re
 import type { Place } from '../types';
 import NotificationIcon from '../components/NotificationIcon';
 import { fetchPrivateFile } from '../services/s3Service';
+import PlacesMapView from '../components/PlacesMapView';
 
 interface PlacesPageProps {
     places: Place[];
@@ -140,6 +141,9 @@ const PlacesPage: React.FC<PlacesPageProps> = ({ places }) => {
                 <h1 className="text-2xl font-bold text-primary">SoulMatch</h1>
                 <NotificationIcon />
             </div>
+
+            <PlacesMapView places={filteredPlaces} />
+            
             <div className="relative mb-4">
                 <input 
                     type="text" 

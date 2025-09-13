@@ -1,0 +1,18 @@
+ALTER TABLE public.places
+ADD COLUMN latitude double precision,
+ADD COLUMN longitude double precision;
+
+-- Update some existing places with coordinates
+-- (Coordinates are approximate, found via online tools)
+
+-- Kompasset, Aalborg
+UPDATE public.places SET latitude = 57.04882, longitude = 9.921746 WHERE name = 'Kompasset';
+
+-- Bobs, Copenhagen
+UPDATE public.places SET latitude = 55.67956, longitude = 12.57245 WHERE name = 'Bobs';
+
+-- Studenterhuset, Aalborg
+UPDATE public.places SET latitude = 57.05011, longitude = 9.91689 WHERE name = 'Studenterhuset';
+
+-- Studenterhuset, København
+UPDATE public.places SET latitude = 55.6797, longitude = 12.5734 WHERE name = 'Studenterhuset København';

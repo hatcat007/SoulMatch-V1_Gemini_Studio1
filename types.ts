@@ -1,5 +1,4 @@
 
-import { Session } from '@supabase/supabase-js';
 
 // Forward declarations are not a thing in TS interfaces, so we must order them.
 
@@ -161,6 +160,8 @@ export interface Place {
   category_id: number;
   place_activities?: { activity: Activity }[];
   place_interests?: { interest: Interest }[];
+  latitude?: number;
+  longitude?: number;
   is_certified?: boolean;
 }
 

@@ -1,18 +1,19 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import type { Interest, InterestCategory, PersonalityTag, PersonalityTagCategory } from '../types';
-import { Loader2, Heart, BrainCircuit, User as UserIcon } from 'lucide-react';
+import { Loader2, Heart, BrainCircuit, User as UserIcon, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TagSelector from '../components/TagSelector';
 import AnimatedAvatarGraphic from '../components/AnimatedAvatarGraphic';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CreateProfilePageProps {
   onProfileCreated: () => void;
 }
 
 const INTEREST_GOAL = 35;
+const TAG_GOAL = 15;
 
 const ProgressBar: React.FC<{ step: number; totalSteps: number }> = ({ step, totalSteps }) => (
     <div className="mb-8">
@@ -32,21 +33,14 @@ const ProgressBar: React.FC<{ step: number; totalSteps: number }> = ({ step, tot
 
 
 const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated }) => {
-    const navigate = useNavigate();
+    const { user } = useAuth();
     const [step, setStep] = useState(1);
-    const totalSteps = 3;
-
-    const [name, setName] = useState('');
-    const [age, setAge] = useState('');
-    const [location, setLocation] = useState('');
-    const [bio, setBio] = useState('');
+    const [formData, setFormData] = useState({ name: '', age: '', location: '', bio: '' });
     
-    // Interests state
     const [interestCategories, setInterestCategories] = useState<InterestCategory[]>([]);
     const [allInterests, setAllInterests] = useState<Interest[]>([]);
     const [selectedInterests, setSelectedInterests] = useState<Interest[]>([]);
-    
-    // Personality tags state
+
     const [personalityTagCategories, setPersonalityTagCategories] = useState<PersonalityTagCategory[]>([]);
     const [allPersonalityTags, setAllPersonalityTags] = useState<PersonalityTag[]>([]);
     const [selectedPersonalityTags, setSelectedPersonalityTags] = useState<PersonalityTag[]>([]);
@@ -55,221 +49,177 @@ const CreateProfilePage: React.FC<CreateProfilePageProps> = ({ onProfileCreated 
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchTagData = async () => {
+        const fetchData = async () => {
             const { data: iCatData } = await supabase.from('interest_categories').select('*').order('name');
             const { data: iData } = await supabase.from('interests').select('*');
-            if (iCatData) setInterestCategories(iCatData);
-            if (iData) setAllInterests(iData);
+            setInterestCategories(iCatData || []);
+            setAllInterests(iData || []);
             
             const { data: pCatData } = await supabase.from('personality_tag_categories').select('*').order('name');
             const { data: pData } = await supabase.from('personality_tags').select('*');
-            if (pCatData) setPersonalityTagCategories(pCatData);
-            if (pData) setAllPersonalityTags(pData);
+            setPersonalityTagCategories(pCatData || []);
+            setAllPersonalityTags(pData || []);
         };
-        fetchTagData();
+        fetchData();
     }, []);
 
-    const handleInterestToggle = (interest: Interest) => {
-        setSelectedInterests(prev => prev.some(i => i.id === interest.id) ? prev.filter(i => i.id !== interest.id) : [...prev, interest]);
-    };
-    
-    const handlePersonalityTagToggle = (tag: PersonalityTag) => {
-        setSelectedPersonalityTags(prev => prev.some(t => t.id === tag.id) ? prev.filter(t => t.id !== tag.id) : [...prev, tag]);
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
     const handleNext = () => {
+        setError(null);
         if (step === 1) {
-            if (!name.trim() || !age.trim() || !location.trim() || !bio.trim()) {
-                setError('Udfyld venligst alle felter for at fortsætte.');
+            if (!formData.name.trim() || !formData.age.trim() || !formData.location.trim() || !formData.bio.trim()) {
+                setError("Udfyld venligst alle felter.");
                 return;
             }
-             const ageNumber = parseInt(age, 10);
-             if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 120) {
-                setError('Indtast venligst en gyldig alder.');
+             if (isNaN(parseInt(formData.age, 10)) || parseInt(formData.age, 10) < 16) {
+                setError("Du skal være mindst 16 år gammel.");
                 return;
             }
         }
-        setError(null);
-        if (step < totalSteps) setStep(s => s + 1);
+        if (step === 2 && selectedInterests.length < INTEREST_GOAL) {
+            setError(`Vælg venligst mindst ${INTEREST_GOAL} interesser for det bedste match.`);
+            return;
+        }
+        if (step === 3 && selectedPersonalityTags.length < TAG_GOAL) {
+             setError(`Vælg venligst mindst ${TAG_GOAL} personlighedstags.`);
+             return;
+        }
+
+        if (step < 3) setStep(step + 1);
+        else handleSubmit();
     };
 
     const handleBack = () => {
-        if (step > 1) setStep(s => s + 1);
+        if (step > 1) setStep(step - 1);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async () => {
+        if (!user) { setError("Bruger ikke fundet. Prøv venligst at logge ind igen."); return; }
         setLoading(true);
         setError(null);
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            setError('Du skal være logget ind for at oprette en profil.');
-            setLoading(false);
-            navigate('/login');
-            return;
-        }
-
-        const ageNumber = parseInt(age, 10);
-        if (isNaN(ageNumber) || ageNumber <= 0) {
-            setError('Indtast venligst en gyldig alder.');
-            setLoading(false);
-            return;
-        }
-
-        const { data: profileData, error: upsertError } = await supabase
+        
+        // Update user profile
+        const { error: profileError } = await supabase
             .from('users')
-            .upsert({ auth_id: user.id, name, age: ageNumber, location, bio }, { onConflict: 'auth_id' })
-            .select().single();
+            .update({
+                name: formData.name,
+                age: parseInt(formData.age, 10),
+                location: formData.location,
+                bio: formData.bio,
+            })
+            .eq('auth_id', user.auth_id);
 
-        if (upsertError || !profileData) {
-            setError(upsertError?.message || 'Kunne ikke gemme profil.');
-            setLoading(false);
-            return;
-        }
-
-        // Save interests
-        await supabase.from('user_interests').delete().eq('user_id', profileData.id);
+        if (profileError) { setError(profileError.message); setLoading(false); return; }
+        
+        // Sync interests
+        await supabase.from('user_interests').delete().eq('user_id', user.id);
         if (selectedInterests.length > 0) {
-            const userInterestsData = selectedInterests.map(i => ({ user_id: profileData.id, interest_id: i.id }));
-            await supabase.from('user_interests').insert(userInterestsData);
+            await supabase.from('user_interests').insert(selectedInterests.map(i => ({ user_id: user.id, interest_id: i.id })));
         }
         
-        // Save personality tags
-        await supabase.from('user_personality_tags').delete().eq('user_id', profileData.id);
+        // Sync personality tags
+        await supabase.from('user_personality_tags').delete().eq('user_id', user.id);
         if (selectedPersonalityTags.length > 0) {
-            const userTagsData = selectedPersonalityTags.map(t => ({ user_id: profileData.id, tag_id: t.id }));
-            await supabase.from('user_personality_tags').insert(userTagsData);
+            await supabase.from('user_personality_tags').insert(selectedPersonalityTags.map(t => ({ user_id: user.id, tag_id: t.id })));
         }
-        
+
+        setLoading(false);
         onProfileCreated();
     };
+    
+    const StepContent: React.FC<{ step: number }> = ({ step }) => {
+        const stepDetails = [
+            { icon: UserIcon, title: "Fortæl os om dig selv", description: "Dette hjælper os med at finde de bedste matches til dig." },
+            { icon: Heart, title: "Hvad er dine interesser?", description: `Vælg mindst ${INTEREST_GOAL} for det mest præcise match.` },
+            { icon: BrainCircuit, title: "Hvordan beskriver du din personlighed?", description: `Vælg mindst ${TAG_GOAL} tags, der passer bedst på dig.` }
+        ];
 
-    const renderStepContent = () => {
-        const stepVariants = {
-            hidden: { opacity: 0, x: 50 },
-            visible: { opacity: 1, x: 0 },
-            exit: { opacity: 0, x: -50 }
-        };
+        const currentStep = stepDetails[step - 1];
 
         return (
-            <AnimatePresence mode="wait">
-                <motion.div
-                    key={step}
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    // FIX: Removed the `ease` property to resolve a TypeScript type error. Framer Motion's default easing will be used.
-                    transition={{ duration: 0.4 }}
-                >
-                    {step === 1 && (
-                        <div className="space-y-4">
-                             <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary mb-1">Grundlæggende oplysninger</h2>
-                             <p className="text-sm text-text-secondary dark:text-dark-text-secondary mb-4">Start med det basale. Dette hjælper andre med at lære dig at kende.</p>
-                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div><label htmlFor="name" className="input-label">Navn</label><input type="text" id="name" value={name} onChange={e => setName(e.target.value)} className="input-field" required /></div>
-                                <div><label htmlFor="age" className="input-label">Alder</label><input type="number" id="age" value={age} onChange={e => setAge(e.target.value)} className="input-field" required /></div>
-                            </div>
-                            <div><label htmlFor="location" className="input-label">Lokation</label><input type="text" id="location" value={location} onChange={e => setLocation(e.target.value)} placeholder="F.eks. Aalborg, Danmark" className="input-field" required /></div>
-                            <div><label htmlFor="bio" className="input-label">Kort bio</label><textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} rows={3} placeholder="Fortæl lidt om dine interesser..." className="input-field" required /></div>
-                        </div>
-                    )}
-                    {step === 2 && (
-                        <div className="min-h-[450px]">
-                            <TagSelector title="Vælg dine interesser" categories={interestCategories} allTags={allInterests} selectedTags={selectedInterests} onToggleTag={tag => handleInterestToggle(tag as Interest)} goal={INTEREST_GOAL} containerHeight="h-full" />
-                        </div>
-                    )}
-                    {step === 3 && (
-                        <div className="min-h-[450px]">
-                            <TagSelector title="Beskriv din personlighed" categories={personalityTagCategories} allTags={allPersonalityTags} selectedTags={selectedPersonalityTags} onToggleTag={tag => handlePersonalityTagToggle(tag as PersonalityTag)} containerHeight="h-full" />
-                        </div>
-                    )}
-                </motion.div>
-            </AnimatePresence>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+                <div className="flex items-center text-left mb-6">
+                    <div className="bg-primary-light dark:bg-primary/20 text-primary p-3 rounded-full mr-4">
+                        <currentStep.icon size={28} />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">{currentStep.title}</h2>
+                        <p className="text-text-secondary dark:text-dark-text-secondary">{currentStep.description}</p>
+                    </div>
+                </div>
+                {step === 1 && (
+                    <div className="space-y-4">
+                        <input name="name" placeholder="Fulde Navn" value={formData.name} onChange={handleInputChange} className="input-style" />
+                        <input name="age" type="number" placeholder="Alder" value={formData.age} onChange={handleInputChange} className="input-style" />
+                        <input name="location" placeholder="By" value={formData.location} onChange={handleInputChange} className="input-style" />
+                        <textarea name="bio" placeholder="Skriv en kort bio om dig selv..." rows={4} value={formData.bio} onChange={handleInputChange} className="input-style w-full"></textarea>
+                    </div>
+                )}
+                {step === 2 && (
+                    <TagSelector 
+                        title=""
+                        categories={interestCategories}
+                        allTags={allInterests}
+                        selectedTags={selectedInterests}
+                        onToggleTag={(tag) => setSelectedInterests(prev => prev.some(i => i.id === tag.id) ? prev.filter(i => i.id !== tag.id) : [...prev, tag as Interest])}
+                        goal={INTEREST_GOAL}
+                    />
+                )}
+                {step === 3 && (
+                    <TagSelector
+                        title=""
+                        categories={personalityTagCategories}
+                        allTags={allPersonalityTags}
+                        selectedTags={selectedPersonalityTags}
+                        onToggleTag={(tag) => setSelectedPersonalityTags(prev => prev.some(t => t.id === tag.id) ? prev.filter(t => t.id !== tag.id) : [...prev, tag as PersonalityTag])}
+                        goal={TAG_GOAL}
+                    />
+                )}
+            </motion.div>
         );
     };
-    
-    const renderGraphic = () => {
-         const graphicVariants = {
-            hidden: { opacity: 0, scale: 0.8 },
-            visible: { opacity: 1, scale: 1 },
-            exit: { opacity: 0, scale: 0.8 }
-        };
-        // FIX: Removed the `ease` property to resolve a TypeScript type error. Framer Motion's default easing will be used.
-        const graphicTransition = { duration: 0.5 };
-
-        switch(step) {
-            case 1:
-                return (
-                    <motion.div key="step1graphic" variants={graphicVariants} initial="hidden" animate="visible" exit="exit" transition={graphicTransition} className="text-center">
-                        <AnimatedAvatarGraphic />
-                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-8">Velkommen til SoulMatch</h2>
-                        <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-2">Lad os få oprettet din profil.</p>
-                    </motion.div>
-                );
-            case 2:
-                return (
-                    <motion.div key="step2graphic" variants={graphicVariants} initial="hidden" animate="visible" exit="exit" transition={graphicTransition} className="text-center">
-                        <Heart size={128} className="text-primary mx-auto" strokeWidth={1.5}/>
-                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-8">Hvad brænder du for?</h2>
-                        <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-2">Dine interesser er nøglen til gode matches.</p>
-                    </motion.div>
-                );
-            case 3:
-                 return (
-                    <motion.div key="step3graphic" variants={graphicVariants} initial="hidden" animate="visible" exit="exit" transition={graphicTransition} className="text-center">
-                        <BrainCircuit size={128} className="text-primary mx-auto" strokeWidth={1.5}/>
-                        <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-8">Hvem er du?</h2>
-                        <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-2">Vælg de ord der bedst beskriver dig.</p>
-                    </motion.div>
-                );
-            default: return null;
-        }
-    }
 
     return (
         <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-gray-50 dark:bg-dark-background">
-             <style>{`
-                .input-label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; font-weight: 500; color: #4B5563; }
-                .dark .input-label { color: #9CA3AF; }
-                .input-field { display: block; width: 100%; padding: 0.75rem 1rem; color: #212529; background-color: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 0.5rem; } 
-                .dark .input-field { background-color: #2a3343; border-color: #3c465b; color: #e2e8f0; }
-                .input-field:focus { outline: 2px solid transparent; outline-offset: 2px; border-color: #006B76; box-shadow: 0 0 0 2px #006B76; }
-            `}</style>
-             <div className="hidden lg:flex flex-col items-center justify-center bg-primary-light dark:bg-dark-surface p-12 relative overflow-hidden">
-                 <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent dark:from-black/30"></div>
-                 <AnimatePresence mode="wait">
-                    {renderGraphic()}
-                 </AnimatePresence>
+             {/* Left decorative panel */}
+            <div className="hidden lg:flex flex-col items-center justify-center bg-primary-light dark:bg-dark-surface p-12 text-center">
+                <h1 className="text-4xl font-bold text-primary mb-8">SoulMatch</h1>
+                <div className="transform scale-110">
+                    <AnimatedAvatarGraphic />
+                </div>
+                <h2 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary mt-12">Velkommen til!</h2>
+                <p className="text-text-secondary dark:text-dark-text-secondary text-lg mt-4 max-w-sm">
+                    Lad os oprette din profil, så du kan begynde at finde nye venner og oplevelser.
+                </p>
             </div>
             
-            <div className="flex flex-col justify-center items-center p-4 sm:p-8">
-                <form className="w-full max-w-lg space-y-6 bg-white dark:bg-dark-surface p-6 sm:p-8 rounded-2xl shadow-xl" onSubmit={handleSubmit}>
-                    <ProgressBar step={step} totalSteps={totalSteps} />
+            {/* Right form panel */}
+            <div className="flex flex-col justify-center items-center p-6 sm:p-8">
+                 <div className="w-full max-w-lg">
+                    <ProgressBar step={step} totalSteps={3} />
+                    <AnimatePresence mode="wait">
+                        <StepContent key={step} step={step} />
+                    </AnimatePresence>
                     
-                    {error && <p className="text-red-500 text-center bg-red-100 dark:bg-red-900/20 dark:text-red-400 p-3 rounded-lg text-sm">{error}</p>}
-
-                    {renderStepContent()}
+                    {error && <p className="text-red-500 text-center text-sm mt-4">{error}</p>}
                     
-                    <div className="flex justify-between items-center pt-4">
-                        <button type="button" onClick={handleBack} disabled={step === 1} className="px-6 py-2 rounded-full font-semibold text-text-secondary dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-surface-light disabled:opacity-50">
-                            Tilbage
-                        </button>
-
-                        {step < totalSteps ? (
-                             <button type="button" onClick={handleNext} className="px-8 py-3 rounded-full bg-primary text-white font-bold hover:bg-primary-dark transition shadow-md">
-                                Næste
-                            </button>
-                        ) : (
-                             <button type="submit" disabled={loading} className="px-8 py-3 rounded-full bg-primary text-white font-bold hover:bg-primary-dark transition shadow-md flex items-center justify-center disabled:opacity-50">
-                                {loading && <Loader2 className="animate-spin mr-2" />}
-                                Fortsæt til Personlighedstest
+                    <div className="mt-8 flex gap-4">
+                        {step > 1 && (
+                            <button onClick={handleBack} className="flex items-center justify-center bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-full transition hover:bg-gray-300">
+                                <ArrowLeft size={18} className="mr-2"/> Tilbage
                             </button>
                         )}
+                        <button onClick={handleNext} disabled={loading} className="flex-1 bg-primary text-white font-bold py-3 px-6 rounded-full text-lg transition hover:bg-primary-dark disabled:opacity-50 flex items-center justify-center">
+                            {loading && <Loader2 className="animate-spin mr-2"/>}
+                            {step < 3 ? 'Fortsæt' : loading ? 'Gemmer...' : 'Færdiggør Profil'}
+                        </button>
                     </div>
-                </form>
+                 </div>
             </div>
+             <style>{`.input-style { display: block; width: 100%; padding: 0.75rem 1rem; color: #212529; background-color: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 0.5rem; } .dark .input-style { background-color: #2a3343; border-color: #3c465b; color: #e2e8f0; }`}</style>
         </div>
     );
 };

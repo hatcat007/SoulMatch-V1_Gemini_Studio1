@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const activityIcons = ['☕', '🚶‍♀️', '🎲', '🍔', '🗣️', '📚', '🎨', '🎉'];
+interface ActivityIcon {
+    id: number;
+    name: string;
+    icon: string;
+}
+
 const durationOptions = [
     { label: '1 Time', hours: 1 },
     { label: '2 Timer', hours: 2 },
@@ -18,9 +23,31 @@ const CreateDropInPage: React.FC = () => {
     const [message, setMessage] = useState('');
     const [locationName, setLocationName] = useState('');
     const [durationHours, setDurationHours] = useState(1);
-    const [activityIcon, setActivityIcon] = useState('☕');
+    const [activityIcons, setActivityIcons] = useState<ActivityIcon[]>([]);
+    const [iconsLoading, setIconsLoading] = useState(true);
+    const [activityIcon, setActivityIcon] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchIcons = async () => {
+            setIconsLoading(true);
+            const { data, error } = await supabase
+                .from('drop_in_activity_icons')
+                .select('id, name, icon')
+                .order('id');
+            
+            if (error) {
+                console.error("Error fetching activity icons:", error);
+                setError("Kunne ikke hente aktivitetsikoner. Prøv igen senere.");
+            } else if (data && data.length > 0) {
+                setActivityIcons(data);
+                setActivityIcon(data[0].icon);
+            }
+            setIconsLoading(false);
+        };
+        fetchIcons();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -28,8 +55,8 @@ const CreateDropInPage: React.FC = () => {
             setError("Du skal være logget ind for at oprette et drop-in.");
             return;
         }
-        if (!message.trim() || !locationName.trim()) {
-            setError("Udfyld venligst både besked og lokation.");
+        if (!message.trim() || !locationName.trim() || !activityIcon) {
+            setError("Udfyld venligst alle felter, inklusiv et ikon.");
             return;
         }
 
@@ -118,18 +145,26 @@ const CreateDropInPage: React.FC = () => {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary mb-2">Aktivitetsikon</label>
-                            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                                {activityIcons.map(icon => (
-                                    <button
-                                        key={icon}
-                                        type="button"
-                                        onClick={() => setActivityIcon(icon)}
-                                        className={`p-3 rounded-lg border-2 text-2xl flex items-center justify-center transition-colors ${activityIcon === icon ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-white dark:bg-dark-surface hover:border-gray-300 dark:hover:border-dark-border'}`}
-                                    >
-                                        {icon}
-                                    </button>
-                                ))}
-                            </div>
+                            {iconsLoading ? (
+                                <div className="flex items-center justify-center h-24 bg-gray-100 rounded-lg">
+                                    <Loader2 className="animate-spin text-primary" />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                                    {activityIcons.map(item => (
+                                        <button
+                                            key={item.id}
+                                            type="button"
+                                            onClick={() => setActivityIcon(item.icon)}
+                                            className={`p-3 rounded-lg border-2 text-2xl flex items-center justify-center transition-colors ${activityIcon === item.icon ? 'border-primary bg-primary-light dark:bg-primary/20' : 'bg-white dark:bg-dark-surface hover:border-gray-300 dark:hover:border-dark-border'}`}
+                                            title={item.name}
+                                            aria-label={item.name}
+                                        >
+                                            {item.icon}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div>

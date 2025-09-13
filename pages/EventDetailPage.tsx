@@ -42,7 +42,7 @@ const EventDetailPage: React.FC = () => {
 
         const eventPromise = supabase
             .from('events')
-            .select('*, organization:organizations(*), images:event_images(id, image_url), category:categories(*), interests:event_interests(interest:interests(*)), event_activities:event_activities(activity:activities(*)), message_thread:message_threads!message_threads_event_id_fkey(id)')
+            .select('*, organization:organizations(*), images:event_images(id, image_url), category:categories(*), interests:event_interests(interest:interests(*)), event_activities:event_activities(activity:activities(*)), message_thread:message_threads(id)')
             .eq('id', eventId)
             .single();
             
@@ -59,14 +59,14 @@ const EventDetailPage: React.FC = () => {
         ]);
         
         if (eventError || !eventData) {
-            console.error('Error fetching event:', eventError);
+            console.error('Error fetching event:', eventError?.message);
             setLoading(false);
             return;
         }
         setEvent(eventData as any);
         
         if (participantsError) {
-            console.error('Error fetching participants:', participantsError);
+            console.error('Error fetching participants:', participantsError.message);
         } else if (participantsData) {
             const users = participantsData.map((p: any) => p.user).filter(Boolean);
             setParticipants(users);

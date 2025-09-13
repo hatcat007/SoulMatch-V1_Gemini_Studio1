@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -161,17 +162,20 @@ const ConfirmOrganizationPage: React.FC = () => {
     setMessage(null);
 
     // 1. Sign up the organization user
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
-      email: email,
-      password: password,
-      options: {
+    // FIX: Updated `signUp` to use the older two-argument syntax for metadata, ensuring compatibility.
+    const { data: authData, error: signUpError } = await (supabase.auth as any).signUp(
+      {
+        email: email,
+        password: password,
+      },
+      {
         data: {
           is_organization: true,
           full_name: formData.name,
           host_name: formData.host_name,
         },
-      },
-    });
+      }
+    );
 
     if (signUpError) {
       setError(`Fejl ved oprettelse: ${signUpError.message}`);
@@ -241,7 +245,8 @@ const ConfirmOrganizationPage: React.FC = () => {
     }
     
     setMessage('Organisation oprettet! Logger ind...');
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    // FIX: Replaced `signInWithPassword` with `signIn` for compatibility with older Supabase v2 versions.
+    const { error: signInError } = await (supabase.auth as any).signIn({ email, password });
 
     if (signInError) {
       setError(signInError.message);

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Settings, Edit, LogOut, Sun, Moon, Heart, BrainCircuit, Users, Award, Trash2, Loader2, Sparkles } from 'lucide-react';
