@@ -16,6 +16,7 @@ interface NotificationContextType {
   unreadCount: number;
   markAllAsRead: () => void;
   clearNotifications: () => void;
+  addToast: (toastData: Partial<Notification> & { type: NotificationType, message: string }) => void;
 }
 
 export const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -49,6 +50,23 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       setLoading(false);
     }
   }, [user]);
+
+  const addToast = useCallback((toastData: Partial<Notification> & { type: NotificationType, message: string }) => {
+      const newToast: ToastNotification = {
+          id: Date.now(),
+          user_id: user?.id || 0,
+          actor_id: toastData.actor_id || null,
+          type: toastData.type,
+          message: toastData.message,
+          related_entity_id: toastData.related_entity_id || null,
+          read: true, // Toasts are ephemeral, don't need to be "read"
+          created_at: new Date().toISOString(),
+          actor: toastData.actor || null,
+          toastId: Date.now() + Math.random(),
+          timestamp: Date.now(),
+      };
+      setToasts(prev => [newToast, ...prev].slice(0, 5)); // Show max 5 toasts
+  }, [user]);
   
   // Real-time subscription for new notifications
   useEffect(() => {
@@ -75,12 +93,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
             setNotifications(prev => [fullNotif as Notification, ...prev]);
             
             // Show a toast
-            const newToast: ToastNotification = {
-              ...(fullNotif as Notification),
-              toastId: Date.now() + Math.random(),
-              timestamp: new Date(fullNotif.created_at).getTime(),
-            };
-            setToasts(prev => [newToast, ...prev].slice(0, 5));
+            addToast(fullNotif as Notification);
           }
         }
       )
@@ -89,7 +102,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, addToast]);
 
   const removeToast = useCallback((toastId: number) => {
     setToasts(prev => prev.filter(t => t.toastId !== toastId));
@@ -136,6 +149,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     unreadCount: notifications.filter(n => !n.read).length,
     markAllAsRead,
     clearNotifications,
+    addToast,
   };
 
   return (

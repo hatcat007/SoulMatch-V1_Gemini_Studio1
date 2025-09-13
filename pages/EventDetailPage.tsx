@@ -8,6 +8,8 @@ import ImageSlideshow from '../components/ImageSlideshow';
 import { fetchPrivateFile } from '../services/s3Service';
 import { ArrowLeft, Share2, Users, MapPin, Calendar, Check, Plus, MessageCircle, HeartHandshake, Loader2 } from 'lucide-react';
 import PostEventFriendModal from '../components/PostEventFriendModal';
+import { useNotifications } from '../hooks/useNotifications';
+import { addEventToCalendar } from '../services/googleCalendarService';
 
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
@@ -28,6 +30,7 @@ const EventDetailPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
+    const { addToast } = useNotifications();
     
     const [event, setEvent] = useState<Event | null>(null);
     const [participants, setParticipants] = useState<User[]>([]);
@@ -46,8 +49,6 @@ const EventDetailPage: React.FC = () => {
             .eq('id', eventId)
             .single();
             
-        // FIX: Replaced the unreliable RPC call with a direct query to ensure all participants,
-        // including the host, are correctly fetched. This query now runs in parallel.
         const participantsPromise = supabase
             .from('event_participants')
             .select('user:users(*)')
@@ -81,17 +82,19 @@ const EventDetailPage: React.FC = () => {
     }, [fetchEvent]);
 
     const handleJoinLeave = async () => {
-        if (!eventId || !currentUser) return;
+        if (!eventId || !currentUser || !event) return;
         setIsJoining(true);
 
         if (isParticipant) {
             await supabase.from('event_participants').delete().match({ event_id: eventId, user_id: currentUser.id });
-            // Show friend modal on leaving an event
             if (new Date(event!.time) < new Date()) {
                 setShowFriendModal(true);
             }
         } else {
             await supabase.from('event_participants').insert({ event_id: eventId, user_id: currentUser.id });
+            
+            // Trigger Google Calendar sync if connected. This runs in the background.
+            addEventToCalendar(event, addToast);
         }
 
         await fetchEvent(); // Refetch to update participant list and button state
@@ -107,7 +110,6 @@ const EventDetailPage: React.FC = () => {
 
     const isCreator = useMemo(() => {
         if (!event || !currentUser) return false;
-        // An event created by a user will have a creator_user_id
         return event.creator_user_id === currentUser.id;
     }, [event, currentUser]);
 

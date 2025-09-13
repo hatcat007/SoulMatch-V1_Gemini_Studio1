@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 // FIX: Added `Eye` icon for profile view notifications.
-import { X, MessageSquare, Calendar, UserPlus, Info, Eye } from 'lucide-react';
+import { X, MessageSquare, Calendar, UserPlus, Info, Eye, CalendarCheck } from 'lucide-react';
 import type { ToastNotification, } from '../contexts/NotificationContext';
 import type { NotificationType } from '../types';
 
@@ -17,6 +17,7 @@ const ICONS: Record<NotificationType, React.ReactNode> = {
     friend_request: <UserPlus className="h-6 w-6 text-purple-500" />,
     system: <Info className="h-6 w-6 text-gray-500" />,
     profile_view: <Eye className="h-6 w-6 text-indigo-500" />,
+    calendar: <CalendarCheck className="h-6 w-6 text-green-500" />,
 };
 
 const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
@@ -41,7 +42,7 @@ const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
   };
   
   const handleClick = () => {
-    if (toast.type !== 'system') {
+    if (toast.type !== 'system' && toast.type !== 'calendar') {
         switch (toast.type) {
             case 'message':
                 if (toast.related_entity_id) navigate(`/chat/${toast.related_entity_id}`);
@@ -64,13 +65,14 @@ const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
   };
   
   const icon = ICONS[toast.type] || <Info className="h-6 w-6 text-gray-500" />;
+  const isClickable = toast.type !== 'system' && toast.type !== 'calendar';
 
   return (
     <div
       role="alert"
       aria-live="polite"
-      onClick={handleClick}
-      className={`w-full max-w-sm bg-white rounded-xl shadow-2xl flex items-start p-4 space-x-3 transition-all duration-300 ease-in-out ${toast.type !== 'system' ? 'cursor-pointer' : ''} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+      onClick={isClickable ? handleClick : undefined}
+      className={`w-full max-w-sm bg-white rounded-xl shadow-2xl flex items-start p-4 space-x-3 transition-all duration-300 ease-in-out ${isClickable ? 'cursor-pointer' : ''} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
     >
         <div className="flex-shrink-0">{icon}</div>
         <div className="flex-1">

@@ -1,5 +1,4 @@
 
-
 // Forward declarations are not a thing in TS interfaces, so we must order them.
 
 // Basic types that are used by others but don't have complex dependencies
@@ -200,7 +199,7 @@ export interface Message {
 }
 
 // Other related types
-export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view';
+export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view' | 'calendar';
 
 export interface Notification {
   id: number;
@@ -255,4 +254,13 @@ export interface DropInInvitation {
   expires_at: string;
   created_at: string;
   creator: User;
+}
+
+export interface GoogleCalendarSettings {
+    connected: boolean;
+    email: string;
+    selectedCalendar: string;
+    accessToken: string | null;
+    refreshToken: string | null;
+    expiry: number | null;
 }
