@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -101,11 +102,7 @@ const SettingsPage: React.FC = () => {
         
         const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
         
-        if (GOOGLE_CLIENT_ID === 'DIT_GOOGLE_CLIENT_ID_HER') {
-            alert("Udvikler-fejl: Google Client ID er ikke sat i SettingsPage.tsx");
-            return;
-        }
-
+        // FIX: Removed redundant check for a placeholder client ID, as the correct one is already hardcoded.
         const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
         authUrl.searchParams.append('client_id', GOOGLE_CLIENT_ID);
         authUrl.searchParams.append('redirect_uri', REDIRECT_URI);

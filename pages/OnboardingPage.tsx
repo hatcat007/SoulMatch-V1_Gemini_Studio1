@@ -140,6 +140,11 @@ const OnboardingPage: React.FC = () => {
                     <p className="mt-6 text-text-secondary dark:text-dark-text-secondary">
                         Har du allerede en bruger? <Link to="/login" className="font-bold text-primary hover:underline">Log ind</Link>
                     </p>
+                    <div className="mt-4 text-xs text-text-secondary dark:text-dark-text-secondary">
+                        <Link to="/terms" className="hover:underline">Servicevilkår</Link>
+                        <span className="mx-2">·</span>
+                        <Link to="/privacy" className="hover:underline">Privatlivspolitik</Link>
+                    </div>
                 </div>
             </div>
         </main>

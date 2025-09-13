@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { supabase } from './services/supabase';
@@ -281,6 +282,10 @@ const AppContent: React.FC = () => {
             <Route path="/admin" element={session ? <AdminPage /> : <Navigate to="/login" />} />
             <Route path="/event/:orgSlug/:eventSlug" element={<PublicEventPage />} />
             <Route path="/place/:orgSlug/:placeSlug" element={<PublicPlacePage />} />
+            
+            {/* FIX: Moved Privacy and Terms routes to be public, accessible without a session. */}
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsOfServicePage />} />
             
             <Route path="/*" element={
                 !session ? <Navigate to="/onboarding" /> : 
