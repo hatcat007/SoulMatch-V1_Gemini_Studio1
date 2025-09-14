@@ -95,7 +95,8 @@ const initialFormState = {
     selectedActivityIds: [] as number[],
 };
 
-const CreatePlannedEventPage: React.FC = () => {
+// FIX: Changed the component to a default exported function. This can resolve subtle module loading issues.
+export default function CreatePlannedEventPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [formData, setFormData] = usePersistentState('createUserEventForm', initialFormState);
@@ -318,173 +319,105 @@ const CreatePlannedEventPage: React.FC = () => {
                         <div className="text-5xl">{formData.icon}</div>
                         <div className="grid grid-cols-6 gap-2 flex-1">
                             {emojiOptions.map(e => (
-                                <button key={e} type="button" onClick={() => handleSimpleStateChange('icon', e)} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light scale-110' : 'hover:bg-gray-100'}`}>
-                                    {e}
-                                </button>
+                                <button key={e} type="button" onClick={() => handleSimpleStateChange('icon', e)} className={`text-2xl p-2 rounded-lg transition-transform duration-200 ${formData.icon === e ? 'bg-primary-light scale-110' : 'hover:bg-gray-100'}`}></button>
                             ))}
                         </div>
                     </div>
                 </div>
-                
+
                 {/* Event Name & Description */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
                     <div>
                         <label htmlFor="eventName" className="block text-sm font-medium text-gray-700 mb-1">Navn på event</label>
-                        <input
-                            type="text" id="eventName" name="eventName" value={formData.eventName} onChange={handleFormChange}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                            placeholder="F.eks. Tur i biffen" required
-                        />
+                        <input type="text" id="eventName" name="eventName" value={formData.eventName} onChange={handleFormChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
                     </div>
                     <div>
                         <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Beskrivelse</label>
-                        <textarea
-                            id="description" name="description" rows={4} value={formData.description} onChange={handleFormChange}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                            placeholder="Fortæl lidt om hvad I skal lave..." required
-                        ></textarea>
+                        <textarea id="description" name="description" rows={4} value={formData.description} onChange={handleFormChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Fortæl lidt om hvad I skal lave..." required></textarea>
                     </div>
                 </div>
-                
-                <CategorySelector 
-                    value={formData.category_id}
-                    onChange={(id) => setFormData(p => ({...p, category_id: id}))}
-                    type="event"
-                />
 
-                {/* Date/Time */}
+                {/* Category */}
+                <CategorySelector value={formData.category_id} onChange={(id) => handleSimpleStateChange('category_id', id)} type="event"/>
+
+                {/* Time & Location */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Calendar size={20} className="mr-2 text-primary"/> Hvornår?</label>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                           <label htmlFor="time" className="block text-sm font-medium text-gray-700 mb-1">Start tidspunkt</label>
-                           <input type="datetime-local" id="time" name="time" value={formData.time} onChange={handleFormChange}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
+                           <label htmlFor="time" className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><Calendar size={16} className="mr-2 text-primary"/> Start tidspunkt</label>
+                           <input type="datetime-local" id="time" name="time" value={formData.time} onChange={handleFormChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
                         </div>
                          <div>
-                           <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 mb-1">Slut tidspunkt</label>
-                           <input type="datetime-local" id="end_time" name="end_time" value={formData.end_time} onChange={handleFormChange}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
+                           <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><Calendar size={16} className="mr-2 text-primary"/> Slut tidspunkt</label>
+                           <input type="datetime-local" id="end_time" name="end_time" value={formData.end_time} onChange={handleFormChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required/>
                         </div>
-                     </div>
+                    </div>
+                     <div className="mt-4">
+                        <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><MapPin size={16} className="mr-2 text-primary"/> Lokation</label>
+                        <input type="text" id="location" name="location" value={formData.location} onChange={handleFormChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="F.eks. Gade 123, 9000 Aalborg" required/>
+                    </div>
                 </div>
 
                 {/* Activities */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                    {/* FIX: The `allTags` and `selectedTags` props are now correctly typed by mapping the Activity arrays. The `onToggleTag` handler now safely finds the original activity object. */}
-                    <TagSelector
-                        title="Vælg aktiviteter for dit event"
-                        categories={[]}
-                        allTags={allActivitiesForSelector}
-                        selectedTags={selectedActivitiesForSelector}
-                        onToggleTag={(tag) => {
-                            const activity = allActivities.find(a => a.id === tag.id);
-                            if (activity) {
-                                handleActivityToggle(activity);
-                            }
-                        }}
-                    />
+                    <TagSelector title="Hvad skal I lave?" categories={[]} allTags={allActivitiesForSelector} selectedTags={selectedActivitiesForSelector} onToggleTag={(tag) => { const act = allActivities.find(a => a.id === tag.id); if (act) handleActivityToggle(act); }} containerHeight="h-auto"/>
                 </div>
 
                 {/* Interests */}
                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <TagSelector
-                        title="Vælg interesser for dit event"
-                        categories={interestCategories}
-                        allTags={allInterests}
-                        selectedTags={selectedInterests}
-                        onToggleTag={(tag) => handleInterestToggle(tag as Interest)}
-                    />
+                    <TagSelector title="Hvilke interesser passer til eventet?" categories={interestCategories} allTags={allInterests} selectedTags={selectedInterests} onToggleTag={(tag) => handleInterestToggle(tag as Interest)} containerHeight="h-auto"/>
                 </div>
                 
-                 {/* Location */}
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                     <label htmlFor="location" className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><MapPin size={20} className="mr-2 text-primary"/> Lokation</label>
-                     <input
-                        type="text" id="location" name="location" value={formData.location} onChange={handleFormChange}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Indtast fulde addresse" required
-                     />
-                </div>
-                
-                {/* Sponsor */}
+                 {/* Images */}
                  <div className="bg-white p-4 rounded-lg shadow-sm">
-                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Ticket size={20} className="mr-2 text-primary"/> Sponsoreret?</label>
-                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-4">
-                         <p className="text-sm text-gray-600 flex-1 mr-4">Tilbyder dette event en speciel rabat eller et tilbud?</p>
+                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><ImageIcon size={20} className="mr-2 text-primary"/> Event Billeder (op til 3)</label>
+                     <div className="grid grid-cols-3 gap-4">
+                        {formData.images.map((img, index) => (
+                             <div key={index} className="relative group aspect-square">
+                                 <SmartImage src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
+                                 <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"><X size={16}/></button>
+                             </div>
+                        ))}
+                        {formData.images.length < 3 && (
+                            <div onClick={() => imageInputRef.current?.click()} className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100`}>
+                                <UploadCloud size={32} className="text-gray-400 mb-2"/>
+                                <p className="text-sm text-gray-500 text-center">Upload billede</p>
+                            </div>
+                        )}
+                     </div>
+                     <input type="file" ref={imageInputRef} onChange={handleImageUpload} multiple accept="image/*" className="hidden"/>
+                </div>
+                
+                {/* Extra Options */}
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-4">
+                         <p className="text-sm text-gray-600 flex-1 mr-4">Tilbyder du en speciel rabat eller et tilbud?</p>
                          <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
                             <input type="checkbox" id="toggle_sponsored" name="is_sponsored" checked={formData.is_sponsored} onChange={handleFormChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
                             <label htmlFor="toggle_sponsored" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
                         </div>
-                     </div>
+                    </div>
                      {formData.is_sponsored && (
                         <div>
-                           <label htmlFor="offer" className="block text-sm font-medium text-gray-700 mb-1">Tilbud / Rabat</label>
-                           <input type="text" id="offer" name="offer" value={formData.offer} onChange={handleFormChange}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="F.eks. 'Gratis kaffe til de første 10'"/>
+                           <label htmlFor="offer" className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><Ticket size={16} className="mr-2 text-primary"/> Tilbud / Rabat</label>
+                           <input type="text" id="offer" name="offer" value={formData.offer} onChange={handleFormChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="F.eks. '2 gratis kaffe'"/>
                         </div>
                      )}
-                </div>
-
-                {/* Diagnosis Friendly */}
-                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                     <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><Smile size={20} className="mr-2 text-primary"/> Diagnose venligt?</label>
-                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                         <p className="text-sm text-gray-600 flex-1 mr-4">Er dette event designet til at være hensynsfuldt over for deltagere med diagnoser?</p>
+                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mt-4">
+                         <p className="text-sm text-gray-600 flex-1 mr-4">Er dette event designet til at være hensynsfuldt overfor deltagere med diagnoser?</p>
                          <div className="relative inline-block w-12 flex-shrink-0 mr-2 align-middle select-none transition duration-200 ease-in">
-                            <input type="checkbox" id="toggle" name="isDiagnosisFriendly" checked={formData.isDiagnosisFriendly} onChange={handleFormChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
-                            <label htmlFor="toggle" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                            <input type="checkbox" id="toggle_friendly" name="isDiagnosisFriendly" checked={formData.isDiagnosisFriendly} onChange={handleFormChange} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label htmlFor="toggle_friendly" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
                         </div>
                      </div>
                 </div>
-                
-                {/* Image Upload */}
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <label className="block text-lg font-semibold text-gray-800 mb-3 flex items-center"><ImageIcon size={20} className="mr-2 text-primary"/> Tilføj op til 3 billeder</label>
-                    <div className="grid grid-cols-3 gap-4">
-                        {formData.images.map((img, index) => (
-                             <div key={index} className="relative aspect-square">
-                                <SmartImage src={img} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg"/>
-                                {img.startsWith('blob:') && (
-                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded-lg">
-                                        <Loader2 className="animate-spin text-white" size={24} />
-                                    </div>
-                                )}
-                                <button type="button" onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75 z-10"><X size={16}/></button>
-                            </div>
-                        ))}
-                        {formData.images.length < 3 && (
-                            <div onClick={() => !isUploading && imageInputRef.current?.click()} className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed border-gray-300 rounded-lg transition-colors ${isUploading ? 'cursor-wait bg-gray-100' : 'cursor-pointer hover:bg-gray-100'}`}>
-                                {isUploading ? (
-                                     <Loader2 className="animate-spin text-gray-400" size={32} />
-                                ) : (
-                                    <>
-                                        <UploadCloud size={32} className="text-gray-400 mb-2"/>
-                                        <p className="text-sm text-gray-500 text-center">Upload billede</p>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                    <input
-                        type="file" ref={imageInputRef} onChange={handleImageUpload}
-                        multiple accept="image/*" className="hidden" disabled={isUploading}
-                    />
-                </div>
-                
-                {/* Submit */}
+
                 <div>
-                     <button
-                        type="submit"
-                        disabled={isSubmitting || isUploading}
-                        className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg disabled:opacity-50"
-                    >
-                        {isSubmitting ? 'Opretter...' : 'Opret event'}
+                     <button type="submit" disabled={isUploading || isSubmitting} className="w-full bg-primary text-white font-bold py-4 px-4 rounded-full text-lg hover:bg-primary-dark transition duration-300 shadow-lg">
+                        {isSubmitting ? 'Opretter...' : 'Opret Event'}
                     </button>
                 </div>
             </form>
         </div>
     );
-};
-
-export default CreatePlannedEventPage;
+}

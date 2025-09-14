@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import type { Interest, InterestCategory, PersonalityTag, PersonalityTagCategory } from '../types';

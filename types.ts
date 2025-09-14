@@ -1,34 +1,73 @@
+import type { Session } from '@supabase/supabase-js';
 
-// Forward declarations are not a thing in TS interfaces, so we must order them.
+// This file centralizes all TypeScript types for the application.
 
-// Basic types that are used by others but don't have complex dependencies
-export interface ImageRecord {
+// ========= AUTH & USERS =========
+
+export interface User {
   id: number;
-  image_url: string;
+  auth_id?: string;
+  name: string;
+  age: number;
+  location?: string;
+  bio?: string;
+  avatar_url?: string;
+  personality_type?: string;
+  personality_test_completed?: boolean;
+  online?: boolean;
+  is_admin?: boolean;
+  interests?: Interest[];
+  personality_tags?: PersonalityTag[];
+  personality_dimensions?: UserPersonalityDimension[];
+  email?: string;
+  email_notifications_new_message?: boolean;
+  email_notifications_new_event?: boolean;
 }
+
+export interface Organization {
+  id: number;
+  auth_id: string;
+  name: string;
+  logo_url?: string;
+  address?: string;
+  description?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  organization_type?: string;
+  facebook_url?: string;
+  host_name?: string;
+  host_avatar_url?: string;
+  emojis?: string[];
+  activities?: { activity: Activity }[];
+}
+
+// ========= TAGS & CATEGORIES =========
 
 export interface Category {
   id: number;
   name: string;
-  parent_id: number | null;
   type: 'event' | 'place';
-}
-
-export interface Activity {
-    id: number;
-    name: string;
-    icon: string;
+  parent_id?: number | null;
 }
 
 export interface InterestCategory {
-    id: number;
-    name: string;
+  id: number;
+  name: string;
 }
 
 export interface Interest {
-    id: number;
-    name: string;
-    category_id: number;
+  id: number;
+  name: string;
+  category_id: number;
+  approved?: boolean;
+}
+
+export interface Activity {
+  id: number;
+  name: string;
+  icon: string;
+  approved?: boolean;
 }
 
 export interface PersonalityTagCategory {
@@ -42,12 +81,119 @@ export interface PersonalityTag {
     category_id: number;
 }
 
-export interface UserAiDescription {
+// ========= CORE ENTITIES =========
+
+export interface Event {
   id: number;
-  user_id: number;
+  title: string;
   description: string;
+  time: string;
+  end_time?: string;
+  address: string;
+  image_url?: string;
+  icon?: string;
+  color?: string;
+  category_id: number;
+  category?: Category;
+  organization_id?: number;
+  organization?: Organization;
+  creator_user_id?: number;
+  creator?: User;
+  host_name?: string;
+  host_avatar_url?: string;
+  is_sponsored?: boolean;
+  offer?: string;
+  images?: ImageRecord[];
+  interests?: { interest: Interest }[];
+  event_activities?: { activity: Activity }[];
+  participantCount?: number; // From frontend transformation
+  participants?: { count: number }[]; // From DB query
+  is_diagnosis_friendly?: boolean;
+  message_thread?: { id: number };
+}
+
+export interface Place {
+  id: number;
+  name: string;
+  description: string;
+  address: string;
+  image_url?: string;
+  icon?: string;
+  offer?: string;
+  category_id: number;
+  category?: Category;
+  organization_id: number;
+  organization?: Organization;
+  latitude?: number;
+  longitude?: number;
+  is_sponsored?: boolean;
+  is_certified?: boolean;
+  phone?: string;
+  opening_hours?: string;
+  user_count: number;
+  images?: ImageRecord[];
+  place_activities?: { activity: Activity }[];
+  place_interests?: { interest: Interest }[];
+}
+
+export interface ImageRecord {
+  id: number;
+  image_url: string;
+}
+
+// ========= MESSAGING & SOCIAL =========
+
+export interface Message {
+  id: number;
+  thread_id: string;
+  sender_id: number;
+  text: string;
+  image_url?: string;
+  created_at: string;
+  card_data?: {
+      type: 'event' | 'place';
+      id: number;
+      title: string;
+      image_url?: string;
+      address?: string;
+      offer?: string;
+  } | null;
+}
+
+export interface MessageThread {
+  id: string;
+  is_event_chat?: boolean;
+  event?: { id: number; title: string };
+  last_message: string;
+  timestamp: string;
+  unread_count: number;
+  participants: { user: User }[];
+  match_timestamp?: string;
+}
+
+export interface DropInInvitation {
+  id: number;
+  creator_user_id: number;
+  creator: User;
+  message: string;
+  location_name: string;
+  activity_icon: string;
+  expires_at: string;
   created_at: string;
 }
+
+export interface Friendship {
+  id: number;
+  user_id_1: number;
+  user_id_2: number;
+  status: 'pending' | 'accepted';
+  action_user_id: number;
+}
+
+export type FriendshipStatus = 'accepted' | 'pending' | 'not_friends';
+
+
+// ========= PERSONALITY & AI =========
 
 export interface UserPersonalityDimension {
   id: number;
@@ -58,147 +204,27 @@ export interface UserPersonalityDimension {
   description: string;
 }
 
-// User interface, depends on some basic types above
-export interface User {
+export interface UserAiDescription {
   id: number;
-  name: string;
-  age: number;
-  avatar_url?: string;
-  online: boolean;
-  bio?: string;
-  location?: string;
-  personality_type?: string;
-  emojis?: string[] | null;
-  personality_test_completed?: boolean;
-  is_admin?: boolean;
-  auth_id?: string;
-  personality_dimensions?: UserPersonalityDimension[];
-  personality_tags?: PersonalityTag[];
-  interests?: Interest[];
-  ai_descriptions?: UserAiDescription[];
+  user_id: number;
+  description: string;
+  created_at: string;
 }
 
-// Organization-related types
+
+// ========= ORGANIZATION SPECIFIC =========
+
 export interface OrganizationOpportunity {
     name: string;
     icon: string;
 }
-
 export interface OrganizationUpdate {
     id: number;
     image_url: string;
 }
 
-export interface Organization {
-  id: number;
-  name: string;
-  logo_url: string;
-  address: string;
-  description: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  host_name?: string;
-  organization_type?: string;
-  facebook_url?: string;
-  emojis?: string[];
-  opportunities?: OrganizationOpportunity[];
-  updates?: OrganizationUpdate[];
-  auth_id?: string;
-  activities?: { activity: Activity }[];
-}
+// ========= NOTIFICATIONS =========
 
-// Core app entities that depend on User, Organization, etc.
-export interface Event {
-  id: number;
-  title: string;
-  time: string;
-  end_time?: string;
-  participantCount: number;
-  host_name: string;
-  host_avatar_url: string;
-  icon: string;
-  color: string;
-  description?: string;
-  participants?: User[];
-  organization_id: number | null;
-  // FIX: Use the full Organization interface for better type safety and to match query data.
-  organization?: Organization;
-  image_url?: string;
-  images?: ImageRecord[];
-  address?: string;
-  is_sponsored?: boolean;
-  offer?: string;
-  category: Category;
-  category_id: number;
-  creator_user_id?: number;
-  interests?: { interest: Interest }[];
-  event_activities?: { activity: Activity }[];
-  message_thread?: { id: number };
-  is_diagnosis_friendly?: boolean;
-}
-
-export interface Place {
-  id: number;
-  name: string;
-  offer: string;
-  address: string;
-  user_count: number;
-  user_images: string[];
-  icon: string;
-  description: string;
-  is_sponsored: boolean;
-  phone: string;
-  opening_hours: string;
-  organization_id?: number;
-  // FIX: Use the full Organization interface to ensure all properties are available as per the Supabase query.
-  organization?: Organization;
-  image_url?: string;
-  images?: ImageRecord[];
-  category: Category;
-  category_id: number;
-  place_activities?: { activity: Activity }[];
-  place_interests?: { interest: Interest }[];
-  latitude?: number;
-  longitude?: number;
-  is_certified?: boolean;
-}
-
-export interface MessageThread {
-  id: number | string;
-  last_message: string;
-  timestamp: string;
-  unread_count: number;
-  match_timestamp?: string;
-  participants: { user: User }[];
-  is_event_chat?: boolean;
-  event_id?: number;
-  event?: {
-    id: number;
-    title: string;
-    time: string;
-    end_time?: string;
-  };
-}
-
-export interface Message {
-  id: number | string;
-  text: string;
-  created_at: string;
-  sender_id: number;
-  image_url?: string;
-  thread_id: number | string;
-  card_data?: {
-    type: 'event' | 'place';
-    id: number;
-    title: string;
-    image_url?: string;
-    offer?: string;
-    address?: string;
-  };
-}
-
-// Other related types
 export type NotificationType = 'message' | 'event' | 'friend_request' | 'system' | 'profile_view' | 'calendar';
 
 export interface Notification {
@@ -210,57 +236,36 @@ export interface Notification {
   related_entity_id: number | null;
   read: boolean;
   created_at: string;
-  // Eager-loaded on the client
   actor: User | null;
 }
 
-export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';
 
-export interface Friendship {
-  id: number;
-  user_id_1: number;
-  user_id_2: number;
-  status: FriendshipStatus;
-  action_user_id: number;
-  // Eager-loaded user profiles for easier display
-  user1?: User;
-  user2?: User;
-}
-
-export interface UserReport {
-  id: number;
-  reporter_user_id: number;
-  reported_user_id: number;
-  reason: string;
-  comment?: string;
-  status: 'new' | 'under_review' | 'resolved';
-  created_at: string;
-}
-
-export interface Checkin {
-  id: number;
-  place_id: number;
-  user_id_1: number;
-  user_id_2: number;
-  created_at: string;
-}
-
-export interface DropInInvitation {
-  id: number;
-  creator_user_id: number;
-  message: string;
-  location_name: string;
-  activity_icon: string;
-  expires_at: string;
-  created_at: string;
-  creator: User;
-}
+// ========= MISC & SETTINGS =========
 
 export interface GoogleCalendarSettings {
     connected: boolean;
-    email: string;
-    selectedCalendar: string;
-    accessToken: string | null;
-    refreshToken: string | null;
-    expiry: number | null;
+    email?: string;
+    calendars?: { id: string; summary: string }[];
+    selectedCalendar?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    expiry?: number;
+}
+
+
+// These types were causing errors due to being defined in-place.
+// Defining them here provides a single source of truth.
+export interface EventWithParticipants extends Event {
+  participant_count: number;
+}
+
+export interface PlaceWithCheckins extends Place {
+  checkin_count: number;
+}
+
+export interface PendingInterest extends Interest {
+    organization: { name: string } | null;
+}
+export interface PendingActivity extends Activity {
+    organization: { name: string } | null;
 }

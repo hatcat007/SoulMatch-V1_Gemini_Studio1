@@ -80,7 +80,8 @@ const OrganizationProfilePage: React.FC = () => {
         if (soulmateError) console.error('Error fetching soulmates:', soulmateError);
         else {
              const threads: MessageThread[] = (soulmateData || []).map((u: User) => ({
-                id: u.id,
+                // FIX: Converted user ID to a string to match the MessageThread type.
+                id: String(u.id),
                 participants: [{ user: u }],
                 last_message: '',
                 timestamp: '',
@@ -118,6 +119,7 @@ const OrganizationProfilePage: React.FC = () => {
                 .from('users')
                 .select('id')
                 .eq('name', organization.host_name)
+                .eq('bio', `Kontaktperson for ${organization.name}`)
                 .limit(1)
                 .single();
             

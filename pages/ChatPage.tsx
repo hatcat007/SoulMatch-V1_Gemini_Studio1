@@ -190,7 +190,7 @@ const ChatPage: React.FC = () => {
     }, [chatId, currentUserId, addMessageToCache]);
 
     const handleSendMessage = async () => {
-        if (!newMessage.trim() || !currentUserId || isSending) return;
+        if (!newMessage.trim() || !currentUserId || isSending || !otherUser) return;
         if (!chatId || chatId === 'ai-mentor') {
             alert("AI chat is not implemented yet.");
             return;
@@ -210,7 +210,19 @@ const ChatPage: React.FC = () => {
             console.error("Error sending message:", error);
             setNewMessage(text);
         } else if (newMessageData) {
-            // Realtime subscription will handle adding the message to cache
+            // Realtime subscription will handle adding the message to cache.
+            // Now, trigger the email notification function (fire and forget).
+            supabase.functions.invoke('send-email', {
+                body: {
+                    template: 'new-message',
+                    recipientId: otherUser.id,
+                    data: {
+                        senderName: currentUser?.name || 'Nogen',
+                        messagePreview: text,
+                        chatId: chatId,
+                    }
+                }
+            }).catch(console.error);
         }
         setIsSending(false);
     };

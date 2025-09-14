@@ -11,7 +11,10 @@ CREATE TABLE "public"."users" (
     "personality_test_completed" boolean DEFAULT false NOT NULL,
     "is_admin" boolean DEFAULT false NOT NULL,
     "created_at" timestamz DEFAULT now() NOT NULL,
-    "auth_id" uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE
+    "auth_id" uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+    "email" character varying,
+    "email_notifications_new_message" boolean DEFAULT true NOT NULL,
+    "email_notifications_new_event" boolean DEFAULT true NOT NULL
 );
 
 CREATE TABLE "public"."interests" (

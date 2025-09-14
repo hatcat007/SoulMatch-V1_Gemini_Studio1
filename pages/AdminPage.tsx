@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import type { User, Interest, Activity, Organization } from '../types';
-import { ArrowLeft, Users, MessageSquare, BarChart2, AlertTriangle, UserCog, Ghost, Check, X, Building } from 'lucide-react';
+import { ArrowLeft, Users, MessageSquare, BarChart2, AlertTriangle, UserCog, Ghost, Check, X, Building, Mail, Loader2, Send } from 'lucide-react';
 import LoadingScreen from '../components/LoadingScreen';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface PendingInterest extends Interest {
     organization: Pick<Organization, 'name'>;
@@ -80,6 +81,114 @@ const ApprovalQueue: React.FC = () => {
     );
 };
 
+const EmailSender: React.FC = () => {
+    const [recipients, setRecipients] = useState<{id: number, name: string, type: 'user' | 'org'}[]>([]);
+    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [allOrgs, setAllOrgs] = useState<Organization[]>([]);
+    const [subject, setSubject] = useState('');
+    const [messageContent, setMessageContent] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    const { addToast } = useNotifications();
+
+    useEffect(() => {
+        const fetchRecipients = async () => {
+            const { data: usersData } = await supabase.from('users').select('*').not('email', 'is', null);
+            const { data: orgsData } = await supabase.from('organizations').select('*').not('email', 'is', null);
+            setAllUsers(usersData || []);
+            setAllOrgs(orgsData || []);
+        };
+        fetchRecipients();
+    }, []);
+
+    const handleSend = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (recipients.length === 0 || !subject.trim() || !messageContent.trim()) {
+            addToast({ type: 'system', message: 'Udfyld venligst alle felter.' });
+            return;
+        }
+    
+        setIsSending(true);
+        let successCount = 0;
+        let errorCount = 0;
+    
+        for (const recipient of recipients) {
+            try {
+                const { error } = await supabase.functions.invoke('send-email', {
+                    body: {
+                        template: 'admin-broadcast',
+                        recipientId: recipient.id,
+                        recipientType: recipient.type,
+                        data: { subject, body: messageContent }
+                    }
+                });
+                if (error) {
+                    console.error(`Failed to send email to ${recipient.name}:`, error);
+                    errorCount++;
+                } else {
+                    successCount++;
+                }
+            } catch (e) {
+                console.error(`Exception while sending email to ${recipient.name}:`, e);
+                errorCount++;
+            }
+        }
+        
+        setIsSending(false);
+        
+        let toastMessage = '';
+        if (successCount > 0) {
+            toastMessage += `Email sendt til ${successCount} modtagere. `;
+        }
+        if (errorCount > 0) {
+            toastMessage += `${errorCount} emails fejlede. Tjek konsollen for detaljer.`;
+        }
+        addToast({ type: 'system', message: toastMessage.trim() });
+    
+        if (errorCount === 0) {
+            setRecipients([]);
+            setSubject('');
+            setMessageContent('');
+        }
+    };
+    
+    return (
+        <form onSubmit={handleSend} className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm space-y-4">
+            <h3 className="font-bold text-text-primary dark:text-dark-text-primary flex items-center"><Mail size={18} className="mr-2"/> Send Email</h3>
+            <div>
+                <label className="block text-sm font-medium mb-1">Modtagere</label>
+                <select multiple value={recipients.map(r => `${r.type}-${r.id}`)} onChange={(e) => {
+                    const selectedOptions = Array.from(e.target.selectedOptions, option => {
+                        const [type, id] = option.value.split('-');
+                        const list = type === 'user' ? allUsers : allOrgs;
+                        const item = list.find(i => i.id === Number(id));
+                        return { id: Number(id), name: item?.name || '', type: type as 'user' | 'org' };
+                    });
+                    setRecipients(selectedOptions);
+                }} className="w-full h-40 p-2 border rounded-md bg-gray-50 dark:bg-dark-surface-light dark:border-dark-border">
+                    <optgroup label="Brugere">
+                        {allUsers.map(u => <option key={`user-${u.id}`} value={`user-${u.id}`}>{u.name} ({u.email})</option>)}
+                    </optgroup>
+                    <optgroup label="Organisationer">
+                        {allOrgs.map(o => <option key={`org-${o.id}`} value={`org-${o.id}`}>{o.name} ({o.email})</option>)}
+                    </optgroup>
+                </select>
+            </div>
+             <div>
+                <label htmlFor="subject" className="block text-sm font-medium mb-1">Emne</label>
+                <input type="text" id="subject" value={subject} onChange={e => setSubject(e.target.value)} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-dark-surface-light dark:border-dark-border" required />
+            </div>
+             <div>
+                <label htmlFor="body" className="block text-sm font-medium mb-1">Besked</label>
+                <textarea id="body" rows={5} value={messageContent} onChange={e => setMessageContent(e.target.value)} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-dark-surface-light dark:border-dark-border" required />
+            </div>
+             <button type="submit" disabled={isSending} className="bg-primary text-white font-bold py-2 px-4 rounded-lg text-sm hover:bg-primary-dark transition duration-300 disabled:opacity-50 flex items-center">
+                {isSending ? <Loader2 className="animate-spin mr-2"/> : <Send className="mr-2" size={16}/>}
+                {isSending ? 'Sender...' : `Send til ${recipients.length} modtagere`}
+            </button>
+        </form>
+    );
+};
+
 const AdminPage: React.FC = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
@@ -90,58 +199,33 @@ const AdminPage: React.FC = () => {
     const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     const fetchData = async () => {
-        // Fetch stats
         const { count: usersCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
         const { count: eventsCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
         const { count: threadsCount } = await supabase.from('message_threads').select('*', { count: 'exact', head: true });
         setStats({ users: usersCount ?? 0, events: eventsCount ?? 0, threads: threadsCount ?? 0 });
-
-        // Fetch all users
         const { data: usersData } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-        if (usersData) {
-            setAllUsers(usersData);
-        }
+        if (usersData) setAllUsers(usersData);
         setLoading(false);
     };
 
     useEffect(() => {
         const checkAdminStatus = async () => {
             const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (!authUser) {
-                navigate('/login');
-                return;
-            }
-
-            const { data: profile, error } = await supabase
-                .from('users')
-                .select('is_admin')
-                .eq('auth_id', authUser.id)
-                .single();
-
-            if (error || !profile?.is_admin) {
-                navigate('/home');
-            } else {
-                setIsAdmin(true);
-                fetchData();
-            }
+            if (!authUser) { navigate('/login'); return; }
+            const { data: profile } = await supabase.from('users').select('is_admin').eq('auth_id', authUser.id).single();
+            if (!profile?.is_admin) { navigate('/home'); } 
+            else { setIsAdmin(true); fetchData(); }
         };
-
         checkAdminStatus();
     }, [navigate]);
 
     const handleMatchAll = async () => {
-        // Fix: The sandbox environment may block window.confirm(), so it has been removed for this context.
-        // In a real application, a safer confirmation modal would be used for this destructive action.
-
         setActionLoading(true);
         setActionMessage(null);
-
         try {
             const { data, error } = await supabase.rpc('admin_match_all_users');
             if (error) throw error;
-
             setActionMessage({ type: 'success', text: data || 'Success! All users have been matched.' });
-            // Refresh stats after the operation
             await fetchData();
         } catch (error: any) {
             setActionMessage({ type: 'error', text: `Fejl: ${error.message}` });
@@ -157,125 +241,49 @@ const AdminPage: React.FC = () => {
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-dark-background">
             <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface">
-                <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary" aria-label="Gå tilbage">
-                    <ArrowLeft size={24} />
-                </button>
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600 dark:text-dark-text-secondary hover:text-primary" aria-label="Gå tilbage"><ArrowLeft size={24} /></button>
                 <h1 className="text-xl font-bold text-red-600">Admin Panel</h1>
-                <div className="w-8"></div> {/* Spacer */}
+                <div className="w-8"></div>
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                
-                {/* Stats */}
                 <section>
                     <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">System Oversigt</h2>
                     <div className="grid grid-cols-3 gap-4">
-                        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm text-center">
-                            <Users className="mx-auto text-primary mb-2" size={24}/>
-                            <p className="text-2xl font-bold">{stats.users}</p>
-                            <p className="text-sm text-text-secondary">Brugere</p>
-                        </div>
-                         <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm text-center">
-                            <BarChart2 className="mx-auto text-primary mb-2" size={24}/>
-                            <p className="text-2xl font-bold">{stats.events}</p>
-                            <p className="text-sm text-text-secondary">Events</p>
-                        </div>
-                         <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm text-center">
-                            <MessageSquare className="mx-auto text-primary mb-2" size={24}/>
-                            <p className="text-2xl font-bold">{stats.threads}</p>
-                            <p className="text-sm text-text-secondary">Aktive Chats</p>
-                        </div>
+                        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm text-center"><Users className="mx-auto text-primary mb-2" size={24}/><p className="text-2xl font-bold">{stats.users}</p><p className="text-sm text-text-secondary">Brugere</p></div>
+                         <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm text-center"><BarChart2 className="mx-auto text-primary mb-2" size={24}/><p className="text-2xl font-bold">{stats.events}</p><p className="text-sm text-text-secondary">Events</p></div>
+                         <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm text-center"><MessageSquare className="mx-auto text-primary mb-2" size={24}/><p className="text-2xl font-bold">{stats.threads}</p><p className="text-sm text-text-secondary">Aktive Chats</p></div>
                     </div>
                 </section>
+                
+                 <section>
+                    <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Kommunikation</h2>
+                    <EmailSender />
+                </section>
 
-                 {/* Approvals */}
-                <section>
+                 <section>
                     <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Godkendelser</h2>
                     <ApprovalQueue />
                 </section>
                 
-                {/* Actions */}
                 <section>
                     <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Handlinger</h2>
                     <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm">
-                        <div className="flex items-start">
-                            <AlertTriangle className="text-red-500 mr-3 mt-1 flex-shrink-0" size={24}/>
-                            <div>
-                                <h3 className="font-bold text-text-primary">Gennemtving Match For Alle</h3>
-                                <p className="text-sm text-text-secondary my-2">Dette er en destruktiv handling. Den sletter alle nuværende chats og opretter nye chat-threads mellem alle brugere i systemet. Bruges kun til testformål.</p>
-                                <button
-                                    onClick={handleMatchAll}
-                                    disabled={actionLoading}
-                                    className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm hover:bg-red-700 transition duration-300 disabled:opacity-50 disabled:cursor-wait"
-                                >
-                                    {actionLoading ? 'Arbejder...' : 'Kør Match All'}
-                                </button>
-                                {actionMessage && (
-                                    <p className={`mt-2 text-sm font-semibold ${actionMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                                        {actionMessage.text}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
+                        <div className="flex items-start"><AlertTriangle className="text-red-500 mr-3 mt-1 flex-shrink-0" size={24}/><div><h3 className="font-bold text-text-primary">Gennemtving Match For Alle</h3><p className="text-sm text-text-secondary my-2">Dette er en destruktiv handling. Den sletter alle nuværende chats og opretter nye chat-threads mellem alle brugere i systemet. Bruges kun til testformål.</p><button onClick={handleMatchAll} disabled={actionLoading} className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm hover:bg-red-700 transition duration-300 disabled:opacity-50 disabled:cursor-wait">{actionLoading ? 'Arbejder...' : 'Kør Match All'}</button>{actionMessage && (<p className={`mt-2 text-sm font-semibold ${actionMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{actionMessage.text}</p>)}</div></div>
                     </div>
                 </section>
 
-                {/* More Ideas */}
                 <section>
                     <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Flere Værktøjer (Ideer)</h2>
                     <div className="grid md:grid-cols-2 gap-4">
-                        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm opacity-60">
-                            <div className="flex items-center">
-                                <UserCog className="text-gray-400 mr-3" size={24}/>
-                                <div>
-                                    <h3 className="font-bold text-text-primary">Bruger Håndtering</h3>
-                                    <p className="text-sm text-text-secondary">Se, ban, eller giv admin-rettigheder til brugere.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm opacity-60">
-                             <div className="flex items-center">
-                                <Ghost className="text-gray-400 mr-3" size={24}/>
-                                <div>
-                                    <h3 className="font-bold text-text-primary">Impersoner Bruger</h3>
-                                    <p className="text-sm text-text-secondary">Log ind som en anden bruger for at debugge.</p>
-                                </div>
-                            </div>
-                        </div>
+                        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm opacity-60"><div className="flex items-center"><UserCog className="text-gray-400 mr-3" size={24}/><div><h3 className="font-bold text-text-primary">Bruger Håndtering</h3><p className="text-sm text-text-secondary">Se, ban, eller giv admin-rettigheder til brugere.</p></div></div></div>
+                        <div className="bg-white dark:bg-dark-surface p-4 rounded-lg shadow-sm opacity-60"><div className="flex items-center"><Ghost className="text-gray-400 mr-3" size={24}/><div><h3 className="font-bold text-text-primary">Impersoner Bruger</h3><p className="text-sm text-text-secondary">Log ind som en anden bruger for at debugge.</p></div></div></div>
                     </div>
                 </section>
 
-                {/* User List */}
                 <section>
                     <h2 className="text-lg font-bold text-text-primary dark:text-dark-text-primary mb-2">Brugerliste</h2>
-                    <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm overflow-hidden">
-                        <div className="max-h-96 overflow-y-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 dark:bg-dark-surface-light sticky top-0">
-                                    <tr>
-                                        <th className="p-3 font-semibold">Navn</th>
-                                        <th className="p-3 font-semibold">Status</th>
-                                        <th className="p-3 font-semibold">ID</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                                    {allUsers.map(user => (
-                                        <tr key={user.id}>
-                                            <td className="p-3 font-medium">{user.name}</td>
-                                            <td className="p-3">
-                                                {user.is_admin ? (
-                                                    <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">Admin</span>
-                                                ) : (
-                                                    <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">User</span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-text-secondary">{user.id}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm overflow-hidden"><div className="max-h-96 overflow-y-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-dark-surface-light sticky top-0"><tr><th className="p-3 font-semibold">Navn</th><th className="p-3 font-semibold">Status</th><th className="p-3 font-semibold">ID</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{allUsers.map(user => (<tr key={user.id}><td className="p-3 font-medium">{user.name}</td><td className="p-3">{user.is_admin ? (<span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">Admin</span>) : (<span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">User</span>)}</td><td className="p-3 text-text-secondary">{user.id}</td></tr>))}</tbody></table></div></div>
                 </section>
             </main>
         </div>

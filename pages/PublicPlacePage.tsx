@@ -47,10 +47,10 @@ const PublicPlacePage: React.FC = () => {
                 setLoading(false);
                 return;
             }
-            // FIX: The `organization` select now includes all required fields to satisfy the `Organization` type.
+            // FIX: Added auth_id to the organization select to match the Organization type.
             const { data, error } = await supabase
                 .from('places')
-                .select('name, description, address, image_url, icon, offer, is_sponsored, organization:organizations!inner(id, name, logo_url, address, description)')
+                .select('name, description, address, image_url, icon, offer, is_sponsored, organization:organizations!inner(id, name, logo_url, address, description, auth_id)')
                 .not('organization_id', 'is', null);
 
             if (error) {

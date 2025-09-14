@@ -49,10 +49,10 @@ const PublicEventPage: React.FC = () => {
                 return;
             }
             // Fetch all events from organizations to perform client-side slug matching
-            // FIX: The `organization` select now includes all required fields to satisfy the `Organization` type.
+            // FIX: Added auth_id to the organization select to match the Organization type.
             const { data, error } = await supabase
                 .from('events')
-                .select('title, description, time, address, image_url, icon, organization:organizations!inner(id, name, logo_url, address, description)')
+                .select('title, description, time, address, image_url, icon, organization:organizations!inner(id, name, logo_url, address, description, auth_id)')
                 .not('organization_id', 'is', null);
 
             if (error) {

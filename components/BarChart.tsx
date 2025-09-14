@@ -1,6 +1,6 @@
 import React from 'react';
 // FIX: Import Variants type from framer-motion to correctly type the variants object.
-import { motion, Variants } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 
 interface ChartData {
   label: string;

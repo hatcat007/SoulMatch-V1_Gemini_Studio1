@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Settings, Edit, LogOut, Sun, Moon, Heart, BrainCircuit, Users, Award, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { Settings, Edit, LogOut, Sun, Moon, Heart, BrainCircuit, Users, Award, Trash2, Loader2, Sparkles, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../services/supabase';
@@ -252,6 +253,17 @@ const ProfilePage: React.FC = () => {
                     <Link to="/friends" className="profile-grid-link"><Users size={20} className="mr-2"/> Mine Venner</Link>
                     <Link to="/my-events" className="profile-grid-link"><Award size={20} className="mr-2"/> Mine Events</Link>
                  </div>
+
+                 {fullUser.is_admin && (
+                    <div className="mt-4">
+                        <Link 
+                            to="/admin" 
+                            className="profile-grid-link bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
+                        >
+                            <Shield size={20} className="mr-2"/> Admin Panel
+                        </Link>
+                    </div>
+                 )}
                  
                  <div className="mt-8 flex justify-center">
                     <button onClick={handleLogout} className="flex items-center text-red-500 font-bold py-2 px-4 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20">
