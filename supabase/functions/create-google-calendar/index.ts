@@ -1,17 +1,21 @@
-// FIX: Corrected the Supabase edge function types reference. The previous URL with a version specifier was incorrect, causing TypeScript to not find the type definitions for the Deno runtime.
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
-
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+// FIX: Corrected the Supabase edge function types reference path to ensure TypeScript can find the Deno runtime type definitions.
+/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
-  // This is needed if you're planning to invoke your function from a browser.
+Deno.serve(async (req) => {
+  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Methods': 'POST',
+      },
+    });
   }
 
   try {
@@ -56,3 +60,6 @@ serve(async (req) => {
     });
   }
 });
+
+// FIX: Add an empty export to treat this file as a module and prevent global scope pollution.
+export {};
