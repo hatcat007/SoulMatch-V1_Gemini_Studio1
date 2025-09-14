@@ -95,6 +95,7 @@ const OrganizationDashboardPage: React.FC = () => {
             *,
             participants:message_thread_participants(user:users(*))
         `)
+        .gt('unread_count', 0) // Only fetch threads with new/unread messages
         .order('timestamp', { ascending: false })
         .limit(5);
         
@@ -225,7 +226,7 @@ const OrganizationDashboardPage: React.FC = () => {
       <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Dashboard</h1>
       
       <section className="mt-8">
-        <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Ny besked anmodning</h2>
+        <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-primary mb-4">Nye beskeder</h2>
         <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-4 space-y-3">
             {recentChats.length > 0 ? recentChats.map(thread => {
                 const otherUser = getOtherParticipant(thread);

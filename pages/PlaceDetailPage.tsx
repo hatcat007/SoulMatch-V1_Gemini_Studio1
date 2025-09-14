@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
-import type { Place, Activity, Interest } from '../types';
+import type { Place, Activity, Interest, MessageThread, User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from '../components/LoadingScreen';
 import ImageSlideshow from '../components/ImageSlideshow';
 import { fetchPrivateFile } from '../services/s3Service';
 import { ArrowLeft, Share2, MapPin, Clock, MessageSquare, CheckCircle, Loader2, Award } from 'lucide-react';
 import SoulmatchCertification from '../components/SoulmatchCertification';
+import { useNotifications } from '../hooks/useNotifications';
+import ShareModal from '../components/ShareModal';
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
     const [imageUrl, setImageUrl] = useState<string>('');
@@ -22,15 +24,37 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
+const slugify = (text: string): string => {
+  if (!text) return '';
+  const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
+  const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrsssssttuuuuuuuuuwxyyzzz------'
+  const p = new RegExp(a.split('').join('|'), 'g')
+
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
+    .replace(/&/g, '-and-') // Replace & with 'and'
+    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
+    .replace(/\-\-+/g, '-') // Replace multiple - with single -
+    .replace(/^-+/, '') // Trim - from start of text
+    .replace(/-+$/, '') // Trim - from end of text
+}
+
 const PlaceDetailPage: React.FC = () => {
     const { placeId } = useParams<{ placeId: string }>();
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
+    const { addToast } = useNotifications();
     
     const [place, setPlace] = useState<Place | null>(null);
     const [loading, setLoading] = useState(true);
     const [isJoining, setIsJoining] = useState(false);
     const [showCertification, setShowCertification] = useState(false);
+
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [privateChats, setPrivateChats] = useState<MessageThread[]>([]);
+    const [publicUrl, setPublicUrl] = useState<string | undefined>(undefined);
+
 
     const fetchPlace = useCallback(async () => {
         if (!placeId || !currentUser) return;
@@ -48,13 +72,63 @@ const PlaceDetailPage: React.FC = () => {
             return;
         }
         setPlace(data as any);
+        if (data.organization && data.name) {
+            const orgSlug = slugify(data.organization.name);
+            const placeSlug = slugify(data.name);
+            setPublicUrl(`/place/${orgSlug}/${placeSlug}`);
+        }
         setLoading(false);
     }, [placeId, currentUser]);
+
+    const fetchPrivateChats = useCallback(async () => {
+        if (!currentUser) return;
+        
+        const { data: myThreads, error: myThreadsError } = await supabase
+            .from('message_thread_participants')
+            .select('thread_id')
+            .eq('user_id', currentUser.id);
+
+        if (myThreadsError) {
+            console.error("Error fetching user's threads:", myThreadsError);
+            return;
+        }
+        const myThreadIds = myThreads.map(t => t.thread_id);
+        
+        if (myThreadIds.length === 0) return;
+
+        const { data: privateThreads, error: privateThreadsError } = await supabase
+            .from('message_threads')
+            .select('*, participants:message_thread_participants(user:users(*))')
+            .in('id', myThreadIds)
+            .eq('is_event_chat', false)
+            .order('timestamp', { ascending: false });
+
+        if (privateThreadsError) {
+            console.error("Error fetching private chats:", privateThreadsError);
+            return;
+        }
+        
+        const filtered = (privateThreads as any[])
+            .filter(t => t.participants.length === 2)
+            .map(t => ({
+                ...t,
+                id: String(t.id),
+                participants: t.participants.filter((p: any) => p.user && p.user.id !== currentUser.id),
+            }));
+
+        setPrivateChats(filtered);
+    }, [currentUser]);
 
     useEffect(() => {
         fetchPlace();
     }, [fetchPlace]);
     
+    useEffect(() => {
+        if (isShareModalOpen) {
+            fetchPrivateChats();
+        }
+    }, [isShareModalOpen, fetchPrivateChats]);
+
     const handleSendMessage = async () => {
         if (!place?.organization?.host_name) {
              alert("Organisationen har ikke angivet en kontaktperson."); return;
@@ -90,6 +164,36 @@ const PlaceDetailPage: React.FC = () => {
         navigate('/checkin', { state: { place } });
     };
 
+    const handleShare = async (thread: MessageThread) => {
+        if (!currentUser || !place) return;
+
+        const otherParticipant = thread.participants[0]?.user;
+        if (!otherParticipant) return;
+        
+        const threadId = thread.id;
+
+        const { error } = await supabase.from('messages').insert({
+            thread_id: threadId,
+            sender_id: currentUser.id,
+            text: `Jeg synes du skal tjekke dette sted ud: ${place.name}`,
+            card_data: {
+                type: 'place',
+                id: place.id,
+                title: place.name,
+                image_url: place.image_url,
+                address: place.address,
+                offer: place.offer,
+            }
+        });
+        
+        if (error) {
+            addToast({ type: 'system', message: `Kunne ikke dele mødested: ${error.message}` });
+        } else {
+            addToast({ type: 'system', message: `Mødested delt med ${otherParticipant.name}!` });
+            setIsShareModalOpen(false);
+        }
+    };
+
     if (loading) return <LoadingScreen message="Indlæser mødested..." />;
     if (!place) return <div className="p-4 text-center">Mødested ikke fundet.</div>;
 
@@ -99,12 +203,21 @@ const PlaceDetailPage: React.FC = () => {
     return (
         <div className="flex flex-col h-full bg-background dark:bg-dark-background">
             {showCertification && <SoulmatchCertification onClose={() => setShowCertification(false)} />}
+            {isShareModalOpen && place && (
+                <ShareModal
+                    title={`Del "${place.name}"`}
+                    soulmates={privateChats}
+                    onShare={handleShare}
+                    onClose={() => setIsShareModalOpen(false)}
+                    publicUrl={publicUrl}
+                />
+            )}
             
             <header className="fixed top-0 left-0 right-0 z-20 bg-white/90 backdrop-blur-md md:relative md:bg-transparent md:backdrop-blur-none dark:bg-dark-surface/90 dark:md:bg-transparent border-b border-gray-100 dark:border-dark-border md:border-0">
                 <div className="max-w-4xl mx-auto flex items-center justify-between p-4">
                     <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft size={24} /></button>
                     <h1 className="text-xl font-bold">Mødested</h1>
-                    <button className="p-2 -mr-2"><Share2 size={20} /></button>
+                    <button onClick={() => setIsShareModalOpen(true)} className="p-2 -mr-2"><Share2 size={20} /></button>
                 </div>
             </header>
 

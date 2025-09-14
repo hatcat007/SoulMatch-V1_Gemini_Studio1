@@ -1,5 +1,10 @@
+// Vercel Edge Functions provide a Request-like and Response-like API.
+// We need to import the types to ensure we're using them correctly.
+// This is a simplified setup for Vercel, assuming a NodeJS runtime.
+// If you are using Edge runtime, the imports would be slightly different.
+
 // FIX: Corrected the Supabase edge function types reference path to ensure TypeScript can find the Deno runtime type definitions.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
+/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

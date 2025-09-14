@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
-import type { Event, User } from '../types';
+import type { Event, User, MessageThread } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from '../components/LoadingScreen';
 import ImageSlideshow from '../components/ImageSlideshow';
@@ -10,6 +10,7 @@ import { ArrowLeft, Share2, Users, MapPin, Calendar, Check, Plus, MessageCircle,
 import PostEventFriendModal from '../components/PostEventFriendModal';
 import { useNotifications } from '../hooks/useNotifications';
 import { addEventToCalendar } from '../services/googleCalendarService';
+import ShareModal from '../components/ShareModal';
 
 
 const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = ({ src, alt, className }) => {
@@ -25,6 +26,22 @@ const PrivateImage: React.FC<{src?: string, alt: string, className: string}> = (
     return <img src={imageUrl} alt={alt} className={className} />;
 };
 
+const slugify = (text: string): string => {
+  if (!text) return '';
+  const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
+  const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrsssssttuuuuuuuuuwxyyzzz------'
+  const p = new RegExp(a.split('').join('|'), 'g')
+
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
+    .replace(/&/g, '-and-') // Replace & with 'and'
+    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
+    .replace(/\-\-+/g, '-') // Replace multiple - with single -
+    .replace(/^-+/, '') // Trim - from start of text
+    .replace(/-+$/, '') // Trim - from end of text
+}
+
 
 const EventDetailPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
@@ -38,6 +55,10 @@ const EventDetailPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isJoining, setIsJoining] = useState(false);
     const [showFriendModal, setShowFriendModal] = useState(false);
+    
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [privateChats, setPrivateChats] = useState<MessageThread[]>([]);
+    const [publicUrl, setPublicUrl] = useState<string | undefined>(undefined);
 
     const fetchEvent = useCallback(async () => {
         if (!eventId || !currentUser) return;
@@ -65,6 +86,11 @@ const EventDetailPage: React.FC = () => {
             return;
         }
         setEvent(eventData as any);
+        if (eventData.organization && eventData.title) {
+            const orgSlug = slugify(eventData.organization.name);
+            const eventSlug = slugify(eventData.title);
+            setPublicUrl(`/event/${orgSlug}/${eventSlug}`);
+        }
         
         if (participantsError) {
             console.error('Error fetching participants:', participantsError.message);
@@ -77,9 +103,54 @@ const EventDetailPage: React.FC = () => {
         setLoading(false);
     }, [eventId, currentUser]);
 
+    const fetchPrivateChats = useCallback(async () => {
+        if (!currentUser) return;
+        
+        const { data: myThreads, error: myThreadsError } = await supabase
+            .from('message_thread_participants')
+            .select('thread_id')
+            .eq('user_id', currentUser.id);
+
+        if (myThreadsError) {
+            console.error("Error fetching user's threads:", myThreadsError);
+            return;
+        }
+        const myThreadIds = myThreads.map(t => t.thread_id);
+
+        if (myThreadIds.length === 0) return;
+        
+        const { data: privateThreads, error: privateThreadsError } = await supabase
+            .from('message_threads')
+            .select('*, participants:message_thread_participants(user:users(*))')
+            .in('id', myThreadIds)
+            .eq('is_event_chat', false)
+            .order('timestamp', { ascending: false });
+
+        if (privateThreadsError) {
+            console.error("Error fetching private chats:", privateThreadsError);
+            return;
+        }
+        
+        const filtered = (privateThreads as any[])
+            .filter(t => t.participants.length === 2)
+            .map(t => ({
+                ...t,
+                id: String(t.id),
+                participants: t.participants.filter((p: any) => p.user && p.user.id !== currentUser.id),
+            }));
+
+        setPrivateChats(filtered);
+    }, [currentUser]);
+
     useEffect(() => {
         fetchEvent();
     }, [fetchEvent]);
+
+    useEffect(() => {
+        if (isShareModalOpen) {
+            fetchPrivateChats();
+        }
+    }, [isShareModalOpen, fetchPrivateChats]);
 
     const handleJoinLeave = async () => {
         if (!eventId || !currentUser || !event) return;
@@ -99,6 +170,35 @@ const EventDetailPage: React.FC = () => {
 
         await fetchEvent(); // Refetch to update participant list and button state
         setIsJoining(false);
+    };
+
+    const handleShare = async (thread: MessageThread) => {
+        if (!currentUser || !event) return;
+
+        const otherParticipant = thread.participants[0]?.user;
+        if (!otherParticipant) return;
+        
+        const threadId = thread.id;
+
+        const { error } = await supabase.from('messages').insert({
+            thread_id: threadId,
+            sender_id: currentUser.id,
+            text: `Jeg synes du skal tjekke dette event ud: ${event.title}`,
+            card_data: {
+                type: 'event',
+                id: event.id,
+                title: event.title,
+                image_url: event.image_url,
+                address: event.address,
+            }
+        });
+
+        if (error) {
+            addToast({ type: 'system', message: `Kunne ikke dele event: ${error.message}` });
+        } else {
+            addToast({ type: 'system', message: `Event delt med ${otherParticipant.name}!` });
+            setIsShareModalOpen(false);
+        }
     };
     
     const handleChat = async () => {
@@ -124,12 +224,21 @@ const EventDetailPage: React.FC = () => {
     return (
         <div className="flex flex-col h-full bg-background dark:bg-dark-background">
             {currentUser && <PostEventFriendModal isOpen={showFriendModal} onClose={() => setShowFriendModal(false)} participants={participants} currentUser={currentUser} />}
+            {isShareModalOpen && event && (
+                <ShareModal
+                    title={`Del "${event.title}"`}
+                    soulmates={privateChats}
+                    onShare={handleShare}
+                    onClose={() => setIsShareModalOpen(false)}
+                    publicUrl={publicUrl}
+                />
+            )}
             
             <header className="fixed top-0 left-0 right-0 z-20 bg-white/90 backdrop-blur-md md:relative md:bg-transparent md:backdrop-blur-none dark:bg-dark-surface/90 dark:md:bg-transparent border-b border-gray-100 dark:border-dark-border md:border-0">
                 <div className="max-w-4xl mx-auto flex items-center justify-between p-4">
                     <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft size={24} /></button>
                     <h1 className="text-xl font-bold">Event Detaljer</h1>
-                    <button className="p-2 -mr-2"><Share2 size={20} /></button>
+                    <button onClick={() => setIsShareModalOpen(true)} className="p-2 -mr-2"><Share2 size={20} /></button>
                 </div>
             </header>
 
